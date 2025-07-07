@@ -16,7 +16,7 @@ import {
   mergeTimeSeriesData
 } from '@/lib/utils/chartDataUtils'
 import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
-import { AlertCircle, TrendingUp, MoreVertical, Pencil, Copy, Trash2 } from 'lucide-react'
+import { AlertCircle, TrendingUp, MoreVertical, Pencil, Copy, Trash2, ScatterChart } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -292,7 +292,7 @@ export function WebGLPlotWithData({
     // Generate colors based on coloring strategy
     const colors = generateLineColors(plotData.series.length)
 
-    // Create lines for each series
+    // Create lines or scatter points for each series
     plotData.series.forEach((series, index) => {
       const color = new ColorRGBA(
         colors[index].r,
@@ -301,18 +301,29 @@ export function WebGLPlotWithData({
         colors[index].a
       )
       
-      const line = new WebglLine(color, series.xValues.length)
-      
-      // Set X and Y data points
-      for (let i = 0; i < series.xValues.length; i++) {
-        line.setX(i, series.xValues[i])
-        line.setY(i, series.yValues[i])
+      if ((config.chartType || 'line') === 'scatter') {
+        // For scatter plot, create individual points using WebglLine with length 1
+        for (let i = 0; i < series.xValues.length; i++) {
+          const pointLine = new WebglLine(color, 1)
+          pointLine.setX(0, series.xValues[i])
+          pointLine.setY(0, series.yValues[i])
+          wglpRef.current!.addLine(pointLine)
+        }
+      } else {
+        // For line chart, create connected lines
+        const line = new WebglLine(color, series.xValues.length)
+        
+        // Set X and Y data points
+        for (let i = 0; i < series.xValues.length; i++) {
+          line.setX(i, series.xValues[i])
+          line.setY(i, series.yValues[i])
+        }
+        
+        wglpRef.current!.addLine(line)
+        linesRef.current.push(line)
       }
       
-      console.log(`Line ${index} - Metadata: ${series.metadataLabel}, Parameter: ${series.parameterId}, Points: ${series.xValues.length}, Y range: [${series.yRange.min}, ${series.yRange.max}]`)
-      
-      wglpRef.current!.addLine(line)
-      linesRef.current.push(line)
+      console.log(`${(config.chartType || 'line') === 'scatter' ? 'Scatter' : 'Line'} ${index} - Metadata: ${series.metadataLabel}, Parameter: ${series.parameterId}, Points: ${series.xValues.length}, Y range: [${series.yRange.min}, ${series.yRange.max}]`)
     })
 
     // Initial render
@@ -384,11 +395,15 @@ export function WebGLPlotWithData({
         <div className="flex items-start justify-between">
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
+              {(config.chartType || 'line') === 'scatter' ? (
+                <ScatterChart className="h-5 w-5" />
+              ) : (
+                <TrendingUp className="h-5 w-5" />
+              )}
               {config.title}
             </CardTitle>
             <CardDescription>
-              {config.xAxisParameter === 'timestamp' ? 'Time Series' : 'XY'} Chart | 
+              {(config.chartType || 'line') === 'scatter' ? 'Scatter' : 'Line'} {config.xAxisParameter === 'timestamp' ? 'Time Series' : 'XY'} Chart | 
               {' '}{plotData.series.length > 0 ? plotData.series[0].xValues.length : 0} data points | 
               {' '}{plotData.series.length} series
             </CardDescription>

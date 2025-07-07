@@ -41,7 +41,8 @@ export default function Home() {
   const handleCreateChart = (config: ChartConfiguration) => {
     const newChart = {
       ...config,
-      id: Date.now().toString()
+      id: Date.now().toString(),
+      chartType: config.chartType || 'line' as const
     }
     setCharts([...charts, newChart])
     setCreateChartOpen(false)

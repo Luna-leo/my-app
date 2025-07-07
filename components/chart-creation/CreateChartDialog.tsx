@@ -11,11 +11,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { db } from '@/lib/db';
 import { ParameterInfo } from '@/lib/db/schema';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, LineChart, ScatterChart } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 export interface ChartConfiguration {
   title: string;
+  chartType: 'line' | 'scatter';
   xAxisParameter: string;
   yAxisParameters: string[];
   selectedDataIds: number[];
@@ -41,6 +43,7 @@ export function CreateChartDialog({
   onUpdateChart
 }: CreateChartDialogProps) {
   const [chartTitle, setChartTitle] = useState('');
+  const [chartType, setChartType] = useState<'line' | 'scatter'>('line');
   const [xAxisParameter, setXAxisParameter] = useState('timestamp');
   const [yAxisParameters, setYAxisParameters] = useState<string[]>([]);
   const [availableParameters, setAvailableParameters] = useState<ParameterInfo[]>([]);
@@ -51,11 +54,13 @@ export function CreateChartDialog({
   useEffect(() => {
     if (editMode && chartToEdit && open) {
       setChartTitle(chartToEdit.title);
+      setChartType(chartToEdit.chartType || 'line');
       setXAxisParameter(chartToEdit.xAxisParameter);
       setYAxisParameters(chartToEdit.yAxisParameters);
     } else if (!editMode && open) {
       // Reset form for new chart
       setChartTitle('');
+      setChartType('line');
       setXAxisParameter('timestamp');
       setYAxisParameters([]);
     }
@@ -126,6 +131,7 @@ export function CreateChartDialog({
       const updatedConfig = {
         ...chartToEdit,
         title: chartTitle || 'Untitled Chart',
+        chartType,
         xAxisParameter,
         yAxisParameters
       };
@@ -133,6 +139,7 @@ export function CreateChartDialog({
     } else {
       const config: ChartConfiguration = {
         title: chartTitle || 'Untitled Chart',
+        chartType,
         xAxisParameter,
         yAxisParameters,
         selectedDataIds
@@ -144,6 +151,7 @@ export function CreateChartDialog({
     // Reset form only for new charts
     if (!editMode) {
       setChartTitle('');
+      setChartType('line');
       setXAxisParameter('timestamp');
       setYAxisParameters([]);
       setActiveTab('basic');
@@ -186,6 +194,26 @@ export function CreateChartDialog({
                   value={chartTitle}
                   onChange={(e) => setChartTitle(e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Chart Type</Label>
+                <RadioGroup value={chartType} onValueChange={(value) => setChartType(value as 'line' | 'scatter')}>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="line" id="line" />
+                    <Label htmlFor="line" className="flex items-center cursor-pointer">
+                      <LineChart className="w-4 h-4 mr-2" />
+                      Line Chart
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="scatter" id="scatter" />
+                    <Label htmlFor="scatter" className="flex items-center cursor-pointer">
+                      <ScatterChart className="w-4 h-4 mr-2" />
+                      Scatter Plot
+                    </Label>
+                  </div>
+                </RadioGroup>
               </div>
 
               <div className="space-y-2">
