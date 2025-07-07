@@ -37,6 +37,7 @@ interface WebGLPlotWithDataProps {
 interface PlotData {
   xValues: number[]
   xRange: { min: number; max: number }
+  xParameterInfo: ParameterInfo | null
   yData: Array<{
     parameterId: string
     parameterInfo: ParameterInfo
@@ -140,6 +141,7 @@ export function WebGLPlotWithData({
         // Transform data based on X-axis type
         let xValues: number[]
         let xRange: { min: number; max: number }
+        let xParameterInfo: ParameterInfo | null = null
         let yData: PlotData['yData'] = []
 
         if (config.xAxisParameter === 'timestamp') {
@@ -152,6 +154,7 @@ export function WebGLPlotWithData({
           
           xValues = chartData.timestamps
           xRange = calculateDataRange(xValues)
+          xParameterInfo = null
 
           yData = chartData.parameters.map(param => ({
             parameterId: param.parameterId,
@@ -176,6 +179,7 @@ export function WebGLPlotWithData({
           
           xValues = xyData.xValues
           xRange = calculateDataRange(xValues)
+          xParameterInfo = xyData.xParameterInfo
 
           yData = xyData.yParameters.map(param => ({
             parameterId: param.parameterId,
@@ -208,6 +212,7 @@ export function WebGLPlotWithData({
         setPlotData({
           xValues: normalizedXValues,
           xRange,
+          xParameterInfo,
           yData
         })
 
@@ -428,7 +433,7 @@ export function WebGLPlotWithData({
           {/* X-axis info */}
           <div className="text-sm text-gray-600 text-center">
             X-axis: {config.xAxisParameter === 'timestamp' ? 'Time' : 
-              plotData.yData[0]?.parameterInfo.parameterName || config.xAxisParameter}
+              plotData.xParameterInfo ? `${plotData.xParameterInfo.parameterName} (${plotData.xParameterInfo.unit})` : config.xAxisParameter}
             {config.xAxisParameter !== 'timestamp' && plotData.xRange && (
               <span> [{plotData.xRange.min.toFixed(2)} - {plotData.xRange.max.toFixed(2)}]</span>
             )}

@@ -11,6 +11,7 @@ export interface ChartData {
 
 export interface XYData {
   xValues: number[];
+  xParameterInfo: ParameterInfo | null;
   yParameters: {
     parameterId: string;
     parameterInfo: ParameterInfo;
@@ -83,9 +84,13 @@ export async function transformDataForXYChart(
   if (timeSeriesData.length === 0) {
     return {
       xValues: [],
+      xParameterInfo: null,
       yParameters: []
     };
   }
+
+  // Get X-axis parameter info
+  const xParameterInfo = parameterInfoMap.get(xAxisParameter) || null;
 
   // Extract X values
   const xValues = timeSeriesData.map(d => {
@@ -111,6 +116,7 @@ export async function transformDataForXYChart(
 
   return {
     xValues,
+    xParameterInfo,
     yParameters
   };
 }
