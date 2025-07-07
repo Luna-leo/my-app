@@ -319,20 +319,12 @@ export function PlotlyChartWithData({
 
           const cssColor = `rgba(${Math.round(colors[index].r * 255)}, ${Math.round(colors[index].g * 255)}, ${Math.round(colors[index].b * 255)}, ${colors[index].a})`
 
-          return {
+          const trace: any = {
             x: xData,
             y: yData,
-            type: 'scattergl' as const,
-            mode: (config.chartType === 'scatter' ? 'markers' : 'lines') as const,
+            type: 'scattergl',
+            mode: config.chartType === 'scatter' ? 'markers' : 'lines',
             name: `${series.metadataLabel} - ${series.parameterInfo.parameterName}`,
-            line: config.chartType !== 'scatter' ? {
-              color: cssColor,
-              width: 2
-            } : undefined,
-            marker: config.chartType === 'scatter' ? {
-              color: cssColor,
-              size: 6
-            } : undefined,
             hovertemplate: 
               `${series.parameterInfo.parameterName}: %{y:.3g} ${series.parameterInfo.unit || ''}<br>` +
               (config.xAxisParameter === 'timestamp' 
@@ -340,6 +332,20 @@ export function PlotlyChartWithData({
                 : `${plotData.xParameterInfo?.parameterName || 'X'}: %{x:.3g} ${plotData.xParameterInfo?.unit || ''}`
               ) + '<extra></extra>'
           }
+
+          // Always include line property to avoid undefined access
+          trace.line = {
+            color: cssColor,
+            width: config.chartType === 'scatter' ? 0 : 2
+          }
+
+          // Always include marker property 
+          trace.marker = {
+            color: cssColor,
+            size: config.chartType === 'scatter' ? 6 : 0
+          }
+
+          return trace
         })
 
         // Create layout
