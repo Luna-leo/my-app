@@ -53,6 +53,9 @@ interface PlotData {
   series: PlotSeries[]
 }
 
+// Chart margins - consistent across WebGL and SVG
+const CHART_MARGINS = { top: 20, right: 60, bottom: 60, left: 70 }
+
 export function WebGLPlotWithData({
   config,
   aspectRatio = 2,
@@ -358,10 +361,6 @@ export function WebGLPlotWithData({
     
     canvas.width = scaledWidth
     canvas.height = scaledHeight
-    
-    // Set CSS dimensions to match container
-    canvas.style.width = '100%'
-    canvas.style.height = '100%'
 
     // Always create a new WebGL plot instance to avoid stale state
     if (wglpRef.current) {
@@ -373,9 +372,9 @@ export function WebGLPlotWithData({
     linesRef.current = []
 
     // Set up WebGL viewport to match SVG margins
-    const margin = { top: 20, right: 60, bottom: 60, left: 70 }
-    const innerWidth = dimensions.width - margin.left - margin.right
-    const innerHeight = dimensions.height - margin.top - margin.bottom
+    const innerWidth = dimensions.width - CHART_MARGINS.left - CHART_MARGINS.right
+    const innerHeight = dimensions.height - CHART_MARGINS.top - CHART_MARGINS.bottom
+
     
     // Apply zoom and pan transformations
     const viewport = interactionState.viewport
@@ -393,12 +392,17 @@ export function WebGLPlotWithData({
     const viewportCenterY = (viewport.yMin + viewport.yMax) / 2
     
     // マージンを考慮した描画エリアの中心
-    const plotCenterX = margin.left + innerWidth / 2
-    const plotCenterY = margin.top + innerHeight / 2
+    const plotCenterX = CHART_MARGINS.left + innerWidth / 2
+    const plotCenterY = CHART_MARGINS.top + innerHeight / 2
     
     // WebGL座標系でのオフセット計算
-    const xOffset = (plotCenterX / dimensions.width) * 2 - 1 - viewportCenterX * xScale
-    const yOffset = 1 - (plotCenterY / dimensions.height) * 2 - viewportCenterY * yScale
+    // プロットエリアの中心をWebGL座標系に変換
+    const basexOffset = (plotCenterX / dimensions.width) * 2 - 1
+    const baseyOffset = 1 - (plotCenterY / dimensions.height) * 2
+    
+    // ビューポートの中心によるオフセット調整
+    const xOffset = basexOffset - viewportCenterX * xScale
+    const yOffset = baseyOffset - viewportCenterY * yScale
     
     wglpRef.current.gScaleX = xScale
     wglpRef.current.gScaleY = yScale
@@ -407,10 +411,21 @@ export function WebGLPlotWithData({
     
     console.log('WebGL transform:', { 
       xScale, yScale, xOffset, yOffset, 
+      baseOffsets: { basexOffset, baseyOffset },
       viewport: { 
         xMin: viewport.xMin, xMax: viewport.xMax, 
         yMin: viewport.yMin, yMax: viewport.yMax 
-      } 
+      },
+      plotArea: {
+        innerWidth, innerHeight,
+        margins: CHART_MARGINS,
+        plotCenterX, plotCenterY,
+        viewportCenterX, viewportCenterY
+      },
+      canvas: {
+        width: dimensions.width,
+        height: dimensions.height
+      }
     })
 
     // Generate colors based on coloring strategy
@@ -608,11 +623,19 @@ export function WebGLPlotWithData({
             className="w-full overflow-hidden border border-border rounded-lg relative"
             style={{ height: dimensions.height || 400, minHeight: 400 }}
           >
-            <canvas
-              ref={canvasRef}
-              className="max-w-full"
-              style={{ display: 'block' }}
-            />
+            {/* Canvas with clipping wrapper */}
+            <div
+              className="absolute inset-0 overflow-hidden"
+              style={{
+                clipPath: `inset(${CHART_MARGINS.top}px ${CHART_MARGINS.right}px ${CHART_MARGINS.bottom}px ${CHART_MARGINS.left}px)`
+              }}
+            >
+              <canvas
+                ref={canvasRef}
+                className="max-w-full"
+                style={{ display: 'block' }}
+              />
+            </div>
             {plotData.series.length > 0 && (
               <SVGOverlay
                 width={dimensions.width}
