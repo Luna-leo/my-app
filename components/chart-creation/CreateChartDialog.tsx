@@ -26,13 +26,19 @@ interface CreateChartDialogProps {
   onOpenChange: (open: boolean) => void;
   selectedDataIds: number[];
   onCreateChart: (config: ChartConfiguration) => void;
+  editMode?: boolean;
+  chartToEdit?: ChartConfiguration & { id: string };
+  onUpdateChart?: (config: ChartConfiguration & { id: string }) => void;
 }
 
 export function CreateChartDialog({ 
   open, 
   onOpenChange, 
   selectedDataIds,
-  onCreateChart 
+  onCreateChart,
+  editMode = false,
+  chartToEdit,
+  onUpdateChart
 }: CreateChartDialogProps) {
   const [chartTitle, setChartTitle] = useState('');
   const [xAxisParameter, setXAxisParameter] = useState('timestamp');
@@ -40,11 +46,28 @@ export function CreateChartDialog({
   const [availableParameters, setAvailableParameters] = useState<ParameterInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('basic');
+  
+  // Initialize form values when editing
+  useEffect(() => {
+    if (editMode && chartToEdit && open) {
+      setChartTitle(chartToEdit.title);
+      setXAxisParameter(chartToEdit.xAxisParameter);
+      setYAxisParameters(chartToEdit.yAxisParameters);
+    } else if (!editMode && open) {
+      // Reset form for new chart
+      setChartTitle('');
+      setXAxisParameter('timestamp');
+      setYAxisParameters([]);
+    }
+  }, [editMode, chartToEdit, open]);
 
   // Load available parameters based on selected data
   useEffect(() => {
     const loadParameters = async () => {
-      if (selectedDataIds.length === 0) {
+      // Use chartToEdit's selectedDataIds in edit mode, otherwise use the prop
+      const dataIds = editMode && chartToEdit ? chartToEdit.selectedDataIds : selectedDataIds;
+      
+      if (dataIds.length === 0) {
         setAvailableParameters([]);
         setLoading(false);
         return;
@@ -56,7 +79,7 @@ export function CreateChartDialog({
         // Get metadata for selected data
         const metadata = await db.metadata
           .where('id')
-          .anyOf(selectedDataIds)
+          .anyOf(dataIds)
           .toArray();
 
         // Get unique plant-machine combinations
@@ -88,7 +111,7 @@ export function CreateChartDialog({
     if (open) {
       loadParameters();
     }
-  }, [open, selectedDataIds]);
+  }, [open, selectedDataIds, editMode, chartToEdit]);
 
   const handleYAxisToggle = (parameterId: string, checked: boolean) => {
     if (checked) {
@@ -99,20 +122,32 @@ export function CreateChartDialog({
   };
 
   const handleCreate = () => {
-    const config: ChartConfiguration = {
-      title: chartTitle || 'Untitled Chart',
-      xAxisParameter,
-      yAxisParameters,
-      selectedDataIds
-    };
-    onCreateChart(config);
+    if (editMode && chartToEdit && onUpdateChart) {
+      const updatedConfig = {
+        ...chartToEdit,
+        title: chartTitle || 'Untitled Chart',
+        xAxisParameter,
+        yAxisParameters
+      };
+      onUpdateChart(updatedConfig);
+    } else {
+      const config: ChartConfiguration = {
+        title: chartTitle || 'Untitled Chart',
+        xAxisParameter,
+        yAxisParameters,
+        selectedDataIds
+      };
+      onCreateChart(config);
+    }
     onOpenChange(false);
     
-    // Reset form
-    setChartTitle('');
-    setXAxisParameter('timestamp');
-    setYAxisParameters([]);
-    setActiveTab('basic');
+    // Reset form only for new charts
+    if (!editMode) {
+      setChartTitle('');
+      setXAxisParameter('timestamp');
+      setYAxisParameters([]);
+      setActiveTab('basic');
+    }
   };
 
   const isValid = yAxisParameters.length > 0;
@@ -121,13 +156,13 @@ export function CreateChartDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh]">
         <DialogHeader>
-          <DialogTitle>Create Chart</DialogTitle>
+          <DialogTitle>{editMode ? 'Edit Chart' : 'Create Chart'}</DialogTitle>
           <DialogDescription>
             Configure your chart by selecting parameters for X and Y axes
           </DialogDescription>
         </DialogHeader>
 
-        {selectedDataIds.length === 0 ? (
+        {(editMode && chartToEdit ? chartToEdit.selectedDataIds : selectedDataIds).length === 0 ? (
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -250,9 +285,9 @@ export function CreateChartDialog({
           </Button>
           <Button 
             onClick={handleCreate}
-            disabled={!isValid || selectedDataIds.length === 0}
+            disabled={!isValid || (editMode && chartToEdit ? chartToEdit.selectedDataIds : selectedDataIds).length === 0}
           >
-            Create Chart
+            {editMode ? 'Update Chart' : 'Create Chart'}
           </Button>
         </DialogFooter>
       </DialogContent>

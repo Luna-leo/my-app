@@ -29,6 +29,8 @@ export default function Home() {
     open: false,
     chartId: null
   })
+  const [editingChart, setEditingChart] = useState<(ChartConfiguration & { id: string }) | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
 
 
   const handleImportComplete = () => {
@@ -46,8 +48,17 @@ export default function Home() {
   }
 
   const handleEditChart = (chartId: string) => {
-    // TODO: Implement edit functionality
-    console.log('Edit chart:', chartId)
+    const chartToEdit = charts.find(c => c.id === chartId)
+    if (chartToEdit) {
+      setEditingChart(chartToEdit)
+      setEditDialogOpen(true)
+    }
+  }
+  
+  const handleUpdateChart = (updatedChart: ChartConfiguration & { id: string }) => {
+    setCharts(charts.map(c => c.id === updatedChart.id ? updatedChart : c))
+    setEditingChart(null)
+    setEditDialogOpen(false)
   }
 
   const handleDuplicateChart = (chartId: string) => {
@@ -186,6 +197,16 @@ export default function Home() {
         onOpenChange={setCreateChartOpen}
         selectedDataIds={selectedDataIds}
         onCreateChart={handleCreateChart}
+      />
+      
+      <CreateChartDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        selectedDataIds={editingChart?.selectedDataIds || []}
+        onCreateChart={() => {}}
+        editMode={true}
+        chartToEdit={editingChart || undefined}
+        onUpdateChart={handleUpdateChart}
       />
       
       <AlertDialog 
