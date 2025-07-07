@@ -1,22 +1,30 @@
 import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema';
 
-export interface ChartData {
+export interface ChartSeriesData {
+  metadataId: number;
+  metadataLabel: string;
+  parameterId: string;
+  parameterInfo: ParameterInfo;
   timestamps: number[];
-  parameters: {
-    parameterId: string;
-    parameterInfo: ParameterInfo;
-    values: (number | null)[];
-  }[];
+  values: (number | null)[];
+}
+
+export interface ChartData {
+  series: ChartSeriesData[];
+}
+
+export interface XYSeriesData {
+  metadataId: number;
+  metadataLabel: string;
+  parameterId: string;
+  parameterInfo: ParameterInfo;
+  xValues: number[];
+  yValues: (number | null)[];
 }
 
 export interface XYData {
-  xValues: number[];
   xParameterInfo: ParameterInfo | null;
-  yParameters: {
-    parameterId: string;
-    parameterInfo: ParameterInfo;
-    values: (number | null)[];
-  }[];
+  series: XYSeriesData[];
 }
 
 /**
@@ -38,37 +46,52 @@ export function mergeTimeSeriesData(dataArrays: TimeSeriesData[][]): TimeSeriesD
 export async function transformDataForChart(
   timeSeriesData: TimeSeriesData[],
   yAxisParameters: string[],
-  parameterInfoMap: Map<string, ParameterInfo>
+  parameterInfoMap: Map<string, ParameterInfo>,
+  metadataMap: Map<number, { label?: string; plant: string; machineNo: string }>
 ): Promise<ChartData> {
   if (timeSeriesData.length === 0) {
     return {
-      timestamps: [],
-      parameters: []
+      series: []
     };
   }
 
-  // Extract timestamps
-  const timestamps = timeSeriesData.map(d => d.timestamp.getTime());
+  // Group data by metadataId
+  const dataByMetadata = new Map<number, TimeSeriesData[]>();
+  timeSeriesData.forEach(data => {
+    const group = dataByMetadata.get(data.metadataId) || [];
+    group.push(data);
+    dataByMetadata.set(data.metadataId, group);
+  });
 
-  // Extract data for each parameter
-  const parameters = yAxisParameters.map(parameterId => {
-    const parameterInfo = parameterInfoMap.get(parameterId);
-    if (!parameterInfo) {
-      throw new Error(`Parameter info not found for ${parameterId}`);
-    }
+  // Create series for each metadata x parameter combination
+  const series: ChartSeriesData[] = [];
+  
+  dataByMetadata.forEach((dataPoints, metadataId) => {
+    const metadata = metadataMap.get(metadataId);
+    const metadataLabel = metadata?.label || `${metadata?.plant}-${metadata?.machineNo}` || `Data ${metadataId}`;
+    
+    yAxisParameters.forEach(parameterId => {
+      const parameterInfo = parameterInfoMap.get(parameterId);
+      if (!parameterInfo) {
+        throw new Error(`Parameter info not found for ${parameterId}`);
+      }
 
-    const values = timeSeriesData.map(d => d.data[parameterId] ?? null);
+      const timestamps = dataPoints.map(d => d.timestamp.getTime());
+      const values = dataPoints.map(d => d.data[parameterId] ?? null);
 
-    return {
-      parameterId,
-      parameterInfo,
-      values
-    };
+      series.push({
+        metadataId,
+        metadataLabel,
+        parameterId,
+        parameterInfo,
+        timestamps,
+        values
+      });
+    });
   });
 
   return {
-    timestamps,
-    parameters
+    series
   };
 }
 
@@ -79,45 +102,60 @@ export async function transformDataForXYChart(
   timeSeriesData: TimeSeriesData[],
   xAxisParameter: string,
   yAxisParameters: string[],
-  parameterInfoMap: Map<string, ParameterInfo>
+  parameterInfoMap: Map<string, ParameterInfo>,
+  metadataMap: Map<number, { label?: string; plant: string; machineNo: string }>
 ): Promise<XYData> {
   if (timeSeriesData.length === 0) {
     return {
-      xValues: [],
       xParameterInfo: null,
-      yParameters: []
+      series: []
     };
   }
 
   // Get X-axis parameter info
   const xParameterInfo = parameterInfoMap.get(xAxisParameter) || null;
 
-  // Extract X values
-  const xValues = timeSeriesData.map(d => {
-    const value = d.data[xAxisParameter];
-    return value !== null ? value : NaN;
+  // Group data by metadataId
+  const dataByMetadata = new Map<number, TimeSeriesData[]>();
+  timeSeriesData.forEach(data => {
+    const group = dataByMetadata.get(data.metadataId) || [];
+    group.push(data);
+    dataByMetadata.set(data.metadataId, group);
   });
 
-  // Extract Y values for each parameter
-  const yParameters = yAxisParameters.map(parameterId => {
-    const parameterInfo = parameterInfoMap.get(parameterId);
-    if (!parameterInfo) {
-      throw new Error(`Parameter info not found for ${parameterId}`);
-    }
+  // Create series for each metadata x parameter combination
+  const series: XYSeriesData[] = [];
+  
+  dataByMetadata.forEach((dataPoints, metadataId) => {
+    const metadata = metadataMap.get(metadataId);
+    const metadataLabel = metadata?.label || `${metadata?.plant}-${metadata?.machineNo}` || `Data ${metadataId}`;
+    
+    yAxisParameters.forEach(parameterId => {
+      const parameterInfo = parameterInfoMap.get(parameterId);
+      if (!parameterInfo) {
+        throw new Error(`Parameter info not found for ${parameterId}`);
+      }
 
-    const values = timeSeriesData.map(d => d.data[parameterId] ?? null);
+      const xValues = dataPoints.map(d => {
+        const value = d.data[xAxisParameter];
+        return value !== null ? value : NaN;
+      });
+      const yValues = dataPoints.map(d => d.data[parameterId] ?? null);
 
-    return {
-      parameterId,
-      parameterInfo,
-      values
-    };
+      series.push({
+        metadataId,
+        metadataLabel,
+        parameterId,
+        parameterInfo,
+        xValues,
+        yValues
+      });
+    });
   });
 
   return {
-    xValues,
     xParameterInfo,
-    yParameters
+    series
   };
 }
 

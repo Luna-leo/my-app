@@ -34,16 +34,20 @@ interface WebGLPlotWithDataProps {
   onDelete?: () => void
 }
 
-interface PlotData {
+interface PlotSeries {
+  metadataId: number
+  metadataLabel: string
+  parameterId: string
+  parameterInfo: ParameterInfo
   xValues: number[]
+  yValues: number[]
   xRange: { min: number; max: number }
+  yRange: { min: number; max: number }
+}
+
+interface PlotData {
   xParameterInfo: ParameterInfo | null
-  yData: Array<{
-    parameterId: string
-    parameterInfo: ParameterInfo
-    values: number[]
-    range: { min: number; max: number }
-  }>
+  series: PlotSeries[]
 }
 
 export function WebGLPlotWithData({
@@ -118,6 +122,19 @@ export function WebGLPlotWithData({
           return
         }
 
+        // Load metadata info
+        const metadataMap = new Map<number, { label?: string; plant: string; machineNo: string }>()
+        for (const metadataId of config.selectedDataIds) {
+          const metadata = await db.metadata.get(metadataId)
+          if (metadata) {
+            metadataMap.set(metadataId, {
+              label: metadata.label,
+              plant: metadata.plant,
+              machineNo: metadata.machineNo
+            })
+          }
+        }
+
         // Load parameter info
         const parameterIds = [
           ...(config.xAxisParameter !== 'timestamp' ? [config.xAxisParameter] : []),
@@ -139,81 +156,91 @@ export function WebGLPlotWithData({
         setLoadingProgress((currentStep / totalSteps) * 100)
 
         // Transform data based on X-axis type
-        let xValues: number[]
-        let xRange: { min: number; max: number }
         let xParameterInfo: ParameterInfo | null = null
-        let yData: PlotData['yData'] = []
+        let series: PlotSeries[] = []
 
         if (config.xAxisParameter === 'timestamp') {
           // Time-based chart
           const chartData = await transformDataForChart(
             mergedData,
             config.yAxisParameters,
-            parameterInfoMap
+            parameterInfoMap,
+            metadataMap
           )
           
-          xValues = chartData.timestamps
-          xRange = calculateDataRange(xValues)
           xParameterInfo = null
-
-          yData = chartData.parameters.map(param => ({
-            parameterId: param.parameterId,
-            parameterInfo: param.parameterInfo,
-            values: normalizeValues(
-              param.values.map(v => v ?? NaN),
-              ...(() => {
-                const range = calculateDataRange(param.values)
-                return [range.min, range.max] as const
-              })()
-            ),
-            range: calculateDataRange(param.values)
-          }))
+          
+          // Process each series
+          series = chartData.series.map(s => {
+            const xRange = calculateDataRange(s.timestamps)
+            const yRange = calculateDataRange(s.values)
+            const normalizedX = normalizeValues(s.timestamps, xRange.min, xRange.max)
+            const normalizedY = normalizeValues(
+              s.values.map(v => v ?? NaN),
+              yRange.min,
+              yRange.max
+            )
+            
+            return {
+              metadataId: s.metadataId,
+              metadataLabel: s.metadataLabel,
+              parameterId: s.parameterId,
+              parameterInfo: s.parameterInfo,
+              xValues: normalizedX,
+              yValues: normalizedY,
+              xRange,
+              yRange
+            }
+          })
         } else {
           // XY chart
           const xyData = await transformDataForXYChart(
             mergedData,
             config.xAxisParameter,
             config.yAxisParameters,
-            parameterInfoMap
+            parameterInfoMap,
+            metadataMap
           )
           
-          xValues = xyData.xValues
-          xRange = calculateDataRange(xValues)
           xParameterInfo = xyData.xParameterInfo
-
-          yData = xyData.yParameters.map(param => ({
-            parameterId: param.parameterId,
-            parameterInfo: param.parameterInfo,
-            values: normalizeValues(
-              param.values.map(v => v ?? NaN),
-              ...(() => {
-                const range = calculateDataRange(param.values)
-                return [range.min, range.max] as const
-              })()
-            ),
-            range: calculateDataRange(param.values)
-          }))
+          
+          // Process each series
+          series = xyData.series.map(s => {
+            const xRange = calculateDataRange(s.xValues)
+            const yRange = calculateDataRange(s.yValues)
+            const normalizedX = normalizeValues(s.xValues, xRange.min, xRange.max)
+            const normalizedY = normalizeValues(
+              s.yValues.map(v => v ?? NaN),
+              yRange.min,
+              yRange.max
+            )
+            
+            return {
+              metadataId: s.metadataId,
+              metadataLabel: s.metadataLabel,
+              parameterId: s.parameterId,
+              parameterInfo: s.parameterInfo,
+              xValues: normalizedX,
+              yValues: normalizedY,
+              xRange,
+              yRange
+            }
+          })
         }
 
-        // Normalize X values
-        const normalizedXValues = normalizeValues(xValues, xRange.min, xRange.max)
-
         console.log('Chart data loaded:', {
-          dataPoints: normalizedXValues.length,
-          xRange,
-          yParameterCount: yData.length,
-          yParameters: yData.map(d => ({
-            id: d.parameterId,
-            range: d.range,
-            sampleValues: d.values.slice(0, 5)
+          seriesCount: series.length,
+          series: series.map(s => ({
+            metadata: s.metadataLabel,
+            parameter: s.parameterId,
+            dataPoints: s.xValues.length,
+            yRange: s.yRange
           }))
         })
 
         setPlotData({
-          xValues: normalizedXValues,
-          xRange,
           xParameterInfo,
-          yData
+          series
         })
 
         setLoadingProgress(100)
@@ -262,11 +289,11 @@ export function WebGLPlotWithData({
     wglpRef.current = new WebglPlot(canvas)
     linesRef.current = []
 
-    // Generate colors for each line
-    const colors = generateLineColors(plotData.yData.length)
+    // Generate colors based on coloring strategy
+    const colors = generateLineColors(plotData.series.length)
 
-    // Create lines for each Y parameter
-    plotData.yData.forEach((yParam, index) => {
+    // Create lines for each series
+    plotData.series.forEach((series, index) => {
       const color = new ColorRGBA(
         colors[index].r,
         colors[index].g,
@@ -274,17 +301,15 @@ export function WebGLPlotWithData({
         colors[index].a
       )
       
-      const line = new WebglLine(color, plotData.xValues.length)
+      const line = new WebglLine(color, series.xValues.length)
       
-      // Use arrangeX for automatic X-axis arrangement
-      line.arrangeX()
-      
-      // Set Y data points
-      for (let i = 0; i < plotData.xValues.length; i++) {
-        line.setY(i, yParam.values[i])
+      // Set X and Y data points
+      for (let i = 0; i < series.xValues.length; i++) {
+        line.setX(i, series.xValues[i])
+        line.setY(i, series.yValues[i])
       }
       
-      console.log(`Line ${index} - Parameter: ${yParam.parameterId}, Points: ${plotData.xValues.length}, Y range: [${Math.min(...yParam.values)}, ${Math.max(...yParam.values)}]`)
+      console.log(`Line ${index} - Metadata: ${series.metadataLabel}, Parameter: ${series.parameterId}, Points: ${series.xValues.length}, Y range: [${series.yRange.min}, ${series.yRange.max}]`)
       
       wglpRef.current!.addLine(line)
       linesRef.current.push(line)
@@ -364,7 +389,8 @@ export function WebGLPlotWithData({
             </CardTitle>
             <CardDescription>
               {config.xAxisParameter === 'timestamp' ? 'Time Series' : 'XY'} Chart | 
-              {' '}{plotData.xValues.length} data points
+              {' '}{plotData.series.length > 0 ? plotData.series[0].xValues.length : 0} data points | 
+              {' '}{plotData.series.length} series
             </CardDescription>
           </div>
           <DropdownMenu>
@@ -395,11 +421,13 @@ export function WebGLPlotWithData({
         <div className="space-y-4">
           {/* Legend */}
           <div className="flex flex-wrap gap-4 text-sm">
-            {plotData.yData.map((yParam, index) => {
-              const colors = generateLineColors(plotData.yData.length)
+            {plotData.series.map((series, index) => {
+              const colors = generateLineColors(plotData.series.length)
               const color = colors[index]
+              const showMetadata = config.selectedDataIds.length > 1
+              
               return (
-                <div key={yParam.parameterId} className="flex items-center gap-2">
+                <div key={`${series.metadataId}-${series.parameterId}`} className="flex items-center gap-2">
                   <div 
                     className="w-4 h-4 rounded"
                     style={{
@@ -407,10 +435,13 @@ export function WebGLPlotWithData({
                     }}
                   />
                   <span>
-                    {yParam.parameterInfo.parameterName} ({yParam.parameterInfo.unit})
+                    {showMetadata && (
+                      <span className="font-medium">{series.metadataLabel} - </span>
+                    )}
+                    {series.parameterInfo.parameterName} ({series.parameterInfo.unit})
                   </span>
                   <span className="text-gray-500">
-                    [{yParam.range.min.toFixed(2)} - {yParam.range.max.toFixed(2)}]
+                    [{series.yRange.min.toFixed(2)} - {series.yRange.max.toFixed(2)}]
                   </span>
                 </div>
               )
@@ -434,8 +465,8 @@ export function WebGLPlotWithData({
           <div className="text-sm text-gray-600 text-center">
             X-axis: {config.xAxisParameter === 'timestamp' ? 'Time' : 
               plotData.xParameterInfo ? `${plotData.xParameterInfo.parameterName} (${plotData.xParameterInfo.unit})` : config.xAxisParameter}
-            {config.xAxisParameter !== 'timestamp' && plotData.xRange && (
-              <span> [{plotData.xRange.min.toFixed(2)} - {plotData.xRange.max.toFixed(2)}]</span>
+            {config.xAxisParameter !== 'timestamp' && plotData.series.length > 0 && (
+              <span> [{plotData.series[0].xRange.min.toFixed(2)} - {plotData.series[0].xRange.max.toFixed(2)}]</span>
             )}
           </div>
         </div>
