@@ -3,13 +3,16 @@
 import { WebGLPlotComponent } from '@/components/charts/WebGLPlot'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { CsvImportDialog } from '@/components/csv-import/CsvImportDialog'
 import { useState } from 'react'
 import { WebglLine } from 'webgl-plot'
+import { Upload } from 'lucide-react'
 
 export default function Home() {
   const [isPaused, setIsPaused] = useState(false)
   const [frequency, setFrequency] = useState(0.001)
   const [amplitude, setAmplitude] = useState(0.5)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
 
   const updateFunction = (line: WebglLine, frame: number) => {
     if (isPaused) return
@@ -24,11 +27,23 @@ export default function Home() {
     }
   }
 
+  const handleImportComplete = () => {
+    // Refresh data or update plot after import
+    console.log('CSV import completed successfully')
+  }
+
   return (
-    <div className="container mx-auto p-8">
-      <h1 className="text-4xl font-bold mb-8">WebGL Plot with shadcn/ui</h1>
-      
-      <div className="grid gap-6 md:grid-cols-2">
+    <>
+      <div className="container mx-auto p-8">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-4xl font-bold">WebGL Plot with shadcn/ui</h1>
+          <Button onClick={() => setImportDialogOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Import CSV Data
+          </Button>
+        </div>
+        
+        <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Real-time WebGL Plot</CardTitle>
@@ -131,6 +146,13 @@ export default function Home() {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+
+      <CsvImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImportComplete={handleImportComplete}
+      />
+    </>
   )
 }
