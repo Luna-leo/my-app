@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
+import { SVGOverlay } from './SVGOverlay'
 
 interface WebGLPlotWithDataProps {
   config: ChartConfiguration
@@ -289,6 +290,33 @@ export function WebGLPlotWithData({
     wglpRef.current = new WebglPlot(canvas)
     linesRef.current = []
 
+    // Set up WebGL viewport to match SVG margins
+    const margin = { top: 20, right: 60, bottom: 60, left: 70 }
+    const innerWidth = dimensions.width - margin.left - margin.right
+    const innerHeight = dimensions.height - margin.top - margin.bottom
+    
+    // WebGL coordinate transformation to match SVG plot area
+    // Data is already normalized to [-1, 1] range
+    // We need to scale it down to fit within the margins and offset to center it
+    
+    // Scale factors: ratio of plot area to total canvas
+    const xScale = innerWidth / dimensions.width
+    const yScale = innerHeight / dimensions.height
+    
+    // Calculate center of plot area in canvas coordinates
+    const plotCenterX = margin.left + innerWidth / 2
+    const plotCenterY = margin.top + innerHeight / 2
+    
+    // Convert plot center to WebGL coordinates [-1, 1]
+    // WebGL: -1 = left/bottom, 1 = right/top
+    const xOffset = (plotCenterX / dimensions.width) * 2 - 1
+    const yOffset = 1 - (plotCenterY / dimensions.height) * 2  // Flip Y axis
+    
+    wglpRef.current.gScaleX = xScale
+    wglpRef.current.gScaleY = yScale
+    wglpRef.current.gOffsetX = xOffset
+    wglpRef.current.gOffsetY = yOffset
+
     // Generate colors based on coloring strategy
     const colors = generateLineColors(plotData.series.length)
 
@@ -476,7 +504,7 @@ export function WebGLPlotWithData({
           {/* Chart */}
           <div 
             ref={containerRef} 
-            className="w-full overflow-hidden border border-border rounded-lg"
+            className="w-full overflow-hidden border border-border rounded-lg relative"
             style={{ height: dimensions.height || 400, minHeight: 400 }}
           >
             <canvas
@@ -484,16 +512,20 @@ export function WebGLPlotWithData({
               className="max-w-full"
               style={{ display: 'block' }}
             />
-          </div>
-
-          {/* X-axis info */}
-          <div className="text-sm text-gray-600 text-center">
-            X-axis: {config.xAxisParameter === 'timestamp' ? 'Time' : 
-              plotData.xParameterInfo ? `${plotData.xParameterInfo.parameterName} (${plotData.xParameterInfo.unit})` : config.xAxisParameter}
-            {config.xAxisParameter !== 'timestamp' && plotData.series.length > 0 && (
-              <span> [{plotData.series[0].xRange.min.toFixed(2)} - {plotData.series[0].xRange.max.toFixed(2)}]</span>
+            {plotData.series.length > 0 && (
+              <SVGOverlay
+                width={dimensions.width}
+                height={dimensions.height}
+                xRange={plotData.series[0].xRange}
+                yRanges={plotData.series.map(s => s.yRange)}
+                xParameterInfo={plotData.xParameterInfo}
+                yParameterInfos={plotData.series.map(s => s.parameterInfo)}
+                xAxisType={config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter'}
+                showGrid={true}
+              />
             )}
           </div>
+
         </div>
       </CardContent>
     </Card>
