@@ -164,21 +164,21 @@ export class CsvImporter {
         const timestamp = row[0];
         if (!timestamp) continue;
 
-        const dataPoint = timeSeriesMap.get(timestamp) || {};
+        const dataPoint = timeSeriesMap.get(String(timestamp)) || {};
         
         for (let i = 0; i < parsed.headers.length; i++) {
           const header = parsed.headers[i];
           const value = row[i + 1]; // +1 because timestamp is at index 0
           
           if (value && value !== '') {
-            const numValue = parseFloat(value);
+            const numValue = parseFloat(String(value));
             if (!isNaN(numValue)) {
               dataPoint[header.parameterId] = numValue;
             }
           }
         }
 
-        timeSeriesMap.set(timestamp, dataPoint);
+        timeSeriesMap.set(String(timestamp), dataPoint);
       }
     }
 
