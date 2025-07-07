@@ -129,23 +129,6 @@ export default function Home() {
         </Card>
       </div>
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Integration Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="prose prose-sm text-muted-foreground">
-            <p>
-              This demo showcases the integration of <strong>webgl-plot</strong> for high-performance
-              data visualization with <strong>shadcn/ui</strong> components for a modern UI.
-            </p>
-            <p className="mt-2">
-              The WebGL plot renders thousands of data points at 60 FPS, while shadcn/ui provides
-              accessible, customizable components with Tailwind CSS styling.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
       </div>
 
       <CsvImportDialog
