@@ -200,15 +200,26 @@ export function WebGLPlotWithData({
           
           xParameterInfo = null
           
-          // Process each series
+          // Calculate combined Y range across all series
+          let combinedYMin = Number.POSITIVE_INFINITY
+          let combinedYMax = Number.NEGATIVE_INFINITY
+          
+          chartData.series.forEach(s => {
+            const yRange = calculateDataRange(s.values)
+            combinedYMin = Math.min(combinedYMin, yRange.min)
+            combinedYMax = Math.max(combinedYMax, yRange.max)
+          })
+          
+          const combinedYRange = { min: combinedYMin, max: combinedYMax }
+          
+          // Process each series using the combined Y range
           series = chartData.series.map(s => {
             const xRange = calculateDataRange(s.timestamps)
-            const yRange = calculateDataRange(s.values)
             const normalizedX = normalizeValues(s.timestamps, xRange.min, xRange.max)
             const normalizedY = normalizeValues(
               s.values.map(v => v ?? NaN),
-              yRange.min,
-              yRange.max
+              combinedYRange.min,  // Use combined range
+              combinedYRange.max   // Use combined range
             )
             
             return {
@@ -219,7 +230,7 @@ export function WebGLPlotWithData({
               xValues: normalizedX,
               yValues: normalizedY,
               xRange,
-              yRange
+              yRange: combinedYRange  // All series use the same Y range
             }
           })
         } else {
@@ -234,15 +245,26 @@ export function WebGLPlotWithData({
           
           xParameterInfo = xyData.xParameterInfo
           
-          // Process each series
+          // Calculate combined Y range across all series
+          let combinedYMin = Number.POSITIVE_INFINITY
+          let combinedYMax = Number.NEGATIVE_INFINITY
+          
+          xyData.series.forEach(s => {
+            const yRange = calculateDataRange(s.yValues)
+            combinedYMin = Math.min(combinedYMin, yRange.min)
+            combinedYMax = Math.max(combinedYMax, yRange.max)
+          })
+          
+          const combinedYRange = { min: combinedYMin, max: combinedYMax }
+          
+          // Process each series using the combined Y range
           series = xyData.series.map(s => {
             const xRange = calculateDataRange(s.xValues)
-            const yRange = calculateDataRange(s.yValues)
             const normalizedX = normalizeValues(s.xValues, xRange.min, xRange.max)
             const normalizedY = normalizeValues(
               s.yValues.map(v => v ?? NaN),
-              yRange.min,
-              yRange.max
+              combinedYRange.min,  // Use combined range
+              combinedYRange.max   // Use combined range
             )
             
             return {
@@ -253,7 +275,7 @@ export function WebGLPlotWithData({
               xValues: normalizedX,
               yValues: normalizedY,
               xRange,
-              yRange
+              yRange: combinedYRange  // All series use the same Y range
             }
           })
         }
