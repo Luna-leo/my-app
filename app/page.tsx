@@ -49,6 +49,7 @@ export default function Home() {
         
         {chartConfig ? (
           <WebGLPlotWithData
+            key={JSON.stringify(chartConfig)}
             config={chartConfig}
             aspectRatio={2}
             className="max-w-4xl mx-auto"

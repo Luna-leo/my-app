@@ -224,15 +224,13 @@ export function WebGLPlotWithData({
     canvas.style.width = `${dimensions.width}px`
     canvas.style.height = `${dimensions.height}px`
 
-    // Create or update WebGL plot
-    if (!wglpRef.current) {
-      wglpRef.current = new WebglPlot(canvas)
-    } else {
-      wglpRef.current.viewport(0, 0, canvas.width, canvas.height)
+    // Always create a new WebGL plot instance to avoid stale state
+    if (wglpRef.current) {
+      wglpRef.current.clear()
+      wglpRef.current = null
     }
-
-    // Clear existing lines
-    wglpRef.current.clear()
+    
+    wglpRef.current = new WebglPlot(canvas)
     linesRef.current = []
 
     // Generate colors for each line
@@ -278,8 +276,14 @@ export function WebGLPlotWithData({
 
     return () => {
       cancelAnimationFrame(animationId)
+      // Clean up WebGL resources when component unmounts or config changes
+      if (wglpRef.current) {
+        wglpRef.current.clear()
+        wglpRef.current = null
+      }
+      linesRef.current = []
     }
-  }, [dimensions, plotData])
+  }, [dimensions, plotData, config])
 
   if (loading) {
     return (
