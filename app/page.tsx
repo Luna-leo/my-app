@@ -38,8 +38,7 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             <WebGLPlotComponent
-              width={600}
-              height={300}
+              aspectRatio={2}
               lineColor={{ r: 0.2, g: 0.6, b: 1.0, a: 1 }}
               updateFunction={updateFunction}
             />
