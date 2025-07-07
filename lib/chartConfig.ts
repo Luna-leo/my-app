@@ -1,32 +1,12 @@
 // Chart rendering engine configuration
-export type ChartEngine = 'timechart' | 'plotly';
+export type ChartEngine = 'plotly';
 
-// Feature flag for chart engine selection
-// Can be controlled via environment variable or user preference
+// Always use Plotly as the chart engine
 export const getChartEngine = (): ChartEngine => {
-  // Check environment variable first
-  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_CHART_ENGINE) {
-    const engine = process.env.NEXT_PUBLIC_CHART_ENGINE.toLowerCase();
-    if (engine === 'plotly' || engine === 'timechart') {
-      return engine as ChartEngine;
-    }
-  }
-  
-  // Check localStorage for user preference (client-side only)
-  if (typeof window !== 'undefined' && window.localStorage) {
-    const userPref = localStorage.getItem('chartEngine');
-    if (userPref === 'plotly' || userPref === 'timechart') {
-      return userPref as ChartEngine;
-    }
-  }
-  
-  // Default to timechart for now (change to 'plotly' when ready to switch)
-  return 'timechart';
+  return 'plotly';
 };
 
-// Set chart engine preference
+// Set chart engine preference (kept for compatibility but always returns 'plotly')
 export const setChartEngine = (engine: ChartEngine) => {
-  if (typeof window !== 'undefined' && window.localStorage) {
-    localStorage.setItem('chartEngine', engine);
-  }
+  // No-op since we only use Plotly now
 };

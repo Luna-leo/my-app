@@ -1,9 +1,6 @@
 'use client'
 
-import { ComponentType, useState, useEffect } from 'react'
-import { getChartEngine } from '@/lib/chartConfig'
-import { WebGLPlotComponent } from './WebGLPlot'
-import { WebGLPlotWithData } from './WebGLPlotWithData'
+import { ComponentType } from 'react'
 import { PlotlyChartComponent } from './PlotlyChart'
 import { PlotlyChartWithData } from './PlotlyChartWithData'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
@@ -28,43 +25,15 @@ interface DataChartProps {
 
 // Factory function to get the appropriate basic chart component
 export function getBasicChartComponent(): ComponentType<BasicChartProps> {
-  // Always return TimeChart during SSR to avoid hydration mismatch
-  if (typeof window === 'undefined') {
-    return WebGLPlotComponent;
-  }
-  
-  const engine = getChartEngine();
-  
-  if (engine === 'plotly') {
-    return PlotlyChartComponent;
-  }
-  
-  return WebGLPlotComponent;
+  return PlotlyChartComponent;
 }
 
 // Factory function to get the appropriate data-driven chart component
 export function getDataChartComponent(): ComponentType<DataChartProps> {
-  // Always return TimeChart during SSR to avoid hydration mismatch
-  if (typeof window === 'undefined') {
-    return WebGLPlotWithData;
-  }
-  
-  const engine = getChartEngine();
-  
-  if (engine === 'plotly') {
-    return PlotlyChartWithData;
-  }
-  
-  return WebGLPlotWithData;
+  return PlotlyChartWithData;
 }
 
 // Hook to get current chart engine (client-side only)
 export function useChartEngine() {
-  const [engine, setEngine] = useState<'timechart' | 'plotly'>('timechart');
-  
-  useEffect(() => {
-    setEngine(getChartEngine());
-  }, []);
-  
-  return engine;
+  return 'plotly' as const;
 }
