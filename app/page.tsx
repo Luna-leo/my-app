@@ -1,12 +1,12 @@
 'use client'
 
-import { WebGLPlotWithData } from '@/components/charts/WebGLPlotWithData'
+import { useEffect, useState } from 'react'
+import { getDataChartComponent } from '@/components/charts/ChartProvider'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CsvImportDialog } from '@/components/csv-import/CsvImportDialog'
 import { DataSelectionDialog } from '@/components/data-selection/DataSelectionDialog'
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
-import { useState } from 'react'
 import { Upload, Database, LineChart, FileSearch } from 'lucide-react'
 import {
   AlertDialog,
@@ -31,6 +31,11 @@ export default function Home() {
   })
   const [editingChart, setEditingChart] = useState<(ChartConfiguration & { id: string }) | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
 
   const handleImportComplete = () => {
@@ -112,17 +117,20 @@ export default function Home() {
         
         {charts.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {charts.map((chart) => (
-              <WebGLPlotWithData
-                key={chart.id}
-                config={chart}
-                aspectRatio={2}
-                className="w-full"
-                onEdit={() => handleEditChart(chart.id)}
-                onDuplicate={() => handleDuplicateChart(chart.id)}
-                onDelete={() => handleDeleteChart(chart.id)}
-              />
-            ))}
+            {mounted && charts.map((chart) => {
+              const ChartComponent = getDataChartComponent();
+              return (
+                <ChartComponent
+                  key={chart.id}
+                  config={chart}
+                  aspectRatio={2}
+                  className="w-full"
+                  onEdit={() => handleEditChart(chart.id)}
+                  onDuplicate={() => handleDuplicateChart(chart.id)}
+                  onDelete={() => handleDeleteChart(chart.id)}
+                />
+              );
+            })}
           </div>
         ) : (
           <Card className="max-w-4xl mx-auto">
