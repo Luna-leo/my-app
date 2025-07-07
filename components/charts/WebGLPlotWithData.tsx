@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { WebglPlot, WebglLine, ColorRGBA } from 'webgl-plot'
+import { WebglPlot, WebglLine, WebglSquare, ColorRGBA } from 'webgl-plot'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
@@ -302,12 +302,22 @@ export function WebGLPlotWithData({
       )
       
       if ((config.chartType || 'line') === 'scatter') {
-        // For scatter plot, create individual points using WebglLine with length 1
+        // For scatter plot, create individual points using WebglSquare
+        const pointSize = 0.01 // Size of each point in normalized coordinates
         for (let i = 0; i < series.xValues.length; i++) {
-          const pointLine = new WebglLine(color, 1)
-          pointLine.setX(0, series.xValues[i])
-          pointLine.setY(0, series.yValues[i])
-          wglpRef.current!.addLine(pointLine)
+          const square = new WebglSquare(color)
+          const x = series.xValues[i]
+          const y = series.yValues[i]
+          
+          // Create a small square centered at the data point
+          square.setSquare(
+            x - pointSize / 2,
+            y - pointSize / 2,
+            x + pointSize / 2,
+            y + pointSize / 2
+          )
+          
+          wglpRef.current!.addSurface(square)
         }
       } else {
         // For line chart, create connected lines
