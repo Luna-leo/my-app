@@ -16,7 +16,9 @@ import {
   mergeTimeSeriesData
 } from '@/lib/utils/chartDataUtils'
 import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
-import { AlertCircle, TrendingUp, MoreVertical, Pencil, Copy, Trash2, ScatterChart } from 'lucide-react'
+import { AlertCircle, TrendingUp, MoreVertical, Pencil, Copy, Trash2, ScatterChart, ZoomIn } from 'lucide-react'
+import { useChartInteraction } from '@/hooks/useChartInteraction'
+import { ViewportBounds } from '@/utils/chartCoordinateUtils'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,6 +70,29 @@ export function WebGLPlotWithData({
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [plotData, setPlotData] = useState<PlotData | null>(null)
+  const [dataViewport, setDataViewport] = useState<ViewportBounds | null>(null)
+
+  // Initialize chart interaction
+  const [interactionState, interactionHandlers] = useChartInteraction(
+    canvasRef as React.RefObject<HTMLCanvasElement>,
+    dataViewport || { xMin: -1, xMax: 1, yMin: -1, yMax: 1 },
+    plotData?.series.map(s => ({
+      series: s.xValues.map((x, i) => ({ 
+        x: x,  // データは既に正規化されている
+        y: s.yValues[i]
+      })),
+      name: `${s.metadataLabel} - ${s.parameterInfo.parameterName}`
+    })),
+    {
+      enableZoom: true,
+      enablePan: true,
+      enableTooltip: true,
+      enableCrosshair: true,
+      minZoom: 1,
+      maxZoom: 50,
+      dataBounds: { xMin: -1, xMax: 1, yMin: -1, yMax: 1 }
+    }
+  )
 
   // Handle resize
   useEffect(() => {
@@ -244,6 +269,12 @@ export function WebGLPlotWithData({
           series
         })
 
+        // Calculate initial viewport from all series
+        if (series.length > 0) {
+          // データは正規化されているので、ビューポートも正規化された範囲で初期化
+          setDataViewport({ xMin: -1, xMax: 1, yMin: -1, yMax: 1 })
+        }
+
         setLoadingProgress(100)
       } catch (err) {
         console.error('Failed to load chart data:', err)
@@ -256,15 +287,66 @@ export function WebGLPlotWithData({
     loadData()
   }, [config])
 
+  // Add event listeners to canvas
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !dataViewport) return
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      console.log('Wheel event detected', e.deltaY)
+      interactionHandlers.onWheel(e)
+    }
+    
+    const handleMouseDown = (e: MouseEvent) => {
+      console.log('Mouse down detected', { x: e.clientX, y: e.clientY })
+      interactionHandlers.onMouseDown(e)
+    }
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      interactionHandlers.onMouseMove(e)
+    }
+    
+    const handleMouseUp = (e: MouseEvent) => {
+      console.log('Mouse up detected')
+      interactionHandlers.onMouseUp(e)
+    }
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
+    canvas.addEventListener('mousedown', handleMouseDown)
+    canvas.addEventListener('mousemove', handleMouseMove)
+    canvas.addEventListener('mouseup', handleMouseUp)
+    canvas.addEventListener('mouseleave', interactionHandlers.onMouseLeave)
+
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel)
+      canvas.removeEventListener('mousedown', handleMouseDown)
+      canvas.removeEventListener('mousemove', handleMouseMove)
+      canvas.removeEventListener('mouseup', handleMouseUp)
+      canvas.removeEventListener('mouseleave', interactionHandlers.onMouseLeave)
+    }
+  }, [dataViewport, interactionHandlers])
+
   // Initialize/update WebGL plot
   useEffect(() => {
     console.log('WebGL init check:', { 
       hasCanvas: !!canvasRef.current, 
       dimensions, 
-      hasPlotData: !!plotData 
+      hasPlotData: !!plotData,
+      viewport: interactionState.viewport,
+      dataViewport: dataViewport,
+      plotDataSample: plotData ? {
+        seriesCount: plotData.series.length,
+        firstSeriesData: plotData.series[0] ? {
+          xValues: plotData.series[0].xValues.slice(0, 5),
+          yValues: plotData.series[0].yValues.slice(0, 5),
+          xRange: plotData.series[0].xRange,
+          yRange: plotData.series[0].yRange
+        } : null
+      } : null
     })
     
-    if (!canvasRef.current || dimensions.width === 0 || !plotData) return
+    if (!canvasRef.current || dimensions.width === 0 || !plotData || !dataViewport) return
 
     const canvas = canvasRef.current
     const devicePixelRatio = window.devicePixelRatio || 1
@@ -295,27 +377,41 @@ export function WebGLPlotWithData({
     const innerWidth = dimensions.width - margin.left - margin.right
     const innerHeight = dimensions.height - margin.top - margin.bottom
     
-    // WebGL coordinate transformation to match SVG plot area
-    // Data is already normalized to [-1, 1] range
-    // We need to scale it down to fit within the margins and offset to center it
+    // Apply zoom and pan transformations
+    const viewport = interactionState.viewport
     
-    // Scale factors: ratio of plot area to total canvas
-    const xScale = innerWidth / dimensions.width
-    const yScale = innerHeight / dimensions.height
+    // データは既に-1から1に正規化されているので、ビューポートの範囲に基づいてスケールする
+    const viewportWidth = viewport.xMax - viewport.xMin
+    const viewportHeight = viewport.yMax - viewport.yMin
     
-    // Calculate center of plot area in canvas coordinates
+    // ビューポートが2（全範囲）より小さい場合はズームイン、大きい場合はズームアウト
+    const xScale = (innerWidth / dimensions.width) * (2.0 / viewportWidth)
+    const yScale = (innerHeight / dimensions.height) * (2.0 / viewportHeight)
+    
+    // ビューポートの中心をWebGL座標系の中心に合わせる
+    const viewportCenterX = (viewport.xMin + viewport.xMax) / 2
+    const viewportCenterY = (viewport.yMin + viewport.yMax) / 2
+    
+    // マージンを考慮した描画エリアの中心
     const plotCenterX = margin.left + innerWidth / 2
     const plotCenterY = margin.top + innerHeight / 2
     
-    // Convert plot center to WebGL coordinates [-1, 1]
-    // WebGL: -1 = left/bottom, 1 = right/top
-    const xOffset = (plotCenterX / dimensions.width) * 2 - 1
-    const yOffset = 1 - (plotCenterY / dimensions.height) * 2  // Flip Y axis
+    // WebGL座標系でのオフセット計算
+    const xOffset = (plotCenterX / dimensions.width) * 2 - 1 - viewportCenterX * xScale
+    const yOffset = 1 - (plotCenterY / dimensions.height) * 2 - viewportCenterY * yScale
     
     wglpRef.current.gScaleX = xScale
     wglpRef.current.gScaleY = yScale
     wglpRef.current.gOffsetX = xOffset
     wglpRef.current.gOffsetY = yOffset
+    
+    console.log('WebGL transform:', { 
+      xScale, yScale, xOffset, yOffset, 
+      viewport: { 
+        xMin: viewport.xMin, xMax: viewport.xMax, 
+        yMin: viewport.yMin, yMax: viewport.yMax 
+      } 
+    })
 
     // Generate colors based on coloring strategy
     const colors = generateLineColors(plotData.series.length)
@@ -362,6 +458,7 @@ export function WebGLPlotWithData({
       }
       
       console.log(`${(config.chartType || 'line') === 'scatter' ? 'Scatter' : 'Line'} ${index} - Metadata: ${series.metadataLabel}, Parameter: ${series.parameterId}, Points: ${series.xValues.length}, Y range: [${series.yRange.min}, ${series.yRange.max}]`)
+      console.log(`Sample data points: X[0]=${series.xValues[0]}, Y[0]=${series.yValues[0]}, X[1]=${series.xValues[1]}, Y[1]=${series.yValues[1]}`)
     })
 
     // Initial render
@@ -386,7 +483,7 @@ export function WebGLPlotWithData({
       }
       linesRef.current = []
     }
-  }, [dimensions, plotData, config])
+  }, [dimensions, plotData, config, interactionState.viewport])
 
   if (loading) {
     return (
@@ -462,6 +559,10 @@ export function WebGLPlotWithData({
                 <Copy className="mr-2 h-4 w-4" />
                 Duplicate
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={interactionHandlers.resetViewport}>
+                <ZoomIn className="mr-2 h-4 w-4" />
+                Reset Zoom
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onDelete} className="text-red-600">
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete
@@ -516,12 +617,59 @@ export function WebGLPlotWithData({
               <SVGOverlay
                 width={dimensions.width}
                 height={dimensions.height}
-                xRange={plotData.series[0].xRange}
-                yRanges={plotData.series.map(s => s.yRange)}
+                xRange={(() => {
+                  // ビューポートの正規化座標を実際のデータ範囲に変換
+                  const vp = interactionState.viewport
+                  const xMin = plotData.series[0].xRange.min
+                  const xMax = plotData.series[0].xRange.max
+                  const xSpan = xMax - xMin
+                  return {
+                    min: xMin + (vp.xMin + 1) / 2 * xSpan,
+                    max: xMin + (vp.xMax + 1) / 2 * xSpan
+                  }
+                })()}
+                yRanges={plotData.series.map(s => {
+                  // ビューポートの正規化座標を実際のデータ範囲に変換
+                  const vp = interactionState.viewport
+                  const yMin = s.yRange.min
+                  const yMax = s.yRange.max
+                  const ySpan = yMax - yMin
+                  return {
+                    min: yMin + (vp.yMin + 1) / 2 * ySpan,
+                    max: yMin + (vp.yMax + 1) / 2 * ySpan
+                  }
+                })}
                 xParameterInfo={plotData.xParameterInfo}
                 yParameterInfos={plotData.series.map(s => s.parameterInfo)}
                 xAxisType={config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter'}
                 showGrid={true}
+                hoveredPoint={interactionState.hoveredDataPoint ? {
+                  ...interactionState.hoveredDataPoint,
+                  point: {
+                    // 正規化座標を実データ座標に変換
+                    x: plotData.series[0].xRange.min + 
+                       (interactionState.hoveredDataPoint.point.x + 1) / 2 * 
+                       (plotData.series[0].xRange.max - plotData.series[0].xRange.min),
+                    y: plotData.series[interactionState.hoveredDataPoint.seriesIndex || 0].yRange.min + 
+                       (interactionState.hoveredDataPoint.point.y + 1) / 2 * 
+                       (plotData.series[interactionState.hoveredDataPoint.seriesIndex || 0].yRange.max - 
+                        plotData.series[interactionState.hoveredDataPoint.seriesIndex || 0].yRange.min)
+                  }
+                } : null}
+                crosshairPosition={interactionState.crosshairPosition ? {
+                  // 正規化座標を実データ座標に変換
+                  x: plotData.series[0].xRange.min + 
+                     (interactionState.crosshairPosition.x + 1) / 2 * 
+                     (plotData.series[0].xRange.max - plotData.series[0].xRange.min),
+                  y: plotData.series[0].yRange.min + 
+                     (interactionState.crosshairPosition.y + 1) / 2 * 
+                     (plotData.series[0].yRange.max - plotData.series[0].yRange.min)
+                } : null}
+                chartData={plotData.series.map(s => ({
+                  metadataLabel: s.metadataLabel,
+                  parameterName: s.parameterInfo.parameterName,
+                  unit: s.parameterInfo.unit
+                }))}
               />
             )}
           </div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { scaleLinear, scaleTime, ScaleTime, ScaleLinear } from 'd3-scale'
 import { ParameterInfo } from '@/lib/db/schema'
+import { Point2D } from '@/utils/chartCoordinateUtils'
 
 interface SVGOverlayProps {
   width: number
@@ -13,6 +14,9 @@ interface SVGOverlayProps {
   yParameterInfos: ParameterInfo[]
   xAxisType: 'timestamp' | 'parameter'
   showGrid?: boolean
+  hoveredPoint?: { point: Point2D; index: number; seriesIndex?: number } | null
+  crosshairPosition?: Point2D | null
+  chartData?: Array<{ metadataLabel: string; parameterName: string; unit: string }>
 }
 
 export function SVGOverlay({
@@ -23,7 +27,10 @@ export function SVGOverlay({
   xParameterInfo,
   yParameterInfos,
   xAxisType,
-  showGrid = true
+  showGrid = true,
+  hoveredPoint,
+  crosshairPosition,
+  chartData = []
 }: SVGOverlayProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [scales, setScales] = useState<{
@@ -67,7 +74,7 @@ export function SVGOverlay({
   const yTicks = scales.y.ticks(Math.floor(innerHeight / 50))
 
   // Format tick labels
-  const formatXTick = (value: any) => {
+  const formatXTick = (value: Date | number) => {
     if (xAxisType === 'timestamp') {
       const date = new Date(value)
       const hours = date.getHours().toString().padStart(2, '0')
@@ -75,7 +82,7 @@ export function SVGOverlay({
       const seconds = date.getSeconds().toString().padStart(2, '0')
       return `${hours}:${minutes}:${seconds}`
     }
-    return value.toFixed(2)
+    return (value as number).toFixed(2)
   }
 
   const formatYTick = (value: number) => {
@@ -217,6 +224,121 @@ export function SVGOverlay({
             }
           </text>
         </g>
+
+        {/* Crosshair */}
+        {crosshairPosition && (
+          <g className="pointer-events-none">
+            {/* Vertical line */}
+            <line
+              x1={scales.x(crosshairPosition.x)}
+              y1={0}
+              x2={scales.x(crosshairPosition.x)}
+              y2={innerHeight}
+              stroke="#666"
+              strokeWidth="1"
+              strokeDasharray="3,3"
+              opacity="0.5"
+            />
+            {/* Horizontal line */}
+            <line
+              x1={0}
+              y1={scales.y(crosshairPosition.y)}
+              x2={innerWidth}
+              y2={scales.y(crosshairPosition.y)}
+              stroke="#666"
+              strokeWidth="1"
+              strokeDasharray="3,3"
+              opacity="0.5"
+            />
+            {/* X-axis value */}
+            <g transform={`translate(${scales.x(crosshairPosition.x)},${innerHeight})`}>
+              <rect
+                x="-30"
+                y="25"
+                width="60"
+                height="20"
+                fill="white"
+                stroke="#666"
+                strokeWidth="1"
+                rx="2"
+              />
+              <text
+                y="37"
+                textAnchor="middle"
+                fontSize="11"
+                fill="#333"
+              >
+                {xAxisType === 'timestamp' 
+                  ? formatXTick(crosshairPosition.x)
+                  : crosshairPosition.x.toFixed(2)
+                }
+              </text>
+            </g>
+            {/* Y-axis value */}
+            <g transform={`translate(0,${scales.y(crosshairPosition.y)})`}>
+              <rect
+                x="-70"
+                y="-10"
+                width="55"
+                height="20"
+                fill="white"
+                stroke="#666"
+                strokeWidth="1"
+                rx="2"
+              />
+              <text
+                x="-42"
+                textAnchor="middle"
+                alignmentBaseline="middle"
+                fontSize="11"
+                fill="#333"
+              >
+                {formatYTick(crosshairPosition.y)}
+              </text>
+            </g>
+          </g>
+        )}
+
+        {/* Tooltip */}
+        {hoveredPoint && chartData[hoveredPoint.seriesIndex ?? 0] && (
+          <g className="pointer-events-none">
+            {/* Highlight point */}
+            <circle
+              cx={scales.x(hoveredPoint.point.x)}
+              cy={scales.y(hoveredPoint.point.y)}
+              r="6"
+              fill="white"
+              stroke="#333"
+              strokeWidth="2"
+            />
+            {/* Tooltip box */}
+            <g transform={`translate(${Math.min(scales.x(hoveredPoint.point.x) + 10, innerWidth - 150)},${Math.max(scales.y(hoveredPoint.point.y) - 30, 10)})`}>
+              <rect
+                x="0"
+                y="0"
+                width="140"
+                height="60"
+                fill="white"
+                stroke="#333"
+                strokeWidth="1"
+                rx="4"
+                style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }}
+              />
+              <text x="10" y="20" fontSize="12" fill="#333" fontWeight="bold">
+                {chartData[hoveredPoint.seriesIndex ?? 0].metadataLabel}
+              </text>
+              <text x="10" y="35" fontSize="11" fill="#666">
+                {chartData[hoveredPoint.seriesIndex ?? 0].parameterName}
+              </text>
+              <text x="10" y="50" fontSize="11" fill="#333">
+                {xAxisType === 'timestamp' 
+                  ? formatXTick(hoveredPoint.point.x)
+                  : `X: ${hoveredPoint.point.x.toFixed(2)}`
+                }, Y: {hoveredPoint.point.y.toFixed(2)}
+              </text>
+            </g>
+          </g>
+        )}
       </g>
     </svg>
   )
