@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ChevronLeft, ChevronRight, Upload, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload } from 'lucide-react';
 import { FileDropzone } from './FileDropzone';
 import { MetadataForm, MetadataFormData } from './MetadataForm';
 import { ImportProgress } from './ImportProgress';
@@ -115,8 +115,6 @@ export function CsvImportDialog({ open, onOpenChange, onImportComplete }: CsvImp
     onOpenChange(false);
   };
 
-  const canGoBack = step === 'metadata';
-  const canGoNext = step === 'files' && selectedFiles.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

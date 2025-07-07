@@ -5,7 +5,7 @@ import { CsvHeader, DataSource, Metadata, ParameterInfo } from './schema';
 
 export interface CsvParseResult {
   headers: CsvHeader[];
-  data: any[][];
+  data: (string | number | boolean | null)[][];
 }
 
 export interface ImportProgress {

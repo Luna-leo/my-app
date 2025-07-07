@@ -32,7 +32,7 @@ export class AppDatabase extends Dexie {
   }
 
   async getTimeSeriesData(metadataId: number, startTime?: Date, endTime?: Date) {
-    let query = this.timeSeries.where('metadataId').equals(metadataId);
+    const query = this.timeSeries.where('metadataId').equals(metadataId);
     
     if (startTime || endTime) {
       const results = await query.toArray();

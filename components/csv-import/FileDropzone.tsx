@@ -71,7 +71,7 @@ export function FileDropzone({ onFilesSelected, disabled, className }: FileDropz
           <input
             type="file"
             onChange={handleFolderSelect}
-            {...({webkitdirectory: "", directory: ""} as any)}
+            {...({webkitdirectory: "", directory: ""} as React.HTMLAttributes<HTMLInputElement>)}
             multiple
             accept=".csv"
             className="hidden"
