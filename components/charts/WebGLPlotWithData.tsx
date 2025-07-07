@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { WebglPlot, WebglLine, WebglSquare, ColorRGBA } from 'webgl-plot'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
@@ -10,16 +9,14 @@ import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialo
 import { 
   transformDataForChart, 
   transformDataForXYChart, 
-  calculateDataRange, 
-  normalizeValues,
+  calculateDataRange,
   generateLineColors,
   mergeTimeSeriesData
 } from '@/lib/utils/chartDataUtils'
 import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
 import { AlertCircle, TrendingUp, MoreVertical, Pencil, Copy, Trash2, ScatterChart, ZoomIn } from 'lucide-react'
-import { useChartInteraction } from '@/hooks/useChartInteraction'
 import { ViewportBounds } from '@/utils/chartCoordinateUtils'
-import { calculatePlotArea, calculateWebGLTransform, CHART_MARGINS } from '@/utils/plotAreaUtils'
+import { CHART_MARGINS } from '@/utils/plotAreaUtils'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +24,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import { SVGOverlay } from './SVGOverlay'
+import { scaleLinear } from 'd3-scale'
+import { format } from 'd3-format'
 
 interface WebGLPlotWithDataProps {
   config: ChartConfiguration
@@ -54,7 +52,8 @@ interface PlotData {
   series: PlotSeries[]
 }
 
-// Chart margins are now imported from plotAreaUtils
+// Dynamic import for TimeChart to avoid SSR issues
+const loadTimeChart = () => import('timechart')
 
 export function WebGLPlotWithData({
   config,
@@ -65,38 +64,15 @@ export function WebGLPlotWithData({
   onDelete
 }: WebGLPlotWithDataProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const wglpRef = useRef<WebglPlot | null>(null)
-  const linesRef = useRef<WebglLine[]>([])
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<any>(null)
   const [dimensions, setDimensions] = useState({ width: 800, height: 400 })
   const [loading, setLoading] = useState(true)
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [plotData, setPlotData] = useState<PlotData | null>(null)
   const [dataViewport, setDataViewport] = useState<ViewportBounds | null>(null)
-
-  // Initialize chart interaction
-  const [interactionState, interactionHandlers] = useChartInteraction(
-    canvasRef as React.RefObject<HTMLCanvasElement>,
-    dataViewport || { xMin: -1, xMax: 1, yMin: -1, yMax: 1 },
-    CHART_MARGINS,
-    plotData?.series.map(s => ({
-      series: s.xValues.map((x, i) => ({ 
-        x: x,  // データは既に正規化されている
-        y: s.yValues[i]
-      })),
-      name: `${s.metadataLabel} - ${s.parameterInfo.parameterName}`
-    })),
-    {
-      enableZoom: true,
-      enablePan: true,
-      enableTooltip: true,
-      enableCrosshair: true,
-      minZoom: 1,
-      maxZoom: 50,
-      dataBounds: { xMin: -1, xMax: 1, yMin: -1, yMax: 1 }
-    }
-  )
+  const [isChartReady, setIsChartReady] = useState(false)
 
   // Handle resize
   useEffect(() => {
@@ -104,14 +80,10 @@ export function WebGLPlotWithData({
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        // Use border-box size to account for border
         const borderBoxSize = entry.borderBoxSize?.[0]
         const width = borderBoxSize ? borderBoxSize.inlineSize : entry.contentRect.width
-        
-        // Calculate height based on aspect ratio
         const height = width / aspectRatio
         
-        console.log('ResizeObserver:', { width, height })
         if (width > 0) {
           setDimensions({ width: Math.floor(width), height: Math.floor(height) })
         }
@@ -212,25 +184,19 @@ export function WebGLPlotWithData({
           
           const combinedYRange = { min: combinedYMin, max: combinedYMax }
           
-          // Process each series using the combined Y range
+          // Process each series - TimeChart handles normalization internally
           series = chartData.series.map(s => {
             const xRange = calculateDataRange(s.timestamps)
-            const normalizedX = normalizeValues(s.timestamps, xRange.min, xRange.max)
-            const normalizedY = normalizeValues(
-              s.values.map(v => v ?? NaN),
-              combinedYRange.min,  // Use combined range
-              combinedYRange.max   // Use combined range
-            )
             
             return {
               metadataId: s.metadataId,
               metadataLabel: s.metadataLabel,
               parameterId: s.parameterId,
               parameterInfo: s.parameterInfo,
-              xValues: normalizedX,
-              yValues: normalizedY,
+              xValues: s.timestamps,
+              yValues: s.values.map(v => v ?? NaN),
               xRange,
-              yRange: combinedYRange  // All series use the same Y range
+              yRange: combinedYRange
             }
           })
         } else {
@@ -257,54 +223,40 @@ export function WebGLPlotWithData({
           
           const combinedYRange = { min: combinedYMin, max: combinedYMax }
           
-          // Process each series using the combined Y range
+          // Process each series - TimeChart handles normalization internally
           series = xyData.series.map(s => {
             const xRange = calculateDataRange(s.xValues)
-            const normalizedX = normalizeValues(s.xValues, xRange.min, xRange.max)
-            const normalizedY = normalizeValues(
-              s.yValues.map(v => v ?? NaN),
-              combinedYRange.min,  // Use combined range
-              combinedYRange.max   // Use combined range
-            )
             
             return {
               metadataId: s.metadataId,
               metadataLabel: s.metadataLabel,
               parameterId: s.parameterId,
               parameterInfo: s.parameterInfo,
-              xValues: normalizedX,
-              yValues: normalizedY,
+              xValues: s.xValues,
+              yValues: s.yValues.map(v => v ?? NaN),
               xRange,
-              yRange: combinedYRange  // All series use the same Y range
+              yRange: combinedYRange
             }
           })
         }
 
-        console.log('Chart data loaded:', {
-          seriesCount: series.length,
-          series: series.map(s => ({
-            metadata: s.metadataLabel,
-            parameter: s.parameterId,
-            dataPoints: s.xValues.length,
-            yRange: s.yRange
-          }))
-        })
-
-        setPlotData({
-          xParameterInfo,
-          series
-        })
-
-        // Calculate initial viewport from all series
+        setPlotData({ xParameterInfo, series })
+        
+        // Set initial viewport
         if (series.length > 0) {
-          // データは正規化されているので、ビューポートも正規化された範囲で初期化
-          setDataViewport({ xMin: -1, xMax: 1, yMin: -1, yMax: 1 })
+          const xMin = Math.min(...series.map(s => s.xRange.min))
+          const xMax = Math.max(...series.map(s => s.xRange.max))
+          const yMin = Math.min(...series.map(s => s.yRange.min))
+          const yMax = Math.max(...series.map(s => s.yRange.max))
+          setDataViewport({ xMin, xMax, yMin, yMax })
         }
-
+        
+        currentStep++
         setLoadingProgress(100)
+        setIsChartReady(true)
       } catch (err) {
-        console.error('Failed to load chart data:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load data')
+        console.error('Error loading chart data:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load chart data')
       } finally {
         setLoading(false)
       }
@@ -313,230 +265,160 @@ export function WebGLPlotWithData({
     loadData()
   }, [config])
 
-  // Add event listeners to canvas
+  // Initialize TimeChart when data is ready
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !dataViewport) return
+    if (!plotData || !dataViewport || !isChartReady) return
 
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      console.log('Wheel event detected', e.deltaY)
-      interactionHandlers.onWheel(e)
-    }
-    
-    const handleMouseDown = (e: MouseEvent) => {
-      console.log('Mouse down detected', { x: e.clientX, y: e.clientY })
-      interactionHandlers.onMouseDown(e)
-    }
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      interactionHandlers.onMouseMove(e)
-    }
-    
-    const handleMouseUp = (e: MouseEvent) => {
-      console.log('Mouse up detected')
-      interactionHandlers.onMouseUp(e)
+    let timeoutId: NodeJS.Timeout
+    let disposed = false
+
+    const initChart = async () => {
+      try {
+        // Wait a bit to ensure DOM is ready
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        if (disposed) return
+        
+        // Ensure element is available
+        if (!chartContainerRef.current || !(chartContainerRef.current instanceof HTMLElement)) {
+          console.error('Chart container ref is not an HTML element, retrying...')
+          // Retry after a short delay
+          timeoutId = setTimeout(() => {
+            if (!disposed) initChart()
+          }, 100)
+          return
+        }
+
+        // Cleanup existing chart
+        if (chartRef.current) {
+          try {
+            chartRef.current.dispose()
+          } catch (e) {
+            console.warn('Error disposing chart:', e)
+          }
+          chartRef.current = null
+        }
+
+        // Load TimeChart module
+        const TimeChartModule = await loadTimeChart()
+        const TimeChart = TimeChartModule.default || TimeChartModule.core || TimeChartModule.TimeChart
+
+        // Generate colors
+        const colors = generateLineColors(plotData.series.length)
+
+        // Prepare series data for TimeChart
+        const timeChartSeries = plotData.series.map((series, index) => {
+          // Filter out NaN values
+          const validIndices: number[] = []
+          for (let i = 0; i < series.yValues.length; i++) {
+            if (!isNaN(series.yValues[i])) {
+              validIndices.push(i)
+            }
+          }
+          
+          const data = validIndices.map(i => ({
+            x: series.xValues[i],
+            y: series.yValues[i]
+          }))
+
+          const cssColor = `rgba(${Math.round(colors[index].r * 255)}, ${Math.round(colors[index].g * 255)}, ${Math.round(colors[index].b * 255)}, ${colors[index].a})`
+
+          const seriesConfig: any = {
+            data,
+            name: `${series.metadataLabel} - ${series.parameterInfo.parameterName}`,
+            color: cssColor,
+            lineWidth: 2
+          }
+          
+          return seriesConfig
+        })
+
+        // Create TimeChart instance
+        if (!chartContainerRef.current) {
+          console.error('chartContainerRef.current is null at TimeChart creation')
+          return
+        }
+        
+        chartRef.current = new TimeChart(chartContainerRef.current, {
+          series: timeChartSeries,
+          xRange: { min: dataViewport.xMin, max: dataViewport.xMax },
+          yRange: { min: dataViewport.yMin, max: dataViewport.yMax },
+          xScaleType: () => scaleLinear(),
+          paddingTop: CHART_MARGINS.top,
+          paddingRight: CHART_MARGINS.right,
+          paddingBottom: CHART_MARGINS.bottom,
+          paddingLeft: CHART_MARGINS.left,
+          plugins: {
+            lineChart: true,
+            d3Axis: {
+              xTickFormat: (d: number) => {
+                if (config.xAxisParameter === 'timestamp') {
+                  return new Date(d).toLocaleString()
+                }
+                return format('.3g')(d)
+              },
+              yTickFormat: (d: number) => format('.3g')(d),
+              xLabel: plotData.xParameterInfo 
+                ? `${plotData.xParameterInfo.parameterName} [${plotData.xParameterInfo.unit || ''}]`
+                : 'Time',
+              yLabel: plotData.series.length === 1
+                ? `${plotData.series[0].parameterInfo.parameterName} [${plotData.series[0].parameterInfo.unit || ''}]`
+                : 'Value'
+            },
+            crosshair: true,
+            nearestPoint: true,
+            zoom: true,
+            tooltip: {
+              enabled: true,
+              xFormatter: (x: number) => {
+                if (config.xAxisParameter === 'timestamp') {
+                  return new Date(x).toLocaleString()
+                }
+                const xParam = plotData.xParameterInfo
+                return xParam 
+                  ? `${xParam.parameterName}: ${format('.3g')(x)} ${xParam.unit || ''}`
+                  : format('.3g')(x)
+              },
+              yFormatter: (y: number, series: { index: number }) => {
+                const seriesData = plotData.series[series.index]
+                if (seriesData) {
+                  return `${seriesData.parameterInfo.parameterName}: ${format('.3g')(y)} ${seriesData.parameterInfo.unit || ''}`
+                }
+                return format('.3g')(y)
+              }
+            }
+          }
+        })
+      } catch (err) {
+        console.error('Error creating TimeChart:', err)
+        setError('Failed to create chart')
+      }
     }
 
-    canvas.addEventListener('wheel', handleWheel, { passive: false })
-    canvas.addEventListener('mousedown', handleMouseDown)
-    canvas.addEventListener('mousemove', handleMouseMove)
-    canvas.addEventListener('mouseup', handleMouseUp)
-    canvas.addEventListener('mouseleave', interactionHandlers.onMouseLeave)
+    initChart()
 
+    // Cleanup function
     return () => {
-      canvas.removeEventListener('wheel', handleWheel)
-      canvas.removeEventListener('mousedown', handleMouseDown)
-      canvas.removeEventListener('mousemove', handleMouseMove)
-      canvas.removeEventListener('mouseup', handleMouseUp)
-      canvas.removeEventListener('mouseleave', interactionHandlers.onMouseLeave)
+      disposed = true
+      if (timeoutId) clearTimeout(timeoutId)
+      if (chartRef.current) {
+        try {
+          chartRef.current.dispose()
+        } catch (e) {
+          console.warn('Error disposing chart on cleanup:', e)
+        }
+        chartRef.current = null
+      }
     }
-  }, [dataViewport, interactionHandlers])
+  }, [plotData, dataViewport, config.chartType, isChartReady])
 
-  // Initialize/update WebGL plot
+  // Update chart size when dimensions change
   useEffect(() => {
-    console.log('WebGL init check:', { 
-      hasCanvas: !!canvasRef.current, 
-      dimensions, 
-      hasPlotData: !!plotData,
-      viewport: interactionState.viewport,
-      dataViewport: dataViewport,
-      plotDataSample: plotData ? {
-        seriesCount: plotData.series.length,
-        firstSeriesData: plotData.series[0] ? {
-          xValues: plotData.series[0].xValues.slice(0, 5),
-          yValues: plotData.series[0].yValues.slice(0, 5),
-          xRange: plotData.series[0].xRange,
-          yRange: plotData.series[0].yRange
-        } : null
-      } : null
-    })
-    
-    if (!canvasRef.current || dimensions.width === 0 || !plotData || !dataViewport) return
-
-    const canvas = canvasRef.current
-    const devicePixelRatio = window.devicePixelRatio || 1
-    
-    // Set canvas dimensions with proper scaling
-    // Account for high DPI displays
-    const scaledWidth = Math.floor(dimensions.width * devicePixelRatio)
-    const scaledHeight = Math.floor(dimensions.height * devicePixelRatio)
-    
-    canvas.width = scaledWidth
-    canvas.height = scaledHeight
-
-    // Always create a new WebGL plot instance to avoid stale state
-    if (wglpRef.current) {
-      wglpRef.current.clear()
-      wglpRef.current = null
+    if (chartRef.current && chartContainerRef.current && dimensions.width > 0) {
+      chartContainerRef.current.style.width = `${dimensions.width}px`
+      chartContainerRef.current.style.height = `${dimensions.height}px`
     }
-    
-    wglpRef.current = new WebglPlot(canvas)
-    linesRef.current = []
-
-    // Calculate plot area dimensions
-    const plotArea = calculatePlotArea(dimensions.width, dimensions.height)
-    const glTransform = calculateWebGLTransform(plotArea)
-    
-    // Apply zoom and pan transformations
-    const viewport = interactionState.viewport
-    
-    // データは既に-1から1に正規化されているので、ビューポートの範囲に基づいてスケールする
-    const viewportWidth = viewport.xMax - viewport.xMin
-    const viewportHeight = viewport.yMax - viewport.yMin
-    
-    // スケール計算：プロットエリアのサイズに対するビューポートの比率
-    const xScale = glTransform.scaleX * (2.0 / viewportWidth)
-    const yScale = glTransform.scaleY * (2.0 / viewportHeight)
-    
-    // ビューポートの中心
-    const viewportCenterX = (viewport.xMin + viewport.xMax) / 2
-    const viewportCenterY = (viewport.yMin + viewport.yMax) / 2
-    
-    // オフセット計算：プロットエリアの中心に配置し、ビューポートの中心を考慮
-    const xOffset = glTransform.offsetX - viewportCenterX * xScale
-    const yOffset = glTransform.offsetY + viewportCenterY * yScale  // Y軸は反転しているので加算
-    
-    wglpRef.current.gScaleX = xScale
-    wglpRef.current.gScaleY = yScale
-    wglpRef.current.gOffsetX = xOffset
-    wglpRef.current.gOffsetY = yOffset
-    
-    // Store scissor test parameters for use in animation loop
-    const scissorParams = {
-      x: plotArea.plotLeft * devicePixelRatio,
-      y: (dimensions.height - plotArea.plotBottom) * devicePixelRatio, // Y is inverted in WebGL
-      width: plotArea.plotWidth * devicePixelRatio,
-      height: plotArea.plotHeight * devicePixelRatio
-    }
-    
-    console.log('WebGL transform:', { 
-      xScale, yScale, xOffset, yOffset, 
-      glTransform,
-      viewport: { 
-        xMin: viewport.xMin, xMax: viewport.xMax, 
-        yMin: viewport.yMin, yMax: viewport.yMax,
-        centerX: viewportCenterX, centerY: viewportCenterY
-      },
-      plotArea,
-      canvas: {
-        width: dimensions.width,
-        height: dimensions.height
-      }
-    })
-
-    // Generate colors based on coloring strategy
-    const colors = generateLineColors(plotData.series.length)
-
-    // Create lines or scatter points for each series
-    plotData.series.forEach((series, index) => {
-      const color = new ColorRGBA(
-        colors[index].r,
-        colors[index].g,
-        colors[index].b,
-        colors[index].a
-      )
-      
-      if ((config.chartType || 'line') === 'scatter') {
-        // For scatter plot, create individual points using WebglSquare
-        const pointSize = 0.01 // Size of each point in normalized coordinates
-        for (let i = 0; i < series.xValues.length; i++) {
-          const square = new WebglSquare(color)
-          const x = series.xValues[i]
-          const y = series.yValues[i]
-          
-          // Create a small square centered at the data point
-          square.setSquare(
-            x - pointSize / 2,
-            y - pointSize / 2,
-            x + pointSize / 2,
-            y + pointSize / 2
-          )
-          
-          wglpRef.current!.addSurface(square)
-        }
-      } else {
-        // For line chart, create connected lines
-        const line = new WebglLine(color, series.xValues.length)
-        
-        // Set X and Y data points
-        for (let i = 0; i < series.xValues.length; i++) {
-          line.setX(i, series.xValues[i])
-          line.setY(i, series.yValues[i])
-        }
-        
-        wglpRef.current!.addLine(line)
-        linesRef.current.push(line)
-      }
-      
-      console.log(`${(config.chartType || 'line') === 'scatter' ? 'Scatter' : 'Line'} ${index} - Metadata: ${series.metadataLabel}, Parameter: ${series.parameterId}, Points: ${series.xValues.length}, Y range: [${series.yRange.min}, ${series.yRange.max}]`)
-      console.log(`Sample data points: X[0]=${series.xValues[0]}, Y[0]=${series.yValues[0]}, X[1]=${series.xValues[1]}, Y[1]=${series.yValues[1]}`)
-    })
-
-    // Initial render with scissor test
-    const gl = canvas.getContext('webgl') || canvas.getContext('webgl2')
-    if (gl) {
-      gl.enable(gl.SCISSOR_TEST)
-      gl.scissor(scissorParams.x, scissorParams.y, scissorParams.width, scissorParams.height)
-    }
-    wglpRef.current.update()
-    if (gl) {
-      gl.disable(gl.SCISSOR_TEST)
-    }
-
-    // Animation loop
-    let animationId: number
-    const animate = () => {
-      if (wglpRef.current && canvas) {
-        // Get WebGL context from canvas
-        const gl = canvas.getContext('webgl') || canvas.getContext('webgl2')
-        if (gl) {
-          // Enable scissor test before each update
-          gl.enable(gl.SCISSOR_TEST)
-          gl.scissor(scissorParams.x, scissorParams.y, scissorParams.width, scissorParams.height)
-        }
-        
-        wglpRef.current.update()
-        
-        // Disable scissor test after update to not affect other operations
-        if (gl) {
-          gl.disable(gl.SCISSOR_TEST)
-        }
-      }
-      animationId = requestAnimationFrame(animate)
-    }
-    animate()
-
-    return () => {
-      cancelAnimationFrame(animationId)
-      // Clean up WebGL resources when component unmounts or config changes
-      if (wglpRef.current) {
-        wglpRef.current.clear()
-        wglpRef.current = null
-      }
-      linesRef.current = []
-    }
-  }, [dimensions, plotData, config, interactionState.viewport, dataViewport])
+  }, [dimensions])
 
   if (loading) {
     return (
@@ -547,10 +429,8 @@ export function WebGLPlotWithData({
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <Progress value={loadingProgress} className="w-full" />
-            <p className="text-sm text-gray-600 text-center">
-              Loading data... {Math.round(loadingProgress)}%
-            </p>
+            <Progress value={loadingProgress} />
+            <p className="text-sm text-muted-foreground">Loading and processing data...</p>
           </div>
         </CardContent>
       </Card>
@@ -562,6 +442,7 @@ export function WebGLPlotWithData({
       <Card className={className}>
         <CardHeader>
           <CardTitle>{config.title}</CardTitle>
+          <CardDescription>Error loading chart</CardDescription>
         </CardHeader>
         <CardContent>
           <Alert variant="destructive">
@@ -573,165 +454,83 @@ export function WebGLPlotWithData({
     )
   }
 
-  if (!plotData) {
-    return null
+  if (!plotData || plotData.series.length === 0) {
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle>{config.title}</CardTitle>
+          <CardDescription>No data available</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert>
+            <TrendingUp className="h-4 w-4" />
+            <AlertDescription>
+              No data points found for the selected parameters
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
     <Card className={className}>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2">
-              {(config.chartType || 'line') === 'scatter' ? (
-                <ScatterChart className="h-5 w-5" />
-              ) : (
-                <TrendingUp className="h-5 w-5" />
-              )}
-              {config.title}
-            </CardTitle>
-            <CardDescription>
-              {(config.chartType || 'line') === 'scatter' ? 'Scatter' : 'Line'} {config.xAxisParameter === 'timestamp' ? 'Time Series' : 'XY'} Chart | 
-              {' '}{plotData.series.length > 0 ? plotData.series[0].xValues.length : 0} data points | 
-              {' '}{plotData.series.length} series
-            </CardDescription>
-          </div>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <div className="space-y-1">
+          <CardTitle className="text-base font-medium">{config.title}</CardTitle>
+          <CardDescription className="text-xs">
+            {(config.chartType || 'line') === 'scatter' ? (
+              <ScatterChart className="inline h-3 w-3 mr-1" />
+            ) : (
+              <TrendingUp className="inline h-3 w-3 mr-1" />
+            )}
+            {plotData.series.length} series • {plotData.series.reduce((acc, s) => acc + s.xValues.length, 0).toLocaleString()} points
+          </CardDescription>
+        </div>
+        {(onEdit || onDuplicate || onDelete) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="h-8 w-8">
                 <MoreVertical className="h-4 w-4" />
-                <span className="sr-only">Open menu</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEdit}>
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDuplicate}>
-                <Copy className="mr-2 h-4 w-4" />
-                Duplicate
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={interactionHandlers.resetViewport}>
-                <ZoomIn className="mr-2 h-4 w-4" />
-                Reset Zoom
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDelete} className="text-red-600">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
+              {onEdit && (
+                <DropdownMenuItem onClick={onEdit}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+              )}
+              {onDuplicate && (
+                <DropdownMenuItem onClick={onDuplicate}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Duplicate
+                </DropdownMenuItem>
+              )}
+              {onDelete && (
+                <DropdownMenuItem onClick={onDelete} className="text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
+        )}
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* Legend */}
-          <div className="flex flex-wrap gap-4 text-sm">
-            {plotData.series.map((series, index) => {
-              const colors = generateLineColors(plotData.series.length)
-              const color = colors[index]
-              const showMetadata = config.selectedDataIds.length > 1
-              
-              return (
-                <div key={`${series.metadataId}-${series.parameterId}`} className="flex items-center gap-2">
-                  <div 
-                    className="w-4 h-4 rounded"
-                    style={{
-                      backgroundColor: `rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)})`
-                    }}
-                  />
-                  <span>
-                    {showMetadata && (
-                      <span className="font-medium">{series.metadataLabel} - </span>
-                    )}
-                    {series.parameterInfo.parameterName} ({series.parameterInfo.unit})
-                  </span>
-                  <span className="text-gray-500">
-                    [{series.yRange.min.toFixed(2)} - {series.yRange.max.toFixed(2)}]
-                  </span>
-                </div>
-              )
-            })}
+      <CardContent className="p-0">
+        <div 
+          ref={containerRef} 
+          className="w-full relative"
+          style={{ height: dimensions.height || 400 }}
+        >
+          <div
+            ref={chartContainerRef}
+            className="absolute inset-0"
+          />
+          <div className="absolute bottom-2 right-2 flex items-center gap-1 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
+            <ZoomIn className="h-3 w-3" />
+            <span>Scroll to zoom • Drag to pan</span>
           </div>
-
-          {/* Chart */}
-          <div 
-            ref={containerRef} 
-            className="w-full overflow-hidden border border-border rounded-lg relative"
-            style={{ height: dimensions.height || 400, minHeight: 400 }}
-          >
-            {/* Canvas */}
-            <canvas
-              ref={canvasRef}
-              className="absolute inset-0"
-              style={{ 
-                display: 'block',
-                width: dimensions.width,
-                height: dimensions.height
-              }}
-            />
-            {plotData.series.length > 0 && (
-              <SVGOverlay
-                width={dimensions.width}
-                height={dimensions.height}
-                xRange={(() => {
-                  // ビューポートの正規化座標を実際のデータ範囲に変換
-                  const vp = interactionState.viewport
-                  const xMin = plotData.series[0].xRange.min
-                  const xMax = plotData.series[0].xRange.max
-                  const xSpan = xMax - xMin
-                  return {
-                    min: xMin + (vp.xMin + 1) / 2 * xSpan,
-                    max: xMin + (vp.xMax + 1) / 2 * xSpan
-                  }
-                })()}
-                yRanges={plotData.series.map(s => {
-                  // ビューポートの正規化座標を実際のデータ範囲に変換
-                  const vp = interactionState.viewport
-                  const yMin = s.yRange.min
-                  const yMax = s.yRange.max
-                  const ySpan = yMax - yMin
-                  return {
-                    min: yMin + (vp.yMin + 1) / 2 * ySpan,
-                    max: yMin + (vp.yMax + 1) / 2 * ySpan
-                  }
-                })}
-                xParameterInfo={plotData.xParameterInfo}
-                yParameterInfos={plotData.series.map(s => s.parameterInfo)}
-                xAxisType={config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter'}
-                showGrid={true}
-                hoveredPoint={interactionState.hoveredDataPoint ? {
-                  ...interactionState.hoveredDataPoint,
-                  point: {
-                    // 正規化座標を実データ座標に変換（ビューポートを考慮）
-                    x: plotData.series[0].xRange.min + 
-                       (interactionState.hoveredDataPoint.point.x + 1) / 2 * 
-                       (plotData.series[0].xRange.max - plotData.series[0].xRange.min),
-                    y: plotData.series[interactionState.hoveredDataPoint.seriesIndex || 0].yRange.min + 
-                       (interactionState.hoveredDataPoint.point.y + 1) / 2 * 
-                       (plotData.series[interactionState.hoveredDataPoint.seriesIndex || 0].yRange.max - 
-                        plotData.series[interactionState.hoveredDataPoint.seriesIndex || 0].yRange.min)
-                  }
-                } : null}
-                crosshairPosition={interactionState.crosshairPosition ? {
-                  // crosshairPositionは正規化座標（-1〜1）なので、実データ座標に変換
-                  x: plotData.series[0].xRange.min + 
-                     (interactionState.crosshairPosition.x + 1) / 2 * 
-                     (plotData.series[0].xRange.max - plotData.series[0].xRange.min),
-                  y: plotData.series[0].yRange.min + 
-                     (interactionState.crosshairPosition.y + 1) / 2 * 
-                     (plotData.series[0].yRange.max - plotData.series[0].yRange.min)
-                } : null}
-                chartData={plotData.series.map(s => ({
-                  metadataLabel: s.metadataLabel,
-                  parameterName: s.parameterInfo.parameterName,
-                  unit: s.parameterInfo.unit
-                }))}
-              />
-            )}
-          </div>
-
         </div>
       </CardContent>
     </Card>
