@@ -19,6 +19,7 @@ import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
 import { AlertCircle, TrendingUp, MoreVertical, Pencil, Copy, Trash2, ScatterChart, ZoomIn } from 'lucide-react'
 import { useChartInteraction } from '@/hooks/useChartInteraction'
 import { ViewportBounds } from '@/utils/chartCoordinateUtils'
+import { calculatePlotArea, calculateWebGLTransform, CHART_MARGINS } from '@/utils/plotAreaUtils'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,8 +54,7 @@ interface PlotData {
   series: PlotSeries[]
 }
 
-// Chart margins - consistent across WebGL and SVG
-const CHART_MARGINS = { top: 20, right: 60, bottom: 60, left: 70 }
+// Chart margins are now imported from plotAreaUtils
 
 export function WebGLPlotWithData({
   config,
@@ -79,6 +79,7 @@ export function WebGLPlotWithData({
   const [interactionState, interactionHandlers] = useChartInteraction(
     canvasRef as React.RefObject<HTMLCanvasElement>,
     dataViewport || { xMin: -1, xMax: 1, yMin: -1, yMax: 1 },
+    CHART_MARGINS,
     plotData?.series.map(s => ({
       series: s.xValues.map((x, i) => ({ 
         x: x,  // データは既に正規化されている
@@ -371,10 +372,9 @@ export function WebGLPlotWithData({
     wglpRef.current = new WebglPlot(canvas)
     linesRef.current = []
 
-    // Set up WebGL viewport to match SVG margins
-    const innerWidth = dimensions.width - CHART_MARGINS.left - CHART_MARGINS.right
-    const innerHeight = dimensions.height - CHART_MARGINS.top - CHART_MARGINS.bottom
-
+    // Calculate plot area dimensions
+    const plotArea = calculatePlotArea(dimensions.width, dimensions.height)
+    const glTransform = calculateWebGLTransform(plotArea)
     
     // Apply zoom and pan transformations
     const viewport = interactionState.viewport
@@ -384,49 +384,39 @@ export function WebGLPlotWithData({
     const viewportHeight = viewport.yMax - viewport.yMin
     
     // スケール計算：プロットエリアのサイズに対するビューポートの比率
-    const xScale = (innerWidth / dimensions.width) * (2.0 / viewportWidth)
-    const yScale = (innerHeight / dimensions.height) * (2.0 / viewportHeight)
+    const xScale = glTransform.scaleX * (2.0 / viewportWidth)
+    const yScale = glTransform.scaleY * (2.0 / viewportHeight)
     
     // ビューポートの中心
     const viewportCenterX = (viewport.xMin + viewport.xMax) / 2
     const viewportCenterY = (viewport.yMin + viewport.yMax) / 2
     
-    // WebGL座標系でのプロットエリアの範囲を計算
-    // 各辺のWebGL座標
-    const plotLeftGL = (CHART_MARGINS.left / dimensions.width) * 2 - 1
-    const plotRightGL = ((dimensions.width - CHART_MARGINS.right) / dimensions.width) * 2 - 1
-    const plotTopGL = 1 - (CHART_MARGINS.top / dimensions.height) * 2
-    const plotBottomGL = 1 - ((dimensions.height - CHART_MARGINS.bottom) / dimensions.height) * 2
-    
-    // プロットエリアの中心のWebGL座標
-    const plotCenterXGL = (plotLeftGL + plotRightGL) / 2
-    const plotCenterYGL = (plotTopGL + plotBottomGL) / 2
-    
     // オフセット計算：プロットエリアの中心に配置し、ビューポートの中心を考慮
-    const xOffset = plotCenterXGL - viewportCenterX * xScale
-    const yOffset = plotCenterYGL + viewportCenterY * yScale  // Y軸は反転しているので加算
+    const xOffset = glTransform.offsetX - viewportCenterX * xScale
+    const yOffset = glTransform.offsetY + viewportCenterY * yScale  // Y軸は反転しているので加算
     
     wglpRef.current.gScaleX = xScale
     wglpRef.current.gScaleY = yScale
     wglpRef.current.gOffsetX = xOffset
     wglpRef.current.gOffsetY = yOffset
     
+    // Store scissor test parameters for use in animation loop
+    const scissorParams = {
+      x: plotArea.plotLeft * devicePixelRatio,
+      y: (dimensions.height - plotArea.plotBottom) * devicePixelRatio, // Y is inverted in WebGL
+      width: plotArea.plotWidth * devicePixelRatio,
+      height: plotArea.plotHeight * devicePixelRatio
+    }
+    
     console.log('WebGL transform:', { 
       xScale, yScale, xOffset, yOffset, 
-      plotGL: { 
-        left: plotLeftGL, right: plotRightGL,
-        top: plotTopGL, bottom: plotBottomGL,
-        centerX: plotCenterXGL, centerY: plotCenterYGL 
-      },
+      glTransform,
       viewport: { 
         xMin: viewport.xMin, xMax: viewport.xMax, 
         yMin: viewport.yMin, yMax: viewport.yMax,
         centerX: viewportCenterX, centerY: viewportCenterY
       },
-      plotArea: {
-        innerWidth, innerHeight,
-        margins: CHART_MARGINS
-      },
+      plotArea,
       canvas: {
         width: dimensions.width,
         height: dimensions.height
@@ -481,14 +471,35 @@ export function WebGLPlotWithData({
       console.log(`Sample data points: X[0]=${series.xValues[0]}, Y[0]=${series.yValues[0]}, X[1]=${series.xValues[1]}, Y[1]=${series.yValues[1]}`)
     })
 
-    // Initial render
+    // Initial render with scissor test
+    const gl = canvas.getContext('webgl') || canvas.getContext('webgl2')
+    if (gl) {
+      gl.enable(gl.SCISSOR_TEST)
+      gl.scissor(scissorParams.x, scissorParams.y, scissorParams.width, scissorParams.height)
+    }
     wglpRef.current.update()
+    if (gl) {
+      gl.disable(gl.SCISSOR_TEST)
+    }
 
     // Animation loop
     let animationId: number
     const animate = () => {
-      if (wglpRef.current) {
+      if (wglpRef.current && canvas) {
+        // Get WebGL context from canvas
+        const gl = canvas.getContext('webgl') || canvas.getContext('webgl2')
+        if (gl) {
+          // Enable scissor test before each update
+          gl.enable(gl.SCISSOR_TEST)
+          gl.scissor(scissorParams.x, scissorParams.y, scissorParams.width, scissorParams.height)
+        }
+        
         wglpRef.current.update()
+        
+        // Disable scissor test after update to not affect other operations
+        if (gl) {
+          gl.disable(gl.SCISSOR_TEST)
+        }
       }
       animationId = requestAnimationFrame(animate)
     }
@@ -503,7 +514,7 @@ export function WebGLPlotWithData({
       }
       linesRef.current = []
     }
-  }, [dimensions, plotData, config, interactionState.viewport])
+  }, [dimensions, plotData, config, interactionState.viewport, dataViewport])
 
   if (loading) {
     return (
@@ -628,23 +639,16 @@ export function WebGLPlotWithData({
             className="w-full overflow-hidden border border-border rounded-lg relative"
             style={{ height: dimensions.height || 400, minHeight: 400 }}
           >
-            {/* Canvas with clipping wrapper */}
-            <div
-              className="absolute inset-0 overflow-hidden"
-              style={{
-                clipPath: `inset(${CHART_MARGINS.top}px ${CHART_MARGINS.right}px ${CHART_MARGINS.bottom}px ${CHART_MARGINS.left}px)`
+            {/* Canvas */}
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0"
+              style={{ 
+                display: 'block',
+                width: dimensions.width,
+                height: dimensions.height
               }}
-            >
-              <canvas
-                ref={canvasRef}
-                className="absolute inset-0"
-                style={{ 
-                  display: 'block',
-                  width: dimensions.width,
-                  height: dimensions.height
-                }}
-              />
-            </div>
+            />
             {plotData.series.length > 0 && (
               <SVGOverlay
                 width={dimensions.width}
@@ -678,7 +682,7 @@ export function WebGLPlotWithData({
                 hoveredPoint={interactionState.hoveredDataPoint ? {
                   ...interactionState.hoveredDataPoint,
                   point: {
-                    // 正規化座標を実データ座標に変換
+                    // 正規化座標を実データ座標に変換（ビューポートを考慮）
                     x: plotData.series[0].xRange.min + 
                        (interactionState.hoveredDataPoint.point.x + 1) / 2 * 
                        (plotData.series[0].xRange.max - plotData.series[0].xRange.min),
@@ -689,7 +693,7 @@ export function WebGLPlotWithData({
                   }
                 } : null}
                 crosshairPosition={interactionState.crosshairPosition ? {
-                  // 正規化座標を実データ座標に変換
+                  // crosshairPositionは正規化座標（-1〜1）なので、実データ座標に変換
                   x: plotData.series[0].xRange.min + 
                      (interactionState.crosshairPosition.x + 1) / 2 * 
                      (plotData.series[0].xRange.max - plotData.series[0].xRange.min),

@@ -3,6 +3,8 @@
  * マウス座標、WebGL座標、データ値間の相互変換を提供
  */
 
+import { PlotAreaDimensions, mouseToPlotArea, plotAreaToMouse } from './plotAreaUtils';
+
 export interface ViewportBounds {
   xMin: number;
   xMax: number;
@@ -13,6 +15,13 @@ export interface ViewportBounds {
 export interface CanvasDimensions {
   width: number;
   height: number;
+}
+
+export interface ChartMargins {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
 }
 
 export interface Point2D {
@@ -30,6 +39,37 @@ export function mouseToWebGL(
 ): Point2D {
   const normalizedX = (mouseX / canvas.width) * 2 - 1;
   const normalizedY = -((mouseY / canvas.height) * 2 - 1); // Y軸は反転
+  return { x: normalizedX, y: normalizedY };
+}
+
+/**
+ * マウス座標からプロットエリア内のWebGL正規化座標に変換
+ * マージンを考慮してプロットエリア内の座標に変換
+ */
+export function mouseToPlotAreaWebGL(
+  mouseX: number,
+  mouseY: number,
+  canvas: CanvasDimensions,
+  margins: ChartMargins
+): Point2D | null {
+  // プロットエリアの境界チェック
+  if (mouseX < margins.left || mouseX > canvas.width - margins.right ||
+      mouseY < margins.top || mouseY > canvas.height - margins.bottom) {
+    return null; // プロットエリア外
+  }
+  
+  // プロットエリア内の相対座標に変換
+  const plotX = mouseX - margins.left;
+  const plotY = mouseY - margins.top;
+  
+  // プロットエリアのサイズ
+  const plotWidth = canvas.width - margins.left - margins.right;
+  const plotHeight = canvas.height - margins.top - margins.bottom;
+  
+  // プロットエリア内の正規化座標（-1 to 1）
+  const normalizedX = (plotX / plotWidth) * 2 - 1;
+  const normalizedY = -((plotY / plotHeight) * 2 - 1); // Y軸は反転
+  
   return { x: normalizedX, y: normalizedY };
 }
 
@@ -83,6 +123,55 @@ export function mouseToData(
 ): Point2D {
   const webgl = mouseToWebGL(mouseX, mouseY, canvas);
   return webGLToData(webgl.x, webgl.y, viewport);
+}
+
+/**
+ * プロットエリア内のマウス座標から直接データ値に変換
+ */
+export function mouseToPlotAreaData(
+  mouseX: number,
+  mouseY: number,
+  canvas: CanvasDimensions,
+  margins: ChartMargins,
+  viewport: ViewportBounds
+): Point2D | null {
+  const webgl = mouseToPlotAreaWebGL(mouseX, mouseY, canvas, margins);
+  if (!webgl) return null;
+  return webGLToData(webgl.x, webgl.y, viewport);
+}
+
+
+/**
+ * マウス座標からプロットエリア内のデータ値に変換
+ * プロットエリアの外の場合はnullを返す
+ */
+export function mouseToPlotData(
+  mouseX: number,
+  mouseY: number,
+  plotArea: PlotAreaDimensions,
+  viewport: ViewportBounds
+): Point2D | null {
+  // プロットエリア内の正規化座標を取得
+  const plotCoords = mouseToPlotArea(mouseX, mouseY, plotArea);
+  if (!plotCoords) return null;
+  
+  // プロットエリアの正規化座標からデータ値に変換
+  return webGLToData(plotCoords.x, plotCoords.y, viewport);
+}
+
+/**
+ * データ値からプロットエリア内のマウス座標に変換
+ */
+export function dataToPlotMouse(
+  dataX: number,
+  dataY: number,
+  plotArea: PlotAreaDimensions,
+  viewport: ViewportBounds
+): Point2D {
+  // データ値からプロットエリアの正規化座標に変換
+  const plotCoords = dataToWebGL(dataX, dataY, viewport);
+  // プロットエリアの正規化座標からマウス座標に変換
+  return plotAreaToMouse(plotCoords.x, plotCoords.y, plotArea);
 }
 
 /**

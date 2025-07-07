@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { scaleLinear, scaleTime, ScaleTime, ScaleLinear } from 'd3-scale'
 import { ParameterInfo } from '@/lib/db/schema'
 import { Point2D } from '@/utils/chartCoordinateUtils'
+import { CHART_MARGINS } from '@/utils/plotAreaUtils'
 
 interface SVGOverlayProps {
   width: number
@@ -38,8 +39,8 @@ export function SVGOverlay({
     y: ScaleLinear<number, number>
   }>()
 
-  // Margins for the plot area
-  const margin = { top: 20, right: 60, bottom: 60, left: 70 }
+  // Use shared margins from plotAreaUtils
+  const margin = CHART_MARGINS
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
 

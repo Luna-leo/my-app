@@ -2,13 +2,17 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   ViewportBounds,
   CanvasDimensions,
+  ChartMargins,
   Point2D,
   mouseToData,
+  mouseToPlotAreaData,
+  mouseToPlotData,
   calculateZoomedViewport,
   calculatePannedViewport,
   constrainViewport,
   findNearestDataPoint
 } from '@/utils/chartCoordinateUtils';
+import { calculatePlotArea } from '@/utils/plotAreaUtils';
 
 export interface ChartInteractionOptions {
   enableZoom?: boolean;
@@ -42,6 +46,7 @@ export interface ChartInteractionHandlers {
 export function useChartInteraction(
   canvasRef: React.RefObject<HTMLCanvasElement>,
   initialViewport: ViewportBounds,
+  margins: ChartMargins,
   dataPoints?: { series: Point2D[]; name?: string }[],
   options: ChartInteractionOptions = {}
 ): [ChartInteractionState, ChartInteractionHandlers] {
@@ -73,9 +78,10 @@ export function useChartInteraction(
   // キャンバスの寸法を取得
   const getCanvasDimensions = useCallback((): CanvasDimensions | null => {
     if (!canvasRef.current) return null;
+    const rect = canvasRef.current.getBoundingClientRect();
     return {
-      width: canvasRef.current.width,
-      height: canvasRef.current.height
+      width: rect.width,
+      height: rect.height
     };
   }, [canvasRef]);
 
@@ -100,8 +106,12 @@ export function useChartInteraction(
       const rect = canvasRef.current.getBoundingClientRect();
       const mouseX = event.clientX - rect.left;
       const mouseY = event.clientY - rect.top;
+      
+      // Calculate plot area
+      const plotArea = calculatePlotArea(canvas.width, canvas.height);
 
-      const zoomCenter = mouseToData(mouseX, mouseY, canvas, viewport);
+      const zoomCenter = mouseToPlotData(mouseX, mouseY, plotArea, viewport);
+      if (!zoomCenter) return; // Mouse is outside plot area
       const zoomFactor = 1 - event.deltaY * zoomSensitivity;
       
       console.log('Zoom calculation:', { 
@@ -157,9 +167,19 @@ export function useChartInteraction(
 
       // マウス位置を更新
       setMousePosition(currentMousePos);
+      
+      // Calculate plot area
+      const plotArea = calculatePlotArea(canvas.width, canvas.height);
 
-      // データ座標でのマウス位置
-      const dataPos = mouseToData(mouseX, mouseY, canvas, viewport);
+      // データ座標でのマウス位置（プロットエリア内のみ）
+      const dataPos = mouseToPlotData(mouseX, mouseY, plotArea, viewport);
+      
+      // マウスがプロットエリア外の場合
+      if (!dataPos) {
+        setCrosshairPosition(null);
+        setHoveredDataPoint(null);
+        return;
+      }
 
       // クロスヘアの更新
       if (enableCrosshair) {
@@ -174,11 +194,12 @@ export function useChartInteraction(
 
         dataPoints.forEach((series, seriesIndex) => {
           if (series.series.length > 0) {
+            // dataPosは既にビューポート座標なので、データポイントは正規化座標のまま比較
             const result = findNearestDataPoint(dataPos, series.series);
             if (result && result.distance < minDistance) {
               minDistance = result.distance;
               nearestPoint = {
-                point: result.point,
+                point: series.series[result.index], // 元の正規化座標を保持
                 index: result.index,
                 seriesIndex
               };
@@ -188,9 +209,13 @@ export function useChartInteraction(
         });
 
         // データ座標での閾値を設定（ビューポートサイズに基づく）
-        const xRange = viewport.xMax - viewport.xMin;
-        const yRange = viewport.yMax - viewport.yMin;
-        const threshold = Math.max(xRange, yRange) * 0.02; // ビューポートの2%
+        // ズーム時は閾値を調整（全体の範囲に対する比率で計算）
+        const fullRange = 2; // 正規化座標の全範囲（-1〜1）
+        const viewportRatio = Math.max(
+          (viewport.xMax - viewport.xMin) / fullRange,
+          (viewport.yMax - viewport.yMin) / fullRange
+        );
+        const threshold = 0.02 * viewportRatio; // ズームレベルに応じた閾値
 
         if (nearestPoint && minDistance < threshold) {
           setHoveredDataPoint(nearestPoint);
@@ -212,9 +237,12 @@ export function useChartInteraction(
           const deltaX = mouseX - panStartRef.current.x;
           const deltaY = mouseY - panStartRef.current.y;
 
-          // ピクセル差分をデータ座標差分に変換
-          const xScale = (viewportStartRef.current.xMax - viewportStartRef.current.xMin) / canvas.width;
-          const yScale = (viewportStartRef.current.yMax - viewportStartRef.current.yMin) / canvas.height;
+          // Calculate plot area
+          const plotArea = calculatePlotArea(canvas.width, canvas.height);
+          
+          // ピクセル差分をデータ座標差分に変換（プロットエリアのサイズを使用）
+          const xScale = (viewportStartRef.current.xMax - viewportStartRef.current.xMin) / plotArea.plotWidth;
+          const yScale = (viewportStartRef.current.yMax - viewportStartRef.current.yMin) / plotArea.plotHeight;
 
           const dataDeltaX = deltaX * xScale;
           const dataDeltaY = -deltaY * yScale; // Y軸は反転
