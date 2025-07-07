@@ -16,12 +16,22 @@ import {
   mergeTimeSeriesData
 } from '@/lib/utils/chartDataUtils'
 import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
-import { AlertCircle, TrendingUp } from 'lucide-react'
+import { AlertCircle, TrendingUp, MoreVertical, Pencil, Copy, Trash2 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 
 interface WebGLPlotWithDataProps {
   config: ChartConfiguration
   aspectRatio?: number
   className?: string
+  onEdit?: () => void
+  onDuplicate?: () => void
+  onDelete?: () => void
 }
 
 interface PlotData {
@@ -38,7 +48,10 @@ interface PlotData {
 export function WebGLPlotWithData({
   config,
   aspectRatio = 2,
-  className = ''
+  className = '',
+  onEdit,
+  onDuplicate,
+  onDelete
 }: WebGLPlotWithDataProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -56,11 +69,16 @@ export function WebGLPlotWithData({
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const width = entry.contentRect.width
+        // Use border-box size to account for border
+        const borderBoxSize = entry.borderBoxSize?.[0]
+        const width = borderBoxSize ? borderBoxSize.inlineSize : entry.contentRect.width
+        
+        // Calculate height based on aspect ratio
         const height = width / aspectRatio
+        
         console.log('ResizeObserver:', { width, height })
         if (width > 0) {
-          setDimensions({ width, height })
+          setDimensions({ width: Math.floor(width), height: Math.floor(height) })
         }
       }
     })
@@ -218,11 +236,17 @@ export function WebGLPlotWithData({
     const canvas = canvasRef.current
     const devicePixelRatio = window.devicePixelRatio || 1
     
-    // Set canvas dimensions
-    canvas.width = dimensions.width * devicePixelRatio
-    canvas.height = dimensions.height * devicePixelRatio
-    canvas.style.width = `${dimensions.width}px`
-    canvas.style.height = `${dimensions.height}px`
+    // Set canvas dimensions with proper scaling
+    // Account for high DPI displays
+    const scaledWidth = Math.floor(dimensions.width * devicePixelRatio)
+    const scaledHeight = Math.floor(dimensions.height * devicePixelRatio)
+    
+    canvas.width = scaledWidth
+    canvas.height = scaledHeight
+    
+    // Set CSS dimensions to match container
+    canvas.style.width = '100%'
+    canvas.style.height = '100%'
 
     // Always create a new WebGL plot instance to avoid stale state
     if (wglpRef.current) {
@@ -327,14 +351,40 @@ export function WebGLPlotWithData({
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5" />
-          {config.title}
-        </CardTitle>
-        <CardDescription>
-          {config.xAxisParameter === 'timestamp' ? 'Time Series' : 'XY'} Chart | 
-          {' '}{plotData.xValues.length} data points
-        </CardDescription>
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              {config.title}
+            </CardTitle>
+            <CardDescription>
+              {config.xAxisParameter === 'timestamp' ? 'Time Series' : 'XY'} Chart | 
+              {' '}{plotData.xValues.length} data points
+            </CardDescription>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <MoreVertical className="h-4 w-4" />
+                <span className="sr-only">Open menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onDuplicate}>
+                <Copy className="mr-2 h-4 w-4" />
+                Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onDelete} className="text-red-600">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
@@ -365,12 +415,13 @@ export function WebGLPlotWithData({
           {/* Chart */}
           <div 
             ref={containerRef} 
-            className="w-full"
+            className="w-full overflow-hidden border border-border rounded-lg"
             style={{ height: dimensions.height || 400, minHeight: 400 }}
           >
             <canvas
               ref={canvasRef}
-              className="border border-border rounded-lg w-full h-full"
+              className="max-w-full"
+              style={{ display: 'block' }}
             />
           </div>
 

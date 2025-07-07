@@ -8,18 +8,69 @@ import { DataSelectionDialog } from '@/components/data-selection/DataSelectionDi
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { useState } from 'react'
 import { Upload, Database, LineChart, FileSearch } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 export default function Home() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [dataSelectionOpen, setDataSelectionOpen] = useState(false)
   const [createChartOpen, setCreateChartOpen] = useState(false)
   const [selectedDataIds, setSelectedDataIds] = useState<number[]>([])
-  const [chartConfig, setChartConfig] = useState<ChartConfiguration | null>(null)
+  const [charts, setCharts] = useState<(ChartConfiguration & { id: string })[]>([])
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{ open: boolean; chartId: string | null }>({
+    open: false,
+    chartId: null
+  })
 
 
   const handleImportComplete = () => {
     // Refresh data or update plot after import
     console.log('CSV import completed successfully')
+  }
+
+  const handleCreateChart = (config: ChartConfiguration) => {
+    const newChart = {
+      ...config,
+      id: Date.now().toString()
+    }
+    setCharts([...charts, newChart])
+    setCreateChartOpen(false)
+  }
+
+  const handleEditChart = (chartId: string) => {
+    // TODO: Implement edit functionality
+    console.log('Edit chart:', chartId)
+  }
+
+  const handleDuplicateChart = (chartId: string) => {
+    const chartToDuplicate = charts.find(c => c.id === chartId)
+    if (chartToDuplicate) {
+      const duplicatedChart = {
+        ...chartToDuplicate,
+        id: Date.now().toString(),
+        title: `${chartToDuplicate.title} (Copy)`
+      }
+      setCharts([...charts, duplicatedChart])
+    }
+  }
+
+  const handleDeleteChart = (chartId: string) => {
+    setDeleteConfirmation({ open: true, chartId })
+  }
+
+  const confirmDelete = () => {
+    if (deleteConfirmation.chartId) {
+      setCharts(charts.filter(c => c.id !== deleteConfirmation.chartId))
+    }
+    setDeleteConfirmation({ open: false, chartId: null })
   }
 
   return (
@@ -47,13 +98,20 @@ export default function Home() {
           </div>
         </div>
         
-        {chartConfig ? (
-          <WebGLPlotWithData
-            key={JSON.stringify(chartConfig)}
-            config={chartConfig}
-            aspectRatio={2}
-            className="max-w-4xl mx-auto"
-          />
+        {charts.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {charts.map((chart) => (
+              <WebGLPlotWithData
+                key={chart.id}
+                config={chart}
+                aspectRatio={2}
+                className="w-full"
+                onEdit={() => handleEditChart(chart.id)}
+                onDuplicate={() => handleDuplicateChart(chart.id)}
+                onDelete={() => handleDeleteChart(chart.id)}
+              />
+            ))}
+          </div>
         ) : (
           <Card className="max-w-4xl mx-auto">
             <CardHeader>
@@ -127,8 +185,26 @@ export default function Home() {
         open={createChartOpen}
         onOpenChange={setCreateChartOpen}
         selectedDataIds={selectedDataIds}
-        onCreateChart={setChartConfig}
+        onCreateChart={handleCreateChart}
       />
+      
+      <AlertDialog 
+        open={deleteConfirmation.open} 
+        onOpenChange={(open) => setDeleteConfirmation({ open, chartId: null })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the chart.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
