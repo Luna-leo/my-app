@@ -44,7 +44,7 @@ export function WebGLPlotWithData({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wglpRef = useRef<WebglPlot | null>(null)
   const linesRef = useRef<WebglLine[]>([])
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
+  const [dimensions, setDimensions] = useState({ width: 800, height: 400 })
   const [loading, setLoading] = useState(true)
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -58,7 +58,10 @@ export function WebGLPlotWithData({
       for (const entry of entries) {
         const width = entry.contentRect.width
         const height = width / aspectRatio
-        setDimensions({ width, height })
+        console.log('ResizeObserver:', { width, height })
+        if (width > 0) {
+          setDimensions({ width, height })
+        }
       }
     })
 
@@ -173,6 +176,17 @@ export function WebGLPlotWithData({
         // Normalize X values
         const normalizedXValues = normalizeValues(xValues, xRange.min, xRange.max)
 
+        console.log('Chart data loaded:', {
+          dataPoints: normalizedXValues.length,
+          xRange,
+          yParameterCount: yData.length,
+          yParameters: yData.map(d => ({
+            id: d.parameterId,
+            range: d.range,
+            sampleValues: d.values.slice(0, 5)
+          }))
+        })
+
         setPlotData({
           xValues: normalizedXValues,
           xRange,
@@ -193,6 +207,12 @@ export function WebGLPlotWithData({
 
   // Initialize/update WebGL plot
   useEffect(() => {
+    console.log('WebGL init check:', { 
+      hasCanvas: !!canvasRef.current, 
+      dimensions, 
+      hasPlotData: !!plotData 
+    })
+    
     if (!canvasRef.current || dimensions.width === 0 || !plotData) return
 
     const canvas = canvasRef.current
@@ -229,11 +249,15 @@ export function WebGLPlotWithData({
       
       const line = new WebglLine(color, plotData.xValues.length)
       
-      // Set data points
+      // Use arrangeX for automatic X-axis arrangement
+      line.arrangeX()
+      
+      // Set Y data points
       for (let i = 0; i < plotData.xValues.length; i++) {
-        line.setX(i, plotData.xValues[i])
         line.setY(i, yParam.values[i])
       }
+      
+      console.log(`Line ${index} - Parameter: ${yParam.parameterId}, Points: ${plotData.xValues.length}, Y range: [${Math.min(...yParam.values)}, ${Math.max(...yParam.values)}]`)
       
       wglpRef.current!.addLine(line)
       linesRef.current.push(line)
@@ -338,7 +362,7 @@ export function WebGLPlotWithData({
           <div 
             ref={containerRef} 
             className="w-full"
-            style={{ height: dimensions.height || 'auto' }}
+            style={{ height: dimensions.height || 400, minHeight: 400 }}
           >
             <canvas
               ref={canvasRef}

@@ -1,6 +1,5 @@
 'use client'
 
-import { WebGLPlotComponent } from '@/components/charts/WebGLPlot'
 import { WebGLPlotWithData } from '@/components/charts/WebGLPlotWithData'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,8 +7,7 @@ import { CsvImportDialog } from '@/components/csv-import/CsvImportDialog'
 import { DataSelectionDialog } from '@/components/data-selection/DataSelectionDialog'
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { useState } from 'react'
-import { WebglLine } from 'webgl-plot'
-import { Upload, Database, LineChart } from 'lucide-react'
+import { Upload, Database, LineChart, FileSearch } from 'lucide-react'
 
 export default function Home() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -18,18 +16,6 @@ export default function Home() {
   const [selectedDataIds, setSelectedDataIds] = useState<number[]>([])
   const [chartConfig, setChartConfig] = useState<ChartConfiguration | null>(null)
 
-  const updateFunction = (line: WebglLine, frame: number) => {
-    const speed = 0.02
-    const noise = 0.05
-    const frequency = 0.001
-    const amplitude = 0.5
-    
-    for (let i = 0; i < line.numPoints; i++) {
-      const y = Math.sin(2 * Math.PI * i * frequency + frame * speed) * amplitude
-      const yNoise = (Math.random() - 0.5) * noise
-      line.setY(i, y + yNoise)
-    }
-  }
 
   const handleImportComplete = () => {
     // Refresh data or update plot after import
@@ -40,7 +26,7 @@ export default function Home() {
     <>
       <div className="container mx-auto p-8">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold">WebGL Plot with shadcn/ui</h1>
+          <h1 className="text-4xl font-bold">Time Series Data Visualization</h1>
           <div className="flex gap-2">
             <Button onClick={() => setImportDialogOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />
@@ -70,17 +56,53 @@ export default function Home() {
         ) : (
           <Card className="max-w-4xl mx-auto">
             <CardHeader>
-              <CardTitle>Real-time WebGL Plot</CardTitle>
+              <CardTitle>No Chart Created</CardTitle>
               <CardDescription>
-                High-performance plotting using WebGL with customizable parameters
+                Follow these steps to create a chart
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <WebGLPlotComponent
-                aspectRatio={2}
-                lineColor={{ r: 0.2, g: 0.6, b: 1.0, a: 1 }}
-                updateFunction={updateFunction}
-              />
+              <div className="space-y-6 py-8">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    1
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold">Import CSV Data</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Use the &quot;Import CSV Data&quot; button to load your time series data
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    2
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold">Select Data Sources</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Click &quot;Data Selection&quot; to choose which datasets to use
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    3
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold">Create Chart</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Use &quot;Create Chart&quot; to configure X/Y axis parameters and generate your visualization
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="mt-8 flex justify-center">
+                  <FileSearch className="h-16 w-16 text-muted-foreground/50" />
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
