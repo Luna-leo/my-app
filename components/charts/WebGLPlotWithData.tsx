@@ -383,26 +383,28 @@ export function WebGLPlotWithData({
     const viewportWidth = viewport.xMax - viewport.xMin
     const viewportHeight = viewport.yMax - viewport.yMin
     
-    // ビューポートが2（全範囲）より小さい場合はズームイン、大きい場合はズームアウト
+    // スケール計算：プロットエリアのサイズに対するビューポートの比率
     const xScale = (innerWidth / dimensions.width) * (2.0 / viewportWidth)
     const yScale = (innerHeight / dimensions.height) * (2.0 / viewportHeight)
     
-    // ビューポートの中心をWebGL座標系の中心に合わせる
+    // ビューポートの中心
     const viewportCenterX = (viewport.xMin + viewport.xMax) / 2
     const viewportCenterY = (viewport.yMin + viewport.yMax) / 2
     
-    // マージンを考慮した描画エリアの中心
-    const plotCenterX = CHART_MARGINS.left + innerWidth / 2
-    const plotCenterY = CHART_MARGINS.top + innerHeight / 2
+    // WebGL座標系でのプロットエリアの範囲を計算
+    // 各辺のWebGL座標
+    const plotLeftGL = (CHART_MARGINS.left / dimensions.width) * 2 - 1
+    const plotRightGL = ((dimensions.width - CHART_MARGINS.right) / dimensions.width) * 2 - 1
+    const plotTopGL = 1 - (CHART_MARGINS.top / dimensions.height) * 2
+    const plotBottomGL = 1 - ((dimensions.height - CHART_MARGINS.bottom) / dimensions.height) * 2
     
-    // WebGL座標系でのオフセット計算
-    // プロットエリアの中心をWebGL座標系に変換
-    const basexOffset = (plotCenterX / dimensions.width) * 2 - 1
-    const baseyOffset = 1 - (plotCenterY / dimensions.height) * 2
+    // プロットエリアの中心のWebGL座標
+    const plotCenterXGL = (plotLeftGL + plotRightGL) / 2
+    const plotCenterYGL = (plotTopGL + plotBottomGL) / 2
     
-    // ビューポートの中心によるオフセット調整
-    const xOffset = basexOffset - viewportCenterX * xScale
-    const yOffset = baseyOffset - viewportCenterY * yScale
+    // オフセット計算：プロットエリアの中心に配置し、ビューポートの中心を考慮
+    const xOffset = plotCenterXGL - viewportCenterX * xScale
+    const yOffset = plotCenterYGL + viewportCenterY * yScale  // Y軸は反転しているので加算
     
     wglpRef.current.gScaleX = xScale
     wglpRef.current.gScaleY = yScale
@@ -411,16 +413,19 @@ export function WebGLPlotWithData({
     
     console.log('WebGL transform:', { 
       xScale, yScale, xOffset, yOffset, 
-      baseOffsets: { basexOffset, baseyOffset },
+      plotGL: { 
+        left: plotLeftGL, right: plotRightGL,
+        top: plotTopGL, bottom: plotBottomGL,
+        centerX: plotCenterXGL, centerY: plotCenterYGL 
+      },
       viewport: { 
         xMin: viewport.xMin, xMax: viewport.xMax, 
-        yMin: viewport.yMin, yMax: viewport.yMax 
+        yMin: viewport.yMin, yMax: viewport.yMax,
+        centerX: viewportCenterX, centerY: viewportCenterY
       },
       plotArea: {
         innerWidth, innerHeight,
-        margins: CHART_MARGINS,
-        plotCenterX, plotCenterY,
-        viewportCenterX, viewportCenterY
+        margins: CHART_MARGINS
       },
       canvas: {
         width: dimensions.width,
@@ -632,8 +637,12 @@ export function WebGLPlotWithData({
             >
               <canvas
                 ref={canvasRef}
-                className="max-w-full"
-                style={{ display: 'block' }}
+                className="absolute inset-0"
+                style={{ 
+                  display: 'block',
+                  width: dimensions.width,
+                  height: dimensions.height
+                }}
               />
             </div>
             {plotData.series.length > 0 && (
