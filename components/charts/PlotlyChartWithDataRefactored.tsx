@@ -16,6 +16,8 @@ import {
   updatePlotlyData,
   hasExistingPlot,
   isElementReady,
+  transitionTraceTypes,
+  ensurePlotVisibility,
   PLOTLY_MODEBAR_CONFIG,
   PLOTLY_MARGINS,
 } from '@/lib/utils/plotlyUtils'
@@ -254,7 +256,10 @@ function PlotlyChartWithDataRefactoredComponent({
           validTraces,
           layout
         )
-        if (!updated) {
+        if (updated) {
+          // Ensure plot visibility after update
+          await ensurePlotVisibility(plotlyRef.current, currentPlotElement)
+        } else {
           console.log(`[Chart ${config.title}] Update failed, creating new plot`);
           // Fallback to creating new plot
           const plotlyConfig = { 
@@ -294,6 +299,9 @@ function PlotlyChartWithDataRefactoredComponent({
           hasPlotRef.current = true
           isInitializedRef.current = true
           registerPlot(currentPlotElement)
+          
+          // Ensure plot visibility after creation
+          await ensurePlotVisibility(plotlyRef.current, currentPlotElement)
         } else {
           throw new Error(ERROR_MESSAGES.PLOT_CREATION_FAILED)
         }
@@ -334,16 +342,32 @@ function PlotlyChartWithDataRefactoredComponent({
     }
   }, [dimensions, plotlyRef, hasPlotRef])
   
-  // Handle WebGL mode changes by forcing re-render
+  // Handle WebGL mode changes with smooth transition
   useEffect(() => {
     console.log(`[Chart ${config.title}] WebGL mode changed to: ${isWebGLMode}`);
-    if (isInitializedRef.current && hasPlotRef.current) {
-      console.log(`[Chart ${config.title}] Forcing re-initialization due to WebGL mode change`);
-      // Force re-initialization when WebGL mode changes
-      isInitializedRef.current = false
-      hasPlotRef.current = false
+    if (isInitializedRef.current && hasPlotRef.current && plotlyRef.current && plotRef.current) {
+      console.log(`[Chart ${config.title}] Transitioning trace types due to WebGL mode change`);
+      
+      // Transition trace types instead of re-initializing
+      const performTransition = async () => {
+        const shouldUseWebGL = isWebGLMode && !forceNonWebGL;
+        const transitioned = await transitionTraceTypes(plotlyRef.current!, plotRef.current, shouldUseWebGL);
+        
+        if (transitioned) {
+          console.log(`[Chart ${config.title}] Successfully transitioned to ${shouldUseWebGL ? 'WebGL' : 'SVG'} mode`);
+          // Ensure plots remain visible after transition
+          await ensurePlotVisibility(plotlyRef.current!, plotRef.current);
+        } else {
+          console.warn(`[Chart ${config.title}] Failed to transition trace types, forcing re-initialization`);
+          // Only force re-initialization if transition failed
+          isInitializedRef.current = false;
+          hasPlotRef.current = false;
+        }
+      };
+      
+      performTransition();
     }
-  }, [isWebGLMode, hasPlotRef, config.title])
+  }, [isWebGLMode, hasPlotRef, config.title, forceNonWebGL, plotlyRef, plotRef])
   
   // Register WebGL context when in WebGL mode and plot exists
   useEffect(() => {

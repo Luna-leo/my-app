@@ -422,3 +422,155 @@ export async function initializePlotSafely(
     return false;
   }
 }
+
+// Safely transition trace types between WebGL and SVG
+export async function transitionTraceTypes(
+  plotlyInstance: typeof import('plotly.js'),
+  plotElement: HTMLElement | null,
+  useWebGL: boolean
+): Promise<boolean> {
+  if (!plotlyInstance || !plotElement || !hasExistingPlot(plotElement)) return false;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const plotDiv = plotElement as any;
+    const currentTraces = plotDiv._fullData;
+    
+    if (!currentTraces || currentTraces.length === 0) {
+      console.warn('No traces found to transition');
+      return false;
+    }
+
+    // First, create full trace data with new types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const newTraces = currentTraces.map((trace: any) => {
+      if (trace.type === 'scatter' || trace.type === 'scattergl') {
+        const newType = useWebGL ? 'scattergl' : 'scatter';
+        // Create a complete copy of the trace with the new type
+        return {
+          ...trace,
+          type: newType,
+          visible: trace.visible !== false ? true : trace.visible,
+          opacity: trace.opacity !== undefined ? trace.opacity : 1,
+          // Ensure line and marker settings are preserved
+          line: {
+            ...trace.line,
+            width: trace.line?.width || 2,
+            color: trace.line?.color
+          },
+          marker: {
+            ...trace.marker,
+            size: trace.marker?.size || 6,
+            color: trace.marker?.color
+          }
+        };
+      }
+      return trace;
+    });
+
+    // Check if any traces changed
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tracesChanged = newTraces.some((newTrace: any, index: number) => 
+      newTrace.type !== currentTraces[index].type
+    );
+    
+    if (!tracesChanged) {
+      console.log('No traces need type transition');
+      return true;
+    }
+
+    console.log(`Transitioning traces to ${useWebGL ? 'WebGL' : 'SVG'} mode`);
+    
+    // Use react to completely rebuild the plot with new trace types
+    // This is more reliable than restyle for type changes
+    const currentLayout = plotDiv._fullLayout;
+    await plotlyInstance.react(plotElement, newTraces, currentLayout);
+    
+    // Double-check visibility after transition
+    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for render
+    await ensurePlotVisibility(plotlyInstance, plotElement);
+    
+    return true;
+  } catch (error) {
+    console.error('Error transitioning trace types:', error);
+    return false;
+  }
+}
+
+// Check and fix plot visibility
+export async function ensurePlotVisibility(
+  plotlyInstance: typeof import('plotly.js'),
+  plotElement: HTMLElement | null
+): Promise<void> {
+  if (!plotlyInstance || !plotElement || !hasExistingPlot(plotElement)) return;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const plotDiv = plotElement as any;
+    const traces = plotDiv._fullData;
+    
+    if (!traces || traces.length === 0) return;
+    
+    // Check if any traces are invisible
+    const invisibleTraces = traces
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((trace: any, index: number) => ({ trace, index }))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter(({ trace }: any) => trace.visible === false || trace.opacity === 0);
+    
+    if (invisibleTraces.length > 0) {
+      console.warn(`Found ${invisibleTraces.length} invisible traces, making them visible`);
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updates: any = {
+        visible: invisibleTraces.map(() => true),
+        opacity: invisibleTraces.map(() => 1)
+      };
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const indices = invisibleTraces.map(({ index }: any) => index);
+      await plotlyInstance.restyle(plotElement, updates, indices);
+    }
+    
+    // Check for CSS visibility issues in all relevant layers
+    const selectors = [
+      '.plot', '.scatterlayer', '.scatter', 
+      '.gl-container', '.gl2d', '.scattergl',
+      '.xy', '.trace', '.lines', '.points',
+      'svg', 'g.cartesianlayer', 'g.plot'
+    ];
+    
+    selectors.forEach(selector => {
+      const layers = plotElement.querySelectorAll(selector);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      layers.forEach((layer: any) => {
+        if (layer.style.visibility === 'hidden' || 
+            layer.style.display === 'none' || 
+            layer.style.opacity === '0' ||
+            layer.style.opacity === '') {
+          console.warn(`Found hidden ${selector} layer, making it visible`);
+          layer.style.visibility = 'visible';
+          layer.style.display = '';
+          layer.style.opacity = '1';
+        }
+      });
+    });
+    
+    // Force a redraw to ensure changes take effect
+    if (plotDiv._fullLayout && plotDiv._fullData) {
+      try {
+        await plotlyInstance.redraw(plotElement);
+      } catch (e) {
+        console.warn('Redraw failed, trying relayout', e);
+        // Try alternative method - relayout with current layout
+        try {
+          await plotlyInstance.relayout(plotElement, plotDiv._fullLayout);
+        } catch (e2) {
+          console.warn('Relayout also failed', e2);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error ensuring plot visibility:', error);
+  }
+}
