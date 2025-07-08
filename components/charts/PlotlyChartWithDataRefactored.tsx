@@ -65,6 +65,7 @@ function PlotlyChartWithDataRefactoredComponent({
   const { plotlyRef, hasPlotRef, chartState, initPlotly, cleanup, registerPlot } = usePlotlyInit()
   const isInitializedRef = useRef(false)
   const lastDataRef = useRef<string>('')
+  const lastConfigRef = useRef<string>('')
   
   // Build traces from plot data
   const buildTraces = useCallback(() => {
@@ -130,9 +131,26 @@ function PlotlyChartWithDataRefactoredComponent({
         return
       }
       
-      // Check if data has actually changed
+      // Check if data or config has actually changed
       const dataKey = JSON.stringify({ plotData, dataViewport })
-      if (dataKey === lastDataRef.current && isInitializedRef.current) {
+      const configKey = JSON.stringify({
+        xAxisParameter: config.xAxisParameter,
+        yAxisParameters: config.yAxisParameters,
+        selectedDataIds: config.selectedDataIds,
+        chartType: config.chartType
+      })
+      
+      // If config changed, force re-initialization
+      if (configKey !== lastConfigRef.current) {
+        lastConfigRef.current = configKey
+        isInitializedRef.current = false
+        hasPlotRef.current = false // Reset hasPlot flag
+        
+        // Clean up existing plot when config changes
+        if (plotRef.current) {
+          await cleanup(plotRef.current)
+        }
+      } else if (dataKey === lastDataRef.current && isInitializedRef.current) {
         return // No change, skip update
       }
       lastDataRef.current = dataKey
@@ -145,6 +163,13 @@ function PlotlyChartWithDataRefactoredComponent({
       
       // Build traces
       const traces = buildTraces()
+      
+      // Check if we have valid data to plot
+      const hasValidData = traces.some(trace => trace.x.length > 0 && trace.y.length > 0)
+      if (!hasValidData) {
+        console.warn('[PlotlyChartWithData] No valid data to plot, skipping chart creation')
+        return
+      }
       
       // Create layout
       const layout = buildPlotlyLayout({
@@ -168,7 +193,7 @@ function PlotlyChartWithDataRefactoredComponent({
       if (!currentPlotElement) return
       
       // Check if plot already exists
-      if (hasExistingPlot(currentPlotElement) && plotlyRef.current) {
+      if (hasExistingPlot(currentPlotElement) && plotlyRef.current && hasPlotRef.current) {
         // Update existing plot
         const updated = await updatePlotlyData(
           plotlyRef.current,
@@ -195,7 +220,7 @@ function PlotlyChartWithDataRefactoredComponent({
             registerPlot(currentPlotElement)
           }
         }
-      } else if (plotlyRef.current && !isInitializedRef.current) {
+      } else if (plotlyRef.current) {
         // Create new plot
         const plotlyConfig = { 
           ...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS,
@@ -226,17 +251,20 @@ function PlotlyChartWithDataRefactoredComponent({
     return () => {
       disposed = true
     }
-  }, [plotData, dataViewport, dimensions.width, dimensions.height, chartState.isPlotlyReady, initPlotly, buildTraces, registerPlot, config.xAxisParameter, dimensions.isReady, plotlyRef, hasPlotRef])
+  }, [plotData, dataViewport, dimensions.width, dimensions.height, chartState.isPlotlyReady, initPlotly, buildTraces, registerPlot, config, dimensions.isReady, plotlyRef, hasPlotRef, cleanup])
   
   // Handle resize
   useEffect(() => {
-    if (plotlyRef.current && dimensions.isReady && hasPlotRef.current) {
-      resizePlotlyChart(
-        plotlyRef.current,
-        plotRef.current,
-        dimensions.width,
-        dimensions.height
-      )
+    if (plotlyRef.current && dimensions.isReady && hasPlotRef.current && plotRef.current && isInitializedRef.current) {
+      // Only resize if plot actually exists and is initialized
+      if (hasExistingPlot(plotRef.current)) {
+        resizePlotlyChart(
+          plotlyRef.current,
+          plotRef.current,
+          dimensions.width,
+          dimensions.height
+        )
+      }
     }
   }, [dimensions, plotlyRef, hasPlotRef])
   

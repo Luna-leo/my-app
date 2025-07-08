@@ -127,6 +127,8 @@ export function buildPlotlyLayout(options: PlotlyLayoutOptions): Partial<Layout>
       },
     }),
     uirevision: 'true', // Preserve zoom/pan state
+    // WebGL optimizations
+    selectdirection: 'd' as const,
   };
 }
 
@@ -169,21 +171,30 @@ export function buildScatterTrace(options: ScatterTraceOptions) {
     markerSize = 6,
   } = options;
 
+  // Use regular scatter for empty data to avoid WebGL issues
+  const type = (x.length === 0 || y.length === 0) ? 'scatter' : 'scattergl';
+
   return {
     x,
     y,
-    type: 'scattergl' as const,
+    type: type as const,
     mode,
     name,
     hovertemplate,
     line: {
       color,
       width: mode === 'markers' ? 0 : lineWidth,
+      simplify: false, // Disable line simplification for better accuracy
     },
     marker: {
       color,
       size: mode === 'markers' ? markerSize : 0,
     },
+    // Add WebGL-specific optimizations
+    ...(type === 'scattergl' && {
+      selectedpoints: null,
+      cliponaxis: true,
+    }),
   };
 }
 
@@ -222,7 +233,23 @@ export async function tryCreatePlotlyChart(
   plotlyInstance: typeof import('plotly.js')
 ): Promise<boolean> {
   try {
-    await plotlyInstance.newPlot(plotElement, traces, layout, config);
+    // Validate traces have data
+    const validTraces = traces.filter(trace => 
+      trace.x && trace.y && trace.x.length > 0 && trace.y.length > 0
+    );
+    
+    if (validTraces.length === 0) {
+      console.warn('No valid traces with data to plot');
+      return false;
+    }
+    
+    // Set up WebGL-friendly config
+    const webglConfig = {
+      ...config,
+      plotGlPixelRatio: window.devicePixelRatio || 1,
+    };
+    
+    await plotlyInstance.newPlot(plotElement, validTraces, layout, webglConfig);
     return true;
   } catch (error) {
     console.error('Failed to create Plotly chart:', error);
@@ -242,7 +269,7 @@ export async function tryCreatePlotlyChart(
   }
 }
 
-// Resize handling
+// Resize handling with proper validation
 export async function resizePlotlyChart(
   plotlyInstance: typeof import('plotly.js'),
   plotElement: HTMLElement | null,
@@ -252,7 +279,14 @@ export async function resizePlotlyChart(
   if (!plotlyInstance || !plotElement || width <= 0 || height <= 0) return;
 
   try {
-    await plotlyInstance.relayout(plotElement, { width, height });
+    // Check if plot exists and is properly initialized
+    if (!hasExistingPlot(plotElement)) {
+      console.warn('Cannot resize: plot not properly initialized');
+      return;
+    }
+    
+    // Use Plots.resize instead of relayout for size changes
+    await plotlyInstance.Plots.resize(plotElement);
   } catch (error) {
     console.error('Error resizing Plotly chart:', error);
   }
@@ -271,7 +305,7 @@ export async function updatePlotlyData(
   try {
     // Check if plot exists
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const plotDiv = plotElement as any;
+    const plotDiv = plotElement as any;
     if (plotDiv._fullLayout) {
       // Update existing plot
       await plotlyInstance.react(plotElement, traces, layout || plotDiv._fullLayout);
@@ -310,4 +344,35 @@ export function isElementReady(element: HTMLElement | null): boolean {
   if (style.display === 'none' || style.visibility === 'hidden') return false;
   
   return true;
+}
+
+// Safe plot initialization with WebGL context management
+export async function initializePlotSafely(
+  plotElement: HTMLElement,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  traces: any[],
+  layout: Partial<Layout>,
+  config: Partial<Config>,
+  plotlyInstance: typeof import('plotly.js')
+): Promise<boolean> {
+  try {
+    // Add WebGL context attributes to prevent warnings
+    const enhancedConfig: Partial<Config> = {
+      ...config,
+      plotGlPixelRatio: 2, // Optimize for retina displays
+    };
+    
+    // Ensure layout has proper WebGL settings
+    const enhancedLayout: Partial<Layout> = {
+      ...layout,
+      // Disable features that might cause WebGL issues
+      hovermode: layout.hovermode || 'closest',
+    };
+    
+    await plotlyInstance.newPlot(plotElement, traces, enhancedLayout, enhancedConfig);
+    return true;
+  } catch (error) {
+    console.error('Failed to initialize plot safely:', error);
+    return false;
+  }
 }
