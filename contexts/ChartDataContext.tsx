@@ -12,6 +12,7 @@ import {
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
 import { timeSeriesCache, metadataCache, parameterCache, transformCache } from '@/lib/services/dataCache';
+import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig } from '@/lib/utils/chartDataSampling';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
@@ -29,7 +30,7 @@ interface ChartDataProviderState {
 }
 
 interface ChartDataContextType {
-  getChartData: (config: ChartConfiguration) => Promise<{
+  getChartData: (config: ChartConfiguration, enableSampling?: boolean) => Promise<{
     plotData: ChartPlotData | null;
     dataViewport: PlotlyViewport | null;
   }>;
@@ -40,12 +41,13 @@ interface ChartDataContextType {
 const ChartDataContext = createContext<ChartDataContextType | undefined>(undefined);
 
 // Generate a stable hash for chart configuration
-function getConfigHash(config: ChartConfiguration): string {
+function getConfigHash(config: ChartConfiguration, enableSampling: boolean = true): string {
   return JSON.stringify({
     xAxisParameter: config.xAxisParameter,
     yAxisParameters: config.yAxisParameters.sort(),
     selectedDataIds: config.selectedDataIds.sort(),
-    chartType: config.chartType
+    chartType: config.chartType,
+    sampled: enableSampling
   });
 }
 
@@ -157,8 +159,8 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     return parameterMap;
   };
 
-  const getChartData = async (config: ChartConfiguration) => {
-    const configHash = getConfigHash(config);
+  const getChartData = async (config: ChartConfiguration, enableSampling: boolean = true) => {
+    const configHash = getConfigHash(config, enableSampling);
     
     // Check if we already have transformed data for this configuration
     const cached = state.chartDataCache.get(configHash);
@@ -199,13 +201,21 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       
       const parameterInfoMap = await fetchParameters(parameterIds);
 
+      // Apply sampling if enabled and data is large
+      let processedTimeSeries = rawData.timeSeries;
+      
+      if (enableSampling) {
+        const samplingConfig = getProgressiveSamplingConfig(rawData.timeSeries.length);
+        processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig);
+      }
+
       // Transform data based on X-axis type
       let chartData: ChartPlotData;
 
       if (config.xAxisParameter === 'timestamp') {
         // Time-based chart
         const timeChartData = await transformDataForChart(
-          rawData.timeSeries,
+          processedTimeSeries,
           config.yAxisParameters,
           parameterInfoMap,
           rawData.metadata
@@ -242,7 +252,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       } else {
         // XY chart
         const xyData = await transformDataForXYChart(
-          rawData.timeSeries,
+          processedTimeSeries,
           config.xAxisParameter,
           config.yAxisParameters,
           parameterInfoMap,
