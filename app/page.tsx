@@ -116,14 +116,14 @@ export default function Home() {
         </div>
         
         {charts.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {mounted && charts.map((chart) => {
               const ChartComponent = getDataChartComponent();
               return (
                 <ChartComponent
                   key={chart.id}
                   config={chart}
-                  aspectRatio={2}
+                  aspectRatio={1.5}
                   className="w-full"
                   onEdit={() => handleEditChart(chart.id)}
                   onDuplicate={() => handleDuplicateChart(chart.id)}

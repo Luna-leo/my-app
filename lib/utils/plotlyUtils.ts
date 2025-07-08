@@ -157,6 +157,7 @@ export interface ScatterTraceOptions {
   hovertemplate?: string;
   lineWidth?: number;
   markerSize?: number;
+  forceNonWebGL?: boolean; // Force non-WebGL rendering
 }
 
 export function buildScatterTrace(options: ScatterTraceOptions) {
@@ -169,15 +170,17 @@ export function buildScatterTrace(options: ScatterTraceOptions) {
     hovertemplate,
     lineWidth = 2,
     markerSize = 6,
+    forceNonWebGL = false,
   } = options;
 
-  // Use regular scatter for empty data to avoid WebGL issues
-  const type = (x.length === 0 || y.length === 0) ? 'scatter' : 'scattergl';
+  // Always use regular scatter if no data or forced
+  const hasData = x && y && x.length > 0 && y.length > 0;
+  const type = (!hasData || forceNonWebGL) ? 'scatter' : 'scattergl';
 
   return {
     x,
     y,
-    type: type as const,
+    type: type as 'scatter' | 'scattergl',
     mode,
     name,
     hovertemplate,
@@ -233,26 +236,66 @@ export async function tryCreatePlotlyChart(
   plotlyInstance: typeof import('plotly.js')
 ): Promise<boolean> {
   try {
-    // Validate traces have data
-    const validTraces = traces.filter(trace => 
-      trace.x && trace.y && trace.x.length > 0 && trace.y.length > 0
-    );
+    // Validate element
+    if (!plotElement || !plotlyInstance) {
+      console.error('Invalid plot element or Plotly instance');
+      return false;
+    }
+    
+    // Validate and filter traces
+    const validTraces = traces.filter(trace => {
+      // Check basic requirements
+      if (!trace || typeof trace !== 'object') return false;
+      
+      // Check data arrays
+      const hasValidX = Array.isArray(trace.x) && trace.x.length > 0;
+      const hasValidY = Array.isArray(trace.y) && trace.y.length > 0;
+      
+      return hasValidX && hasValidY;
+    });
     
     if (validTraces.length === 0) {
       console.warn('No valid traces with data to plot');
       return false;
     }
     
-    // Set up WebGL-friendly config
-    const webglConfig = {
+    // Count WebGL traces
+    const webglTraceCount = validTraces.filter(t => t.type === 'scattergl').length;
+    if (webglTraceCount > 0) {
+      console.log(`Creating chart with ${webglTraceCount} WebGL traces`);
+    }
+    
+    // Additional check: ensure all traces have actual data points
+    const allTracesHaveData = validTraces.every(trace => 
+      trace.x.length > 0 && trace.y.length > 0
+    );
+    
+    if (!allTracesHaveData) {
+      console.warn('Some traces have no data points');
+      return false;
+    }
+    
+    // Set up config based on trace type
+    const hasWebGL = validTraces.some(t => t.type === 'scattergl');
+    const plotConfig = {
       ...config,
-      plotGlPixelRatio: window.devicePixelRatio || 1,
+      ...(hasWebGL && {
+        plotGlPixelRatio: window.devicePixelRatio || 1,
+      }),
     };
     
-    await plotlyInstance.newPlot(plotElement, validTraces, layout, webglConfig);
+    await plotlyInstance.newPlot(plotElement, validTraces, layout, plotConfig);
     return true;
   } catch (error) {
     console.error('Failed to create Plotly chart:', error);
+    
+    // Check if it's a WebGL context error
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('WebGL') || 
+        errorMessage.includes('context') ||
+        errorMessage.includes('gl')) {
+      console.warn('WebGL context error detected, falling back to non-WebGL');
+    }
     
     // Try fallback without WebGL
     try {
@@ -260,6 +303,8 @@ export async function tryCreatePlotlyChart(
         ...trace,
         type: trace.type === 'scattergl' ? 'scatter' : trace.type,
       }));
+      
+      console.warn('Falling back to non-WebGL rendering');
       await plotlyInstance.newPlot(plotElement, fallbackTraces, layout, config);
       return true;
     } catch (fallbackError) {
@@ -345,6 +390,7 @@ export function isElementReady(element: HTMLElement | null): boolean {
   
   return true;
 }
+
 
 // Safe plot initialization with WebGL context management
 export async function initializePlotSafely(

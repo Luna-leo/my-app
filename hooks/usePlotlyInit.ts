@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { PlotlyChartState } from '@/lib/types/plotly';
 import { CHART_DEFAULTS } from '@/lib/constants/plotlyConfig';
-import { webGLContextManager, generateContextId } from '@/lib/utils/webglContextManager';
+// Removed webGLContextManager import - it will be used at the chart level instead
 
 export function usePlotlyInit() {
   const plotlyRef = useRef<typeof import('plotly.js-gl2d-dist')>(null);
   const hasPlotRef = useRef(false);
-  const contextIdRef = useRef<string | null>(null);
   const [chartState, setChartState] = useState<PlotlyChartState>({
     isPlotlyReady: false,
     hasPlot: false,
@@ -23,11 +22,6 @@ export function usePlotlyInit() {
     }
 
     try {
-      // Generate context ID if not exists
-      if (!contextIdRef.current) {
-        contextIdRef.current = generateContextId();
-      }
-      
       // Wait a bit to ensure DOM is ready
       await new Promise(resolve => setTimeout(resolve, CHART_DEFAULTS.INIT_DELAY_MS));
 
@@ -50,30 +44,28 @@ export function usePlotlyInit() {
   }, []);
 
   const cleanup = useCallback(async (plotElement: HTMLElement | null) => {
-    // Clean up via context manager
-    if (contextIdRef.current) {
-      await webGLContextManager.removeContext(contextIdRef.current);
-      contextIdRef.current = null;
+    // Clean up Plotly chart if exists
+    if (plotlyRef.current && plotElement) {
+      try {
+        await plotlyRef.current.purge(plotElement);
+      } catch (error) {
+        console.warn('Failed to purge Plotly chart:', error);
+      }
     }
     
     hasPlotRef.current = false;
     setChartState(prev => ({ ...prev, hasPlot: false }));
   }, []);
 
-  // Register/update context when plot is created
+  // Register plot creation
   const registerPlot = useCallback((plotElement: HTMLElement) => {
-    if (contextIdRef.current && plotlyRef.current) {
-      webGLContextManager.registerContext(contextIdRef.current, plotElement, plotlyRef.current);
-    }
+    // Just mark that we have a plot
+    hasPlotRef.current = true;
   }, []);
   
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Clean up context
-      if (contextIdRef.current) {
-        webGLContextManager.removeContext(contextIdRef.current);
-      }
       // Reset state
       hasPlotRef.current = false;
       setChartState({
