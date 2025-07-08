@@ -7,7 +7,7 @@ interface CacheEntry<T> {
 }
 
 interface DataCacheKey {
-  type: 'timeseries' | 'metadata' | 'parameter';
+  type: 'timeseries' | 'metadata' | 'parameter' | 'transform';
   id: string | number;
 }
 
@@ -181,5 +181,18 @@ export const parameterCache = {
   },
   has: (parameterId: string): boolean => {
     return dataCache.has({ type: 'parameter', id: parameterId });
+  }
+};
+
+// Cache for transformed data
+export const transformCache = {
+  get: <T>(key: string): T | null => {
+    return dataCache.get<T>({ type: 'transform', id: key });
+  },
+  set: <T>(key: string, data: T, ttl?: number): void => {
+    dataCache.set({ type: 'transform', id: key }, data, ttl);
+  },
+  has: (key: string): boolean => {
+    return dataCache.has({ type: 'transform', id: key });
   }
 };

@@ -10,6 +10,7 @@ import {
 } from '@/lib/utils/chartDataUtils';
 import { ChartPlotData, ChartLoadingState, PlotlyViewport } from '@/lib/types/plotly';
 import { ERROR_MESSAGES } from '@/lib/constants/plotlyConfig';
+import { timeSeriesCache, metadataCache, parameterCache } from '@/lib/services/dataCache';
 
 export function useChartData(config: ChartConfiguration) {
   const [plotData, setPlotData] = useState<ChartPlotData | null>(null);
@@ -25,17 +26,32 @@ export function useChartData(config: ChartConfiguration) {
       try {
         setLoadingState({ loading: true, progress: 10, error: null });
 
-        // Load all time series data for selected metadata
+        // Load all time series data for selected metadata with caching
         const dataArrays: TimeSeriesData[][] = [];
         const totalSteps = config.selectedDataIds.length + 3;
         let currentStep = 0;
 
-        for (const metadataId of config.selectedDataIds) {
+        // Batch check cache and fetch missing data
+        const timeSeriesPromises = config.selectedDataIds.map(async (metadataId) => {
+          // Check cache first
+          const cachedData = timeSeriesCache.get(metadataId);
+          if (cachedData) {
+            return { metadataId, data: cachedData, fromCache: true };
+          }
+          
+          // Fetch from DB if not cached
           const data = await db.getTimeSeriesData(metadataId);
+          // Cache the fetched data
+          timeSeriesCache.set(metadataId, data);
+          return { metadataId, data, fromCache: false };
+        });
+
+        const results = await Promise.all(timeSeriesPromises);
+        results.forEach(({ data }) => {
           dataArrays.push(data);
           currentStep++;
           setLoadingState(prev => ({ ...prev, progress: (currentStep / totalSteps) * 100 }));
-        }
+        });
 
         // Merge all data
         const mergedData = mergeTimeSeriesData(dataArrays);
@@ -44,10 +60,25 @@ export function useChartData(config: ChartConfiguration) {
           return;
         }
 
-        // Load metadata info
+        // Load metadata info with caching
         const metadataMap = new Map<number, { label?: string; plant: string; machineNo: string }>();
-        for (const metadataId of config.selectedDataIds) {
+        const metadataPromises = config.selectedDataIds.map(async (metadataId) => {
+          // Check cache first
+          const cached = metadataCache.get(metadataId);
+          if (cached) {
+            return { metadataId, metadata: cached };
+          }
+          
+          // Fetch from DB if not cached
           const metadata = await db.metadata.get(metadataId);
+          if (metadata) {
+            metadataCache.set(metadataId, metadata);
+          }
+          return { metadataId, metadata };
+        });
+
+        const metadataResults = await Promise.all(metadataPromises);
+        metadataResults.forEach(({ metadataId, metadata }) => {
           if (metadata) {
             metadataMap.set(metadataId, {
               label: metadata.label,
@@ -55,7 +86,7 @@ export function useChartData(config: ChartConfiguration) {
               machineNo: metadata.machineNo,
             });
           }
-        }
+        });
 
         // Load parameter info
         const parameterIds = [
@@ -64,16 +95,31 @@ export function useChartData(config: ChartConfiguration) {
         ];
 
         const parameterInfoMap = new Map<string, ParameterInfo>();
-        for (const parameterId of parameterIds) {
+        const parameterPromises = parameterIds.map(async (parameterId) => {
+          // Check cache first
+          const cached = parameterCache.get(parameterId);
+          if (cached) {
+            return { parameterId, paramInfo: cached };
+          }
+          
+          // Fetch from DB if not cached
           const paramInfo = await db.parameters
             .where('parameterId')
             .equals(parameterId)
             .first();
+          
+          if (paramInfo) {
+            parameterCache.set(parameterId, paramInfo);
+          }
+          return { parameterId, paramInfo };
+        });
 
+        const paramResults = await Promise.all(parameterPromises);
+        paramResults.forEach(({ parameterId, paramInfo }) => {
           if (paramInfo) {
             parameterInfoMap.set(parameterId, paramInfo);
           }
-        }
+        });
         currentStep++;
         setLoadingState(prev => ({ ...prev, progress: (currentStep / totalSteps) * 100 }));
 

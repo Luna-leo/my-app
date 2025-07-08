@@ -2,7 +2,7 @@
 
 import { ComponentType } from 'react'
 import { PlotlyChartRefactored } from './PlotlyChartRefactored'
-import { PlotlyChartWithDataRefactored } from './PlotlyChartWithDataRefactored'
+import { PlotlyChartWithDataOptimized } from './PlotlyChartWithDataOptimized'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 
@@ -43,7 +43,8 @@ export function getBasicChartComponent(): ComponentType<BasicChartProps> {
 
 // Factory function to get the appropriate data-driven chart component
 export function getDataChartComponent(): ComponentType<DataChartProps> {
-  return PlotlyChartWithDataRefactored;
+  // Use optimized version with shared data provider
+  return PlotlyChartWithDataOptimized;
 }
 
 // Hook to get current chart engine (client-side only)
