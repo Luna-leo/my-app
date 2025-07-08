@@ -134,7 +134,7 @@ function PlotlyChartWithDataRefactoredComponent({
     
     // Filter out null traces
     return traces.filter(trace => trace !== null)
-  }, [plotData, config.xAxisParameter, config.chartType, isWebGLMode, forceNonWebGL])
+  }, [plotData, config.xAxisParameter, config.chartType, forceNonWebGL])
   
   // Initialize or update Plotly chart
   useEffect(() => {
@@ -155,13 +155,15 @@ function PlotlyChartWithDataRefactoredComponent({
       }
       
       // Additional validation for plot element
-      const rect = plotRef.current.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) {
-        console.warn('[PlotlyChartWithData] Plot element has no size, retrying...')
-        setTimeout(() => {
-          if (!disposed) setupChart()
-        }, 100)
-        return
+      if (plotRef.current) {
+        const rect = plotRef.current.getBoundingClientRect()
+        if (rect.width <= 0 || rect.height <= 0) {
+          console.warn('[PlotlyChartWithData] Plot element has no size, retrying...')
+          setTimeout(() => {
+            if (!disposed) setupChart()
+          }, 100)
+          return
+        }
       }
       
       // Check if data or config has actually changed

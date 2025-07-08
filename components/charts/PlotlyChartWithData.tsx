@@ -434,17 +434,18 @@ export function PlotlyChartWithData({
     return () => {
       disposed = true
       if (timeoutId) clearTimeout(timeoutId)
-      const plot = plotRef.current
-      const plotly = plotlyRef.current
-      const hasPlot = hasPlotRef.current
-      if (plotly && plot && hasPlot) {
-        try {
-          plotly.purge(plot)
-          hasPlotRef.current = false
-        } catch (e) {
-          console.warn('Error purging plot on cleanup:', e)
+      // Use cleanup function from effect body to avoid stale closure
+      const cleanupPlot = () => {
+        if (plotlyRef.current && plotRef.current && hasPlotRef.current) {
+          try {
+            plotlyRef.current.purge(plotRef.current)
+            hasPlotRef.current = false
+          } catch (e) {
+            console.warn('Error purging plot on cleanup:', e)
+          }
         }
       }
+      cleanupPlot()
     }
   }, [plotData, dataViewport, config.chartType, config.xAxisParameter, isPlotReady, dimensions.width, dimensions.height])
 
