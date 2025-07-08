@@ -24,7 +24,7 @@ class WebGLContextManager extends EventEmitter {
   private activeContexts: Map<string, ContextInfo> = new Map();
   private contextQueue: ContextRequest[] = [];
   
-  private readonly MAX_CONTEXTS = 10; // Optimized for 16 charts display with safety margin
+  private readonly MAX_CONTEXTS = 16; // Support up to 16 charts display
   private readonly VIEWPORT_PRIORITY = 1;
   private readonly NORMAL_PRIORITY = 0;
   
@@ -82,6 +82,8 @@ class WebGLContextManager extends EventEmitter {
   ): void {
     const now = Date.now();
     
+    console.log(`[WebGLContextManager] Registering context ${id} with ${dataPoints} data points (active: ${this.activeContexts.size}/${this.MAX_CONTEXTS})`);
+    
     this.activeContexts.set(id, {
       element,
       plotlyInstance,
@@ -117,18 +119,19 @@ class WebGLContextManager extends EventEmitter {
   async removeContext(id: string): Promise<void> {
     const context = this.activeContexts.get(id);
     if (context) {
+      console.log(`[WebGLContextManager] Removing context ${id} (active contexts: ${this.activeContexts.size})`);
       try {
-        // Purge the Plotly instance to free WebGL resources
-        if (context.plotlyInstance && context.element) {
-          await context.plotlyInstance.purge(context.element);
-        }
+        // Note: We're not calling purge here because it removes the entire plot
+        // The chart component will handle switching to non-WebGL mode
+        console.log(`[WebGLContextManager] Skipping purge to preserve plot, chart will fallback to SVG mode`);
       } catch (error) {
-        console.warn(`Failed to purge context ${id}:`, error);
+        console.warn(`Failed to handle context removal ${id}:`, error);
       }
       this.activeContexts.delete(id);
       
       // Emit eviction event
       this.emit('evict', id);
+      console.log(`[WebGLContextManager] Emitted evict event for ${id} (remaining contexts: ${this.activeContexts.size})`);
     }
     
     // Process queue
@@ -138,6 +141,8 @@ class WebGLContextManager extends EventEmitter {
   // Evict the least recently used context with smart priority
   evictLRU(): string | null {
     if (this.activeContexts.size === 0) return null;
+    
+    console.log(`[WebGLContextManager] Running LRU eviction (active contexts: ${this.activeContexts.size}/${this.MAX_CONTEXTS})`);
     
     let evictId: string | null = null;
     let lowestScore = Infinity;
@@ -160,6 +165,7 @@ class WebGLContextManager extends EventEmitter {
     });
     
     if (evictId) {
+      console.log(`[WebGLContextManager] Evicting context ${evictId} with score ${lowestScore}`);
       this.removeContext(evictId);
     }
     

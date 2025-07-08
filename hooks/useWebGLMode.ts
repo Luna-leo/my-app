@@ -121,6 +121,7 @@ export function useWebGLMode(options: UseWebGLModeOptions) {
   useEffect(() => {
     const handleEviction = (evictedId: string) => {
       if (evictedId === chartId) {
+        console.log(`[useWebGLMode] Chart ${chartId} was evicted, switching to non-WebGL mode`);
         setState(prev => ({ ...prev, isWebGLMode: false }));
       }
     };

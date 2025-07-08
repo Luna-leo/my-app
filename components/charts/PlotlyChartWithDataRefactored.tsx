@@ -246,6 +246,7 @@ function PlotlyChartWithDataRefactoredComponent({
       
       // Check if plot already exists
       if (hasExistingPlot(currentPlotElement) && plotlyRef.current && hasPlotRef.current) {
+        console.log(`[Chart ${config.title}] Updating existing plot`);
         // Update existing plot
         const updated = await updatePlotlyData(
           plotlyRef.current,
@@ -254,6 +255,7 @@ function PlotlyChartWithDataRefactoredComponent({
           layout
         )
         if (!updated) {
+          console.log(`[Chart ${config.title}] Update failed, creating new plot`);
           // Fallback to creating new plot
           const plotlyConfig = { 
             ...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS,
@@ -273,6 +275,7 @@ function PlotlyChartWithDataRefactoredComponent({
           }
         }
       } else if (plotlyRef.current) {
+        console.log(`[Chart ${config.title}] Creating new plot with ${validTraces.length} traces`);
         // Create new plot
         const plotlyConfig = { 
           ...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS,
@@ -287,6 +290,7 @@ function PlotlyChartWithDataRefactoredComponent({
           plotlyRef.current
         )
         if (plotCreated) {
+          console.log(`[Chart ${config.title}] Plot created successfully`);
           hasPlotRef.current = true
           isInitializedRef.current = true
           registerPlot(currentPlotElement)
@@ -332,12 +336,14 @@ function PlotlyChartWithDataRefactoredComponent({
   
   // Handle WebGL mode changes by forcing re-render
   useEffect(() => {
+    console.log(`[Chart ${config.title}] WebGL mode changed to: ${isWebGLMode}`);
     if (isInitializedRef.current && hasPlotRef.current) {
+      console.log(`[Chart ${config.title}] Forcing re-initialization due to WebGL mode change`);
       // Force re-initialization when WebGL mode changes
       isInitializedRef.current = false
       hasPlotRef.current = false
     }
-  }, [isWebGLMode, hasPlotRef])
+  }, [isWebGLMode, hasPlotRef, config.title])
   
   // Register WebGL context when in WebGL mode and plot exists
   useEffect(() => {
@@ -348,6 +354,7 @@ function PlotlyChartWithDataRefactoredComponent({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const hasWebGLTraces = (plotRef.current as any).data?.some((trace: any) => trace.type === 'scattergl')
       if (hasWebGLTraces) {
+        console.log(`[Chart ${config.title}] Registering WebGL context with ${totalDataPoints} data points`);
         webGLContextManager.registerContext(
           chartId,
           plotRef.current,
@@ -359,9 +366,10 @@ function PlotlyChartWithDataRefactoredComponent({
     
     return () => {
       // Clean up WebGL context on unmount
+      console.log(`[Chart ${config.title}] Removing WebGL context on cleanup`);
       webGLContextManager.removeContext(chartId)
     }
-  }, [isWebGLMode, hasPlotRef, plotlyRef, forceNonWebGL, totalDataPoints])
+  }, [isWebGLMode, hasPlotRef, plotlyRef, forceNonWebGL, totalDataPoints, config.title])
   
   // Set element ref for intersection observer
   useEffect(() => {
