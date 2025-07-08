@@ -5,9 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Combobox, MultiCombobox } from '@/components/ui/combobox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { db } from '@/lib/db';
 import { ParameterInfo } from '@/lib/db/schema';
@@ -118,13 +116,6 @@ export function CreateChartDialog({
     }
   }, [open, selectedDataIds, editMode, chartToEdit]);
 
-  const handleYAxisToggle = (parameterId: string, checked: boolean) => {
-    if (checked) {
-      setYAxisParameters([...yAxisParameters, parameterId]);
-    } else {
-      setYAxisParameters(yAxisParameters.filter(id => id !== parameterId));
-    }
-  };
 
   const handleCreate = () => {
     if (editMode && chartToEdit && onUpdateChart) {
@@ -227,19 +218,21 @@ export function CreateChartDialog({
             <TabsContent value="xaxis" className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="x-axis">X-Axis Parameter</Label>
-                <Select value={xAxisParameter} onValueChange={setXAxisParameter}>
-                  <SelectTrigger id="x-axis">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="timestamp">Timestamp</SelectItem>
-                    {availableParameters.map((param) => (
-                      <SelectItem key={param.parameterId} value={param.parameterId}>
-                        {param.parameterName} ({param.unit})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  options={[
+                    { value: 'timestamp', label: 'Timestamp' },
+                    ...availableParameters.map((param) => ({
+                      value: param.parameterId,
+                      label: param.parameterName,
+                      description: `ID: ${param.parameterId} | Unit: ${param.unit}`
+                    }))
+                  ]}
+                  value={xAxisParameter}
+                  onChange={setXAxisParameter}
+                  placeholder="Select X-axis parameter..."
+                  searchPlaceholder="Search parameters..."
+                  emptyMessage="No parameters found."
+                />
               </div>
 
               {xAxisParameter !== 'timestamp' && (
@@ -257,46 +250,30 @@ export function CreateChartDialog({
                 </p>
               </div>
 
-              <ScrollArea className="h-[300px] border rounded-md p-4">
-                {loading ? (
-                  <div className="text-center py-8 text-gray-500">
-                    Loading parameters...
-                  </div>
-                ) : availableParameters.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    No parameters available
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {availableParameters.map((param) => (
-                      <div 
-                        key={param.parameterId}
-                        className="flex items-center space-x-3 p-2 rounded hover:bg-gray-50"
-                      >
-                        <Checkbox
-                          id={`param-${param.parameterId}`}
-                          checked={yAxisParameters.includes(param.parameterId)}
-                          onCheckedChange={(checked) => 
-                            handleYAxisToggle(param.parameterId, checked as boolean)
-                          }
-                          disabled={param.parameterId === xAxisParameter}
-                        />
-                        <Label 
-                          htmlFor={`param-${param.parameterId}`}
-                          className={`flex-1 cursor-pointer ${
-                            param.parameterId === xAxisParameter ? 'text-gray-400' : ''
-                          }`}
-                        >
-                          <div className="font-medium">{param.parameterName}</div>
-                          <div className="text-xs text-gray-600">
-                            ID: {param.parameterId} | Unit: {param.unit}
-                          </div>
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
+              {loading ? (
+                <div className="text-center py-8 text-gray-500">
+                  Loading parameters...
+                </div>
+              ) : availableParameters.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No parameters available
+                </div>
+              ) : (
+                <MultiCombobox
+                  options={availableParameters
+                    .filter(param => param.parameterId !== xAxisParameter)
+                    .map((param) => ({
+                      value: param.parameterId,
+                      label: param.parameterName,
+                      description: `ID: ${param.parameterId} | Unit: ${param.unit}`
+                    }))}
+                  value={yAxisParameters}
+                  onChange={setYAxisParameters}
+                  placeholder="Select Y-axis parameters..."
+                  searchPlaceholder="Search parameters..."
+                  emptyMessage="No parameters found."
+                />
+              )}
 
               {yAxisParameters.length > 0 && (
                 <div className="text-sm text-gray-600 bg-green-50 p-3 rounded-md">
