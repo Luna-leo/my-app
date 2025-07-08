@@ -36,3 +36,31 @@ export interface CsvHeader {
   parameterName: string;
   unit: string;
 }
+
+export interface ChartConfiguration {
+  id?: string;
+  workspaceId: string;
+  title: string;
+  chartType: 'line' | 'scatter';
+  xAxisParameter: string;
+  yAxisParameters: string[];
+  selectedDataIds: number[];
+  displaySettings?: {
+    colors?: string[];
+    lineStyles?: string[];
+    markerStyles?: string[];
+    yAxisRange?: [number, number];
+    xAxisRange?: [number, number];
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Workspace {
+  id?: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}

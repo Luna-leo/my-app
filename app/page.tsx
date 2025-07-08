@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { CsvImportDialog } from '@/components/csv-import/CsvImportDialog'
 import { DataSelectionDialog } from '@/components/data-selection/DataSelectionDialog'
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
-import { Upload, Database, LineChart, FileSearch } from 'lucide-react'
+import { Upload, Database, LineChart, Download, FolderOpen, FileSearch } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +18,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { chartConfigService } from '@/lib/services/chartConfigurationService'
+import { ChartConfiguration as DBChartConfiguration } from '@/lib/db/schema'
 
 export default function Home() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -32,10 +34,36 @@ export default function Home() {
   const [editingChart, setEditingChart] = useState<(ChartConfiguration & { id: string }) | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [workspaceId, setWorkspaceId] = useState<string>('')
+  const [loading, setLoading] = useState(true)
   
   useEffect(() => {
     setMounted(true)
+    loadWorkspaceAndCharts()
   }, [])
+
+  const loadWorkspaceAndCharts = async () => {
+    try {
+      setLoading(true)
+      const workspace = await chartConfigService.initializeWorkspace()
+      setWorkspaceId(workspace.id!)
+      
+      const savedCharts = await chartConfigService.loadChartConfigurations(workspace.id)
+      const convertedCharts = savedCharts.map(chart => ({
+        id: chart.id!,
+        title: chart.title,
+        chartType: chart.chartType,
+        xAxisParameter: chart.xAxisParameter,
+        yAxisParameters: chart.yAxisParameters,
+        selectedDataIds: chart.selectedDataIds
+      }))
+      setCharts(convertedCharts)
+    } catch (error) {
+      console.error('Failed to load charts:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
 
   const handleImportComplete = () => {
@@ -43,7 +71,7 @@ export default function Home() {
     console.log('CSV import completed successfully')
   }
 
-  const handleCreateChart = (config: ChartConfiguration) => {
+  const handleCreateChart = async (config: ChartConfiguration) => {
     const newChart = {
       ...config,
       id: Date.now().toString(),
@@ -51,6 +79,15 @@ export default function Home() {
     }
     setCharts([...charts, newChart])
     setCreateChartOpen(false)
+    
+    // Save to database
+    const dbConfig: DBChartConfiguration = {
+      ...newChart,
+      workspaceId,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+    await chartConfigService.saveChartConfiguration(dbConfig)
   }
 
   const handleEditChart = (chartId: string) => {
@@ -61,10 +98,19 @@ export default function Home() {
     }
   }
   
-  const handleUpdateChart = (updatedChart: ChartConfiguration & { id: string }) => {
+  const handleUpdateChart = async (updatedChart: ChartConfiguration & { id: string }) => {
     setCharts(charts.map(c => c.id === updatedChart.id ? updatedChart : c))
     setEditingChart(null)
     setEditDialogOpen(false)
+    
+    // Save to database
+    const dbConfig: DBChartConfiguration = {
+      ...updatedChart,
+      workspaceId,
+      createdAt: new Date(), // This will be overwritten by the service if it exists
+      updatedAt: new Date()
+    }
+    await chartConfigService.saveChartConfigurationDebounced(dbConfig)
   }
 
   const handleDuplicateChart = (chartId: string) => {
@@ -83,11 +129,65 @@ export default function Home() {
     setDeleteConfirmation({ open: true, chartId })
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteConfirmation.chartId) {
       setCharts(charts.filter(c => c.id !== deleteConfirmation.chartId))
+      await chartConfigService.deleteChartConfiguration(deleteConfirmation.chartId)
     }
     setDeleteConfirmation({ open: false, chartId: null })
+  }
+
+  const handleExportWorkspace = async () => {
+    try {
+      const jsonData = await chartConfigService.exportWorkspace(workspaceId)
+      const blob = new Blob([jsonData], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `workspace-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Failed to export workspace:', error)
+    }
+  }
+
+  const handleImportWorkspace = async () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      
+      try {
+        const text = await file.text()
+        const { workspace, charts: importedCharts } = await chartConfigService.importWorkspace(text)
+        
+        // Switch to the imported workspace
+        await chartConfigService.switchWorkspace(workspace.id!)
+        setWorkspaceId(workspace.id!)
+        
+        // Convert and set the imported charts
+        const convertedCharts = importedCharts.map(chart => ({
+          id: chart.id!,
+          title: chart.title,
+          chartType: chart.chartType,
+          xAxisParameter: chart.xAxisParameter,
+          yAxisParameters: chart.yAxisParameters,
+          selectedDataIds: chart.selectedDataIds
+        }))
+        setCharts(convertedCharts)
+      } catch (error) {
+        console.error('Failed to import workspace:', error)
+        alert('Failed to import workspace. Please check the file format.')
+      }
+    }
+    
+    input.click()
   }
 
   return (
@@ -112,10 +212,32 @@ export default function Home() {
               <LineChart className="mr-2 h-4 w-4" />
               Create Chart
             </Button>
+            <Button
+              onClick={handleExportWorkspace}
+              variant="outline"
+              disabled={charts.length === 0}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+            <Button
+              onClick={handleImportWorkspace}
+              variant="outline"
+            >
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Import
+            </Button>
           </div>
         </div>
         
-        {charts.length > 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading charts...</p>
+            </div>
+          </div>
+        ) : charts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {mounted && charts.map((chart) => {
               const ChartComponent = getDataChartComponent();

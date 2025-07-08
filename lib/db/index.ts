@@ -1,10 +1,12 @@
 import Dexie, { Table } from 'dexie';
-import { Metadata, ParameterInfo, TimeSeriesData } from './schema';
+import { Metadata, ParameterInfo, TimeSeriesData, ChartConfiguration, Workspace } from './schema';
 
 export class AppDatabase extends Dexie {
   metadata!: Table<Metadata>;
   parameters!: Table<ParameterInfo>;
   timeSeries!: Table<TimeSeriesData>;
+  chartConfigurations!: Table<ChartConfiguration>;
+  workspaces!: Table<Workspace>;
 
   constructor() {
     super('GraphDataDB');
@@ -14,6 +16,14 @@ export class AppDatabase extends Dexie {
       parameters: '++id, parameterId, [plant+machineNo], plant, machineNo',
       timeSeries: '++id, metadataId, timestamp'
     });
+
+    this.version(2).stores({
+      metadata: '++id, plant, machineNo, importedAt',
+      parameters: '++id, parameterId, [plant+machineNo], plant, machineNo',
+      timeSeries: '++id, metadataId, timestamp',
+      chartConfigurations: '++id, workspaceId, createdAt, updatedAt',
+      workspaces: '++id, name, isActive, createdAt'
+    });
   }
 
   async clearAllData() {
@@ -21,6 +31,11 @@ export class AppDatabase extends Dexie {
       await this.metadata.clear();
       await this.parameters.clear();
       await this.timeSeries.clear();
+    });
+    
+    await this.transaction('rw', this.chartConfigurations, this.workspaces, async () => {
+      await this.chartConfigurations.clear();
+      await this.workspaces.clear();
     });
   }
 
