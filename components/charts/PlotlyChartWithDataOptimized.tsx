@@ -66,7 +66,7 @@ function PlotlyChartWithDataOptimizedComponent({
   })
   
   // Add state for sampling control
-  const [enableSampling, setEnableSampling] = useState(true)
+  const [enableSampling] = useState(true)
   const { plotData, dataViewport, loadingState } = useChartData(config, enableSampling)
   const { plotlyRef, hasPlotRef, chartState, initPlotly, cleanup, registerPlot } = usePlotlyInit()
   const isInitializedRef = useRef(false)

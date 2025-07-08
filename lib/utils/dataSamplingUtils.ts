@@ -6,7 +6,7 @@
 export interface DataPoint {
   x: number | Date;
   y: number;
-  [key: string]: any; // Allow additional properties
+  // Remove index signature to allow extending with any property type
 }
 
 export interface SamplingOptions {
@@ -83,7 +83,6 @@ export function lttbSample<T extends DataPoint>(
     let maxArea = -1;
     let selectedIndex = bucketStart;
     const prevX = toNumber(data[prevSelectedIndex].x);
-    const prevY = data[prevSelectedIndex].y;
 
     for (let j = bucketStart; j < Math.min(bucketEnd, data.length); j++) {
       const currX = toNumber(data[j].x);
@@ -92,7 +91,7 @@ export function lttbSample<T extends DataPoint>(
       // Calculate triangle area (without the 0.5 factor as we only need relative values)
       const area = Math.abs(
         (prevX - avgX) * (currY - avgY) - 
-        (prevX - currX) * (avgY - avgY)
+        (prevX - currX) * (avgY - data[prevSelectedIndex].y)
       );
 
       if (area > maxArea) {
@@ -212,10 +211,6 @@ export function adaptiveSample<T extends DataPoint>(
 
   // If we filtered by viewport, ensure continuity at edges
   if (viewport && visibleData.length < data.length) {
-    // Add points just outside viewport for continuity
-    const firstVisible = visibleData[0];
-    const lastVisible = visibleData[visibleData.length - 1];
-
     // Find points just before and after viewport
     const beforePoint = data.find(d => toNumber(d.x) < viewport.xMin);
     const afterPoint = data.find(d => toNumber(d.x) > viewport.xMax);

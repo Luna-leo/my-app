@@ -6,6 +6,16 @@
 import { TimeSeriesData } from '@/lib/db/schema';
 import { sampleData, SamplingOptions, DataPoint } from './dataSamplingUtils';
 
+// Extended DataPoint type for time series sampling
+interface TimeSeriesDataPoint extends DataPoint {
+  originalData: TimeSeriesData;
+}
+
+// Extended DataPoint type for parameter series with index
+interface IndexedDataPoint extends DataPoint {
+  index: number;
+}
+
 export interface SamplingConfig {
   enabled: boolean;
   method: 'lttb' | 'nth' | 'minmax' | 'adaptive';
@@ -46,7 +56,7 @@ export function sampleTimeSeriesData(
   }
 
   // Convert to sampling format
-  const dataPoints: DataPoint[] = data.map(item => ({
+  const dataPoints: TimeSeriesDataPoint[] = data.map(item => ({
     x: item.timestamp,
     y: item.data[firstParam] as number || 0,
     originalData: item // Keep reference to original
@@ -63,7 +73,7 @@ export function sampleTimeSeriesData(
 
   // Convert back to TimeSeriesData format
   const sampledData = samplingResult.data.map(point => {
-    const original = (point as any).originalData as TimeSeriesData;
+    const original = (point as TimeSeriesDataPoint).originalData;
     return original;
   });
 
@@ -90,7 +100,7 @@ export function sampleParameterSeriesIndependently(
 
   // Sample each parameter independently and combine results
   parameters.forEach(param => {
-    const dataPoints: DataPoint[] = data.map((item, index) => ({
+    const dataPoints: IndexedDataPoint[] = data.map((item, index) => ({
       x: item.timestamp,
       y: typeof item.data[param] === 'number' ? item.data[param] as number : 0,
       index
@@ -106,7 +116,7 @@ export function sampleParameterSeriesIndependently(
     
     // Add sampled indices to the keep set
     samplingResult.data.forEach(point => {
-      const index = (point as any).index;
+      const index = (point as IndexedDataPoint).index;
       if (typeof index === 'number') {
         indicesToKeep.add(index);
       }
