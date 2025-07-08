@@ -12,7 +12,7 @@ interface PlotlyChartProps {
 }
 
 export function PlotlyChartComponent({
-  aspectRatio = 2,
+  aspectRatio = 1.3,
   lineColor = { r: 0.1, g: 0.5, b: 0.9, a: 1 },
   updateFunction,
   className = ''
@@ -113,23 +113,33 @@ export function PlotlyChartComponent({
             xaxis: { 
               range: [-1, 1],
               title: { text: '' },
-              zeroline: false
+              zeroline: false,
+              automargin: false
             },
             yaxis: { 
               range: [-1, 1],
               title: { text: '' },
-              zeroline: false
+              zeroline: false,
+              automargin: false
             },
-            margin: { t: 20, r: 20, b: 40, l: 40 },
+            margin: { t: 15, r: 25, b: 30, l: 40, pad: 0 },
             showlegend: false,
             hovermode: false as const,
             dragmode: 'pan' as const,
             paper_bgcolor: 'transparent',
-            plot_bgcolor: 'transparent'
+            plot_bgcolor: 'transparent',
+            autosize: false,
+            width: dimensions.width,
+            height: dimensions.height,
+            title: {
+              text: '',
+              font: { size: 1 },
+              pad: { t: 0, r: 0, b: 0, l: 0 }
+            }
           }
 
           const config = {
-            displayModeBar: false,
+            displayModeBar: 'hover' as const,
             responsive: true,
             scrollZoom: true
           }

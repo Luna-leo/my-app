@@ -4,7 +4,7 @@
  */
 
 // Chart margins - consistent across WebGL and SVG
-export const CHART_MARGINS = { top: 20, right: 60, bottom: 60, left: 70 };
+export const CHART_MARGINS = { top: 0, right: 40, bottom: 25, left: 50 };
 
 export interface PlotAreaDimensions {
   // Full canvas dimensions

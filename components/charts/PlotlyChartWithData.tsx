@@ -54,7 +54,7 @@ interface PlotData {
 
 export function PlotlyChartWithData({
   config,
-  aspectRatio = 2,
+  aspectRatio = 1.3,
   className = '',
   onEdit,
   onDuplicate,
@@ -351,42 +351,67 @@ export function PlotlyChartWithData({
         // Create layout
         const layout = {
           xaxis: { 
-            title: plotData.xParameterInfo 
-              ? `${plotData.xParameterInfo.parameterName} [${plotData.xParameterInfo.unit || ''}]`
-              : 'Time',
+            title: {
+              text: plotData.xParameterInfo 
+                ? `${plotData.xParameterInfo.parameterName} [${plotData.xParameterInfo.unit || ''}]`
+                : 'Time',
+              font: { size: 10 }
+            },
             range: [dataViewport.xMin, dataViewport.xMax],
             type: config.xAxisParameter === 'timestamp' ? 'date' as const : 'linear' as const,
             tickformat: config.xAxisParameter === 'timestamp' ? undefined : '.3g',
+            tickfont: { size: 9 },
             showspikes: true,
             spikemode: 'across' as const,
             spikethickness: 1,
-            spikecolor: '#999'
+            spikecolor: '#999',
+            automargin: false,
+            fixedrange: false
           },
           yaxis: { 
-            title: plotData.series.length === 1
-              ? `${plotData.series[0].parameterInfo.parameterName} [${plotData.series[0].parameterInfo.unit || ''}]`
-              : 'Value',
+            title: {
+              text: plotData.series.length === 1
+                ? `${plotData.series[0].parameterInfo.parameterName} [${plotData.series[0].parameterInfo.unit || ''}]`
+                : 'Value',
+              font: { size: 10 }
+            },
             range: [dataViewport.yMin, dataViewport.yMax],
             tickformat: '.3g',
+            tickfont: { size: 9 },
             showspikes: true,
             spikemode: 'across' as const,
             spikethickness: 1,
-            spikecolor: '#999'
+            spikecolor: '#999',
+            automargin: false,
+            fixedrange: false
           },
-          margin: CHART_MARGINS,
+          margin: { t: 15, r: 50, b: 35, l: 60, pad: 0 },
           showlegend: true,
           legend: {
-            x: 1,
-            xanchor: 'right' as const,
-            y: 1,
+            x: 0.01,
+            xanchor: 'left' as const,
+            y: 0.99,
             yanchor: 'top' as const,
-            bgcolor: 'rgba(255, 255, 255, 0.8)'
+            bgcolor: 'rgba(255, 255, 255, 0.7)',
+            borderwidth: 1,
+            bordercolor: '#ddd',
+            font: {
+              size: 9
+            }
           },
           hovermode: 'closest' as const,
           dragmode: 'pan' as const,
           uirevision: 'true', // Preserve zoom/pan state
           paper_bgcolor: 'transparent',
-          plot_bgcolor: 'transparent'
+          plot_bgcolor: 'transparent',
+          autosize: false,
+          width: dimensions.width,
+          height: dimensions.height,
+          title: {
+            text: '',
+            font: { size: 1 },
+            pad: { t: 0, r: 0, b: 0, l: 0 }
+          }
         }
 
         // Create plotly config
@@ -394,6 +419,7 @@ export function PlotlyChartWithData({
           modeBarButtonsToAdd: ['select2d', 'lasso2d'],
           modeBarButtonsToRemove: ['toImage'],
           displaylogo: false,
+          displayModeBar: 'hover' as const,
           responsive: true,
           scrollZoom: true,
           doubleClick: 'reset' as const
@@ -487,10 +513,10 @@ export function PlotlyChartWithData({
 
   return (
     <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <div className="space-y-1">
-          <CardTitle className="text-base font-medium">{config.title}</CardTitle>
-          <CardDescription className="text-xs">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 pt-1">
+        <div className="space-y-0">
+          <CardTitle className="text-xs font-medium">{config.title}</CardTitle>
+          <CardDescription className="text-xs leading-none">
             {config.chartType === 'scatter' ? (
               <ScatterChart className="inline h-3 w-3 mr-1" />
             ) : (
@@ -529,19 +555,20 @@ export function PlotlyChartWithData({
           </DropdownMenu>
         )}
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent>
         <div 
           ref={containerRef} 
-          className="w-full relative"
+          className="w-full relative overflow-hidden"
           style={{ height: dimensions.height || 400 }}
         >
           <div
             ref={plotRef}
             className="absolute inset-0"
+            style={{ top: '0px' }}
           />
-          <div className="absolute bottom-2 right-2 flex items-center gap-1 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
-            <ZoomIn className="h-3 w-3" />
-            <span>Scroll to zoom • Drag to pan • Double-click to reset</span>
+          <div className="absolute bottom-1 right-1 flex items-center gap-1 text-[10px] text-muted-foreground bg-background/80 px-1 py-0.5 rounded">
+            <ZoomIn className="h-2.5 w-2.5" />
+            <span>Scroll to zoom • Drag to pan</span>
           </div>
         </div>
       </CardContent>
