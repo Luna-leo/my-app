@@ -266,6 +266,9 @@ export function PlotlyChartWithData({
 
     let timeoutId: NodeJS.Timeout
     let disposed = false
+    
+    // Copy ref to local variable to avoid stale closure
+    const currentPlotElement = plotRef.current
 
     const initPlot = async () => {
       try {
@@ -275,7 +278,7 @@ export function PlotlyChartWithData({
         if (disposed) return
         
         // Ensure element is available
-        if (!plotRef.current || !(plotRef.current instanceof HTMLElement)) {
+        if (!currentPlotElement || !(currentPlotElement instanceof HTMLElement)) {
           console.error('Plot container ref is not an HTML element, retrying...')
           // Retry after a short delay
           timeoutId = setTimeout(() => {
@@ -287,7 +290,7 @@ export function PlotlyChartWithData({
         // Cleanup existing plot
         if (plotlyRef.current && hasPlotRef.current) {
           try {
-            plotlyRef.current.purge(plotRef.current)
+            plotlyRef.current.purge(currentPlotElement)
             hasPlotRef.current = false
           } catch (e) {
             console.warn('Error purging plot:', e)
@@ -420,7 +423,7 @@ export function PlotlyChartWithData({
         }
 
         // Create plot
-        await Plotly.newPlot(plotRef.current, traces, layout, plotlyConfig)
+        await Plotly.newPlot(currentPlotElement, traces, layout, plotlyConfig)
         hasPlotRef.current = true
       } catch (err) {
         console.error('Error creating Plotly chart:', err)
@@ -434,18 +437,18 @@ export function PlotlyChartWithData({
     return () => {
       disposed = true
       if (timeoutId) clearTimeout(timeoutId)
-      // Use cleanup function from effect body to avoid stale closure
-      const cleanupPlot = () => {
-        if (plotlyRef.current && plotRef.current && hasPlotRef.current) {
-          try {
-            plotlyRef.current.purge(plotRef.current)
-            hasPlotRef.current = false
-          } catch (e) {
-            console.warn('Error purging plot on cleanup:', e)
-          }
+      // Use the local variable captured at effect start
+      const currentPlotlyRef = plotlyRef.current
+      const currentHasPlot = hasPlotRef.current
+      
+      if (currentPlotlyRef && currentPlotElement && currentHasPlot) {
+        try {
+          currentPlotlyRef.purge(currentPlotElement)
+          hasPlotRef.current = false
+        } catch (e) {
+          console.warn('Error purging plot on cleanup:', e)
         }
       }
-      cleanupPlot()
     }
   }, [plotData, dataViewport, config.chartType, config.xAxisParameter, isPlotReady, dimensions.width, dimensions.height])
 

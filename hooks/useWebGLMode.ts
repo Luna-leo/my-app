@@ -5,6 +5,7 @@ interface UseWebGLModeOptions {
   chartId: string;
   idleTimeout?: number; // milliseconds
   autoUpgrade?: boolean; // upgrade when in viewport
+  dataPoints?: number; // number of data points in the chart
 }
 
 interface WebGLModeState {
@@ -18,6 +19,7 @@ export function useWebGLMode(options: UseWebGLModeOptions) {
     chartId,
     idleTimeout = 30000, // 30 seconds default
     autoUpgrade = true,
+    dataPoints = 0,
   } = options;
 
   const [state, setState] = useState<WebGLModeState>({
@@ -40,8 +42,11 @@ export function useWebGLMode(options: UseWebGLModeOptions) {
       clearTimeout(timeoutRef.current);
     }
 
-    // Try to upgrade to WebGL if not already
-    if (!state.isWebGLMode) {
+    // Check if this chart should use WebGL based on data points
+    const shouldUseWebGL = webGLContextManager.shouldUseWebGL(dataPoints);
+    
+    // Try to upgrade to WebGL if not already and if it makes sense
+    if (!state.isWebGLMode && shouldUseWebGL) {
       const canUpgrade = webGLContextManager.canAddContext();
       if (canUpgrade) {
         setState(prev => ({ ...prev, isWebGLMode: true }));
@@ -52,7 +57,7 @@ export function useWebGLMode(options: UseWebGLModeOptions) {
           setState(prev => ({ ...prev, isWebGLMode: true }));
         }
       }
-    } else {
+    } else if (state.isWebGLMode) {
       // Update last used time if already registered
       if (webGLContextManager.hasContext(chartId)) {
         webGLContextManager.updateLastUsed(chartId, now);
@@ -64,7 +69,7 @@ export function useWebGLMode(options: UseWebGLModeOptions) {
       setState(prev => ({ ...prev, isWebGLMode: false }));
       // Context will be released by the chart component
     }, idleTimeout);
-  }, [chartId, idleTimeout, state.isWebGLMode]);
+  }, [chartId, idleTimeout, state.isWebGLMode, dataPoints]);
 
   // Set up intersection observer for viewport detection
   useEffect(() => {
@@ -76,18 +81,18 @@ export function useWebGLMode(options: UseWebGLModeOptions) {
           const isInViewport = entry.isIntersecting;
           setState(prev => ({ ...prev, isInViewport }));
 
-          // Auto-upgrade if in viewport and WebGL available
+          // Auto-upgrade if in viewport, WebGL available, and data size warrants it
           if (isInViewport && !state.isWebGLMode && autoUpgrade) {
-            const canUpgrade = webGLContextManager.canAddContext();
-            if (canUpgrade) {
+            const shouldUseWebGL = webGLContextManager.shouldUseWebGL(dataPoints);
+            if (shouldUseWebGL && webGLContextManager.canAddContext()) {
               setState(prev => ({ ...prev, isWebGLMode: true }));
             }
           }
         });
       },
       {
-        threshold: 0.1, // 10% visibility
-        rootMargin: '50px', // Pre-load slightly before entering viewport
+        threshold: [0, 0.25, 0.5, 0.75, 1.0], // Multiple thresholds for better tracking
+        rootMargin: '100px', // Pre-load 100px before entering viewport
       }
     );
 
@@ -100,7 +105,7 @@ export function useWebGLMode(options: UseWebGLModeOptions) {
         observerRef.current.disconnect();
       }
     };
-  }, [autoUpgrade, chartId, state.isWebGLMode]);
+  }, [autoUpgrade, chartId, state.isWebGLMode, dataPoints]);
 
   // Cleanup on unmount
   useEffect(() => {

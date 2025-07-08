@@ -70,16 +70,26 @@ function PlotlyChartWithDataRefactoredComponent({
   const lastConfigRef = useRef<string>('')
   const chartIdRef = useRef(`chart-${Date.now()}-${Math.random()}`) // Unique ID for this chart
   
+  // Calculate total data points
+  const totalDataPoints = plotData?.series.reduce((acc, series) => acc + series.xValues.length, 0) || 0
+  
   // Use WebGL mode hook - start with WebGL disabled
   const { isWebGLMode, handleInteraction, setElementRef } = useWebGLMode({
     chartId: chartIdRef.current, // Use unique ID instead of title
     idleTimeout: 30000, // 30 seconds
-    autoUpgrade: false, // Disable auto-upgrade to prevent conflicts
+    autoUpgrade: true, // Enable auto-upgrade for viewport-based optimization
+    dataPoints: totalDataPoints,
   })
   
-  // Always start with non-WebGL to avoid context issues
+  // Progressive WebGL initialization strategy
   const [hasInteracted, setHasInteracted] = useState(false)
-  const forceNonWebGL = !hasInteracted || !isWebGLMode
+  const [isInitialRender, setIsInitialRender] = useState(true)
+  
+  // Determine if we should use WebGL
+  // 1. For initial render with small datasets, use SVG
+  // 2. For large datasets or after interaction, consider WebGL
+  const shouldForceNonWebGL = isInitialRender && totalDataPoints < 1000
+  const forceNonWebGL = shouldForceNonWebGL || (!hasInteracted && !isWebGLMode)
   
   // Build traces from plot data
   const buildTraces = useCallback(() => {
@@ -295,6 +305,16 @@ function PlotlyChartWithDataRefactoredComponent({
     }
   }, [plotData, dataViewport, dimensions.width, dimensions.height, chartState.isPlotlyReady, initPlotly, buildTraces, registerPlot, config, dimensions.isReady, plotlyRef, hasPlotRef, cleanup, isWebGLMode])
   
+  // Mark initial render as complete after first successful plot
+  useEffect(() => {
+    if (hasPlotRef.current && isInitialRender) {
+      // Delay to ensure smooth initial render
+      setTimeout(() => {
+        setIsInitialRender(false)
+      }, 100)
+    }
+  }, [hasPlotRef, isInitialRender])
+  
   // Handle resize
   useEffect(() => {
     if (plotlyRef.current && dimensions.isReady && hasPlotRef.current && plotRef.current && isInitializedRef.current) {
@@ -331,7 +351,8 @@ function PlotlyChartWithDataRefactoredComponent({
         webGLContextManager.registerContext(
           chartId,
           plotRef.current,
-          plotlyRef.current
+          plotlyRef.current,
+          totalDataPoints
         )
       }
     }
@@ -340,7 +361,7 @@ function PlotlyChartWithDataRefactoredComponent({
       // Clean up WebGL context on unmount
       webGLContextManager.removeContext(chartId)
     }
-  }, [isWebGLMode, hasPlotRef, plotlyRef, forceNonWebGL])
+  }, [isWebGLMode, hasPlotRef, plotlyRef, forceNonWebGL, totalDataPoints])
   
   // Set element ref for intersection observer
   useEffect(() => {

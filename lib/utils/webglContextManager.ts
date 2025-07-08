@@ -9,6 +9,8 @@ interface ContextInfo {
   createdAt: number;
   lastUsed: number;
   priority: number; // 0 = normal, 1 = viewport priority
+  dataPoints?: number; // Number of data points in the chart
+  interactionCount?: number; // Number of user interactions
 }
 
 interface ContextRequest {
@@ -22,7 +24,7 @@ class WebGLContextManager extends EventEmitter {
   private activeContexts: Map<string, ContextInfo> = new Map();
   private contextQueue: ContextRequest[] = [];
   
-  private readonly MAX_CONTEXTS = 6; // Keep well below browser limit to avoid issues
+  private readonly MAX_CONTEXTS = 10; // Optimized for 16 charts display with safety margin
   private readonly VIEWPORT_PRIORITY = 1;
   private readonly NORMAL_PRIORITY = 0;
   
@@ -72,7 +74,12 @@ class WebGLContextManager extends EventEmitter {
   }
   
   // Register a new context (called after Plotly chart is created)
-  registerContext(id: string, element: HTMLElement, plotlyInstance: typeof import('plotly.js')): void {
+  registerContext(
+    id: string, 
+    element: HTMLElement, 
+    plotlyInstance: typeof import('plotly.js'),
+    dataPoints?: number
+  ): void {
     const now = Date.now();
     
     this.activeContexts.set(id, {
@@ -81,17 +88,20 @@ class WebGLContextManager extends EventEmitter {
       createdAt: now,
       lastUsed: now,
       priority: this.NORMAL_PRIORITY,
+      dataPoints: dataPoints || 0,
+      interactionCount: 0,
     });
     
     // Process any pending requests
     this.processQueue();
   }
   
-  // Update last used time
+  // Update last used time and interaction count
   updateLastUsed(id: string, timestamp: number): void {
     const context = this.activeContexts.get(id);
     if (context) {
       context.lastUsed = timestamp;
+      context.interactionCount = (context.interactionCount || 0) + 1;
     }
   }
   
@@ -125,30 +135,35 @@ class WebGLContextManager extends EventEmitter {
     this.processQueue();
   }
   
-  // Evict the least recently used context
+  // Evict the least recently used context with smart priority
   evictLRU(): string | null {
     if (this.activeContexts.size === 0) return null;
     
-    let lruId: string | null = null;
-    let lruTime = Infinity;
-    let lruPriority = Infinity;
+    let evictId: string | null = null;
+    let lowestScore = Infinity;
     
-    // Find LRU context (considering priority)
+    // Calculate smart priority score for each context
     this.activeContexts.forEach((context, id) => {
-      // Lower priority contexts are evicted first
-      if (context.priority < lruPriority || 
-          (context.priority === lruPriority && context.lastUsed < lruTime)) {
-        lruId = id;
-        lruTime = context.lastUsed;
-        lruPriority = context.priority;
+      // Calculate priority score (lower = more likely to evict)
+      const timeSinceUse = Date.now() - context.lastUsed;
+      const interactionScore = (context.interactionCount || 0) * 100;
+      const dataPointScore = Math.min((context.dataPoints || 0) / 100, 100);
+      const viewportScore = context.priority * 1000; // viewport priority
+      
+      // Combined score (higher = keep, lower = evict)
+      const score = viewportScore + interactionScore + dataPointScore - (timeSinceUse / 1000);
+      
+      if (score < lowestScore) {
+        lowestScore = score;
+        evictId = id;
       }
     });
     
-    if (lruId) {
-      this.removeContext(lruId);
+    if (evictId) {
+      this.removeContext(evictId);
     }
     
-    return lruId;
+    return evictId;
   }
   
   // Process the context request queue
@@ -199,6 +214,58 @@ class WebGLContextManager extends EventEmitter {
     if (context) {
       context.priority = isViewportPriority ? this.VIEWPORT_PRIORITY : this.NORMAL_PRIORITY;
     }
+  }
+  
+  // Calculate smart priority based on multiple factors
+  calculateSmartPriority(options: {
+    isInViewport: boolean;
+    dataPoints: number;
+    interactionCount: number;
+    lastInteractionTime?: number;
+  }): number {
+    let priority = 0;
+    
+    // Viewport priority (0-1000)
+    if (options.isInViewport) {
+      priority += 1000;
+    }
+    
+    // Data points priority (0-500)
+    // More data points = higher priority for WebGL
+    if (options.dataPoints > 10000) {
+      priority += 500;
+    } else if (options.dataPoints > 5000) {
+      priority += 300;
+    } else if (options.dataPoints > 1000) {
+      priority += 100;
+    }
+    
+    // Interaction priority (0-300)
+    priority += Math.min(options.interactionCount * 50, 300);
+    
+    // Recency bonus (0-200)
+    if (options.lastInteractionTime) {
+      const timeSinceInteraction = Date.now() - options.lastInteractionTime;
+      if (timeSinceInteraction < 5000) { // Within 5 seconds
+        priority += 200;
+      } else if (timeSinceInteraction < 30000) { // Within 30 seconds
+        priority += 100;
+      }
+    }
+    
+    return priority;
+  }
+  
+  // Check if chart should use WebGL based on data points
+  shouldUseWebGL(dataPoints: number): boolean {
+    // Very small datasets don't benefit from WebGL
+    if (dataPoints < 500) return false;
+    
+    // Large datasets strongly benefit from WebGL
+    if (dataPoints > 5000) return true;
+    
+    // Medium datasets: use WebGL if we have available contexts
+    return this.canAddContext();
   }
   
   // Clean up all contexts
