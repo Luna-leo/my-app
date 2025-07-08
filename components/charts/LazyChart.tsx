@@ -27,21 +27,18 @@ export function LazyChart({
   threshold = 0.1,
   rootMargin = '100px'
 }: LazyChartProps) {
-  const [isVisible, setIsVisible] = useState(false)
   const [hasBeenVisible, setHasBeenVisible] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    const element = containerRef.current
+    if (!element) return
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsVisible(true)
-            if (!hasBeenVisible) {
-              setHasBeenVisible(true)
-            }
-          } else {
-            setIsVisible(false)
+          if (entry.isIntersecting && !hasBeenVisible) {
+            setHasBeenVisible(true)
           }
         })
       },
@@ -51,14 +48,10 @@ export function LazyChart({
       }
     )
 
-    if (containerRef.current) {
-      observer.observe(containerRef.current)
-    }
+    observer.observe(element)
 
     return () => {
-      if (containerRef.current) {
-        observer.unobserve(containerRef.current)
-      }
+      observer.unobserve(element)
     }
   }, [threshold, rootMargin, hasBeenVisible])
 

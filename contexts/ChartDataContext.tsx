@@ -34,7 +34,10 @@ interface ChartDataContextType {
     plotData: ChartPlotData | null;
     dataViewport: PlotlyViewport | null;
   }>;
-  preloadChartData: (configs: ChartConfiguration[]) => Promise<void>;
+  preloadChartData: (configs: ChartConfiguration[], options?: {
+    batchSize?: number;
+    onProgress?: (loaded: number, total: number) => void;
+  }) => Promise<void>;
   clearCache: () => void;
 }
 
