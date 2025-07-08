@@ -316,7 +316,8 @@ export function PlotlyChartWithData({
 
           const cssColor = `rgba(${Math.round(colors[index].r * 255)}, ${Math.round(colors[index].g * 255)}, ${Math.round(colors[index].b * 255)}, ${colors[index].a})`
 
-          const trace = {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const trace: any = {
             x: xData,
             y: yData,
             type: 'scattergl' as const,
@@ -327,19 +328,15 @@ export function PlotlyChartWithData({
               (config.xAxisParameter === 'timestamp' 
                 ? 'Time: %{x|%Y-%m-%d %H:%M:%S}' 
                 : `${plotData.xParameterInfo?.parameterName || 'X'}: %{x:.3g} ${plotData.xParameterInfo?.unit || ''}`
-              ) + '<extra></extra>'
-          }
-
-          // Always include line property to avoid undefined access
-          trace.line = {
-            color: cssColor,
-            width: config.chartType === 'scatter' ? 0 : 2
-          }
-
-          // Always include marker property 
-          trace.marker = {
-            color: cssColor,
-            size: config.chartType === 'scatter' ? 6 : 0
+              ) + '<extra></extra>',
+            line: {
+              color: cssColor,
+              width: config.chartType === 'scatter' ? 0 : 2
+            },
+            marker: {
+              color: cssColor,
+              size: config.chartType === 'scatter' ? 6 : 0
+            }
           }
 
           return trace
@@ -413,8 +410,8 @@ export function PlotlyChartWithData({
 
         // Create plotly config
         const plotlyConfig = {
-          modeBarButtonsToAdd: ['select2d', 'lasso2d'],
-          modeBarButtonsToRemove: ['toImage'],
+          modeBarButtonsToAdd: ['select2d' as const, 'lasso2d' as const],
+          modeBarButtonsToRemove: ['toImage' as const],
           displaylogo: false,
           displayModeBar: 'hover' as const,
           responsive: false,
@@ -439,7 +436,8 @@ export function PlotlyChartWithData({
       if (timeoutId) clearTimeout(timeoutId)
       const plot = plotRef.current
       const plotly = plotlyRef.current
-      if (plotly && plot && hasPlotRef.current) {
+      const hasPlot = hasPlotRef.current
+      if (plotly && plot && hasPlot) {
         try {
           plotly.purge(plot)
           hasPlotRef.current = false

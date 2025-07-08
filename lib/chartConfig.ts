@@ -7,6 +7,7 @@ export const getChartEngine = (): ChartEngine => {
 };
 
 // Set chart engine preference (kept for compatibility but always returns 'plotly')
-export const setChartEngine = (engine: ChartEngine) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const setChartEngine = (_engine: ChartEngine) => {
   // No-op since we only use Plotly now
 };

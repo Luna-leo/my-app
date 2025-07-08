@@ -22,14 +22,27 @@ export function PlotlyChartComponent({
   aspectRatio = 1.3,
   lineColor = { r: 0.1, g: 0.5, b: 0.9, a: 1 },
   updateFunction,
-  className = ''
+  className = '',
+  padding
 }: PlotlyChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const plotRef = useRef<HTMLDivElement>(null)
   const animationRef = useRef<number | undefined>(undefined)
   const frameRef = useRef(0)
   const updateFunctionRef = useRef(updateFunction)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
+  
+  // Convert aspect ratio preset to number if needed
+  const numericAspectRatio = typeof aspectRatio === 'string' 
+    ? ASPECT_RATIOS[aspectRatio] 
+    : aspectRatio
+  
+  // Use the new hook for dimensions
+  const dimensions = useChartDimensions(containerRef, {
+    aspectRatio: numericAspectRatio,
+    padding,
+    debounceMs: 150
+  })
+  
   const dataRef = useRef<Array<{x: number, y: number}>>([])
   const [isPlotlyReady, setIsPlotlyReady] = useState(false)
   const plotlyRef = useRef<typeof import('plotly.js-gl2d-dist')>(null)
@@ -40,28 +53,10 @@ export function PlotlyChartComponent({
     updateFunctionRef.current = updateFunction
   }, [updateFunction])
 
-  // Handle resize with ResizeObserver
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const width = entry.contentRect.width
-        const height = width / aspectRatio
-        setDimensions({ width, height })
-      }
-    })
-
-    resizeObserver.observe(containerRef.current)
-
-    return () => {
-      resizeObserver.disconnect()
-    }
-  }, [aspectRatio])
 
   // Initialize Plotly
   useEffect(() => {
-    if (dimensions.width === 0) return
+    if (!dimensions.isReady) return
 
     let timeoutId: NodeJS.Timeout
     let disposed = false
@@ -150,7 +145,7 @@ export function PlotlyChartComponent({
             displaylogo: false,
             responsive: false,
             scrollZoom: true,
-            modeBarButtonsToRemove: ['toImage'] // Remove download button if not needed
+            modeBarButtonsToRemove: ['toImage' as const]
           }
 
           try {
@@ -168,8 +163,11 @@ export function PlotlyChartComponent({
         }
 
         // Handle resize
-        if (plotlyRef.current && dimensions.width > 0 && dimensions.height > 0) {
-          await plotlyRef.current.Plots.resize(plotRef.current)
+        if (plotlyRef.current && dimensions.isReady && hasPlotRef.current) {
+          await plotlyRef.current.relayout(plotRef.current, {
+            width: dimensions.width,
+            height: dimensions.height
+          })
         }
       } catch (err) {
         console.error('Failed to initialize Plotly:', err)
@@ -268,6 +266,10 @@ export function PlotlyChartComponent({
 
   // Cleanup plot on unmount
   useEffect(() => {
+    const plot = plotRef.current
+    const plotly = plotlyRef.current
+    const hasPlot = hasPlotRef.current
+    
     return () => {
       // Cancel animation first
       if (animationRef.current) {
@@ -275,9 +277,7 @@ export function PlotlyChartComponent({
         animationRef.current = undefined
       }
       // Then cleanup plot
-      const plot = plotRef.current
-      const plotly = plotlyRef.current
-      if (plotly && plot && hasPlotRef.current) {
+      if (plotly && plot && hasPlot) {
         try {
           plotly.purge(plot)
           hasPlotRef.current = false

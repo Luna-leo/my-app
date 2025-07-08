@@ -18,7 +18,7 @@ interface UseChartDimensionsOptions {
 }
 
 export function useChartDimensions(
-  containerRef: React.RefObject<HTMLElement>,
+  containerRef: React.RefObject<HTMLElement | null>,
   options: UseChartDimensionsOptions = {}
 ): ChartDimensions {
   const {
@@ -33,7 +33,7 @@ export function useChartDimensions(
     isReady: false,
   });
 
-  const timeoutRef = useRef<NodeJS.Timeout>();
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const calculateDimensions = useCallback(() => {
     if (!containerRef.current) return;
