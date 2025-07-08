@@ -1,14 +1,21 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useChartDimensions, AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
 
 // Dynamic import for Plotly to avoid SSR issues
 
 interface PlotlyChartProps {
-  aspectRatio?: number // width / height ratio, default 2
+  aspectRatio?: number | AspectRatioPreset // width / height ratio, default 1.3
   lineColor?: { r: number; g: number; b: number; a?: number }
   updateFunction?: (data: Array<{x: number, y: number}>, frame: number) => Array<{x: number, y: number}>
   className?: string
+  padding?: {
+    top?: number
+    right?: number
+    bottom?: number
+    left?: number
+  }
 }
 
 export function PlotlyChartComponent({
@@ -25,7 +32,7 @@ export function PlotlyChartComponent({
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const dataRef = useRef<Array<{x: number, y: number}>>([])
   const [isPlotlyReady, setIsPlotlyReady] = useState(false)
-  const plotlyRef = useRef<any>(null)
+  const plotlyRef = useRef<typeof import('plotly.js-gl2d-dist')>(null)
   const hasPlotRef = useRef(false)
 
   // Update the ref whenever updateFunction changes
@@ -122,7 +129,7 @@ export function PlotlyChartComponent({
               zeroline: false,
               automargin: false
             },
-            margin: { t: 15, r: 25, b: 30, l: 40, pad: 0 },
+            margin: { t: 40, r: 10, b: 30, l: 40, pad: 0 },
             showlegend: false,
             hovermode: false as const,
             dragmode: 'pan' as const,
@@ -140,8 +147,10 @@ export function PlotlyChartComponent({
 
           const config = {
             displayModeBar: 'hover' as const,
-            responsive: true,
-            scrollZoom: true
+            displaylogo: false,
+            responsive: false,
+            scrollZoom: true,
+            modeBarButtonsToRemove: ['toImage'] // Remove download button if not needed
           }
 
           try {
@@ -266,9 +275,11 @@ export function PlotlyChartComponent({
         animationRef.current = undefined
       }
       // Then cleanup plot
-      if (plotlyRef.current && plotRef.current && hasPlotRef.current) {
+      const plot = plotRef.current
+      const plotly = plotlyRef.current
+      if (plotly && plot && hasPlotRef.current) {
         try {
-          plotlyRef.current.purge(plotRef.current)
+          plotly.purge(plot)
           hasPlotRef.current = false
         } catch (error) {
           console.error('Error purging plot:', error)
@@ -281,12 +292,23 @@ export function PlotlyChartComponent({
     <div 
       ref={containerRef} 
       className={`w-full ${className}`}
-      style={{ height: dimensions.height || 'auto' }}
+      style={{ 
+        height: dimensions.isReady ? dimensions.height : 'auto', 
+        position: 'relative',
+        overflow: 'hidden'
+      }}
     >
       <div
         ref={plotRef}
-        className="border border-border rounded-lg w-full h-full"
-        style={{ width: dimensions.width, height: dimensions.height }}
+        className="border border-border rounded-lg [&_.modebar]:!z-[1000] [&_.modebar-container]:!absolute [&_.modebar-container]:!top-1 [&_.modebar-container]:!right-1"
+        style={{ 
+          width: dimensions.width || '100%', 
+          height: dimensions.height || '100%', 
+          boxSizing: 'border-box',
+          position: 'absolute',
+          top: 0,
+          left: 0
+        }}
       />
     </div>
   )

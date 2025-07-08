@@ -38,7 +38,9 @@ export default function PlotlyTestPage() {
         
         const config = {
           displayModeBar: true,
-          responsive: true
+          displaylogo: false,
+          responsive: true,
+          modeBarButtonsToRemove: []
         }
         
         // Create plot
@@ -83,7 +85,7 @@ export default function PlotlyTestPage() {
           )}
           <div 
             ref={plotRef} 
-            className="w-full h-[400px] border border-gray-200 rounded"
+            className="w-full h-[400px] border border-gray-200 rounded relative [&_.modebar]:!z-[1000] [&_.modebar-container]:!absolute [&_.modebar-container]:!top-1 [&_.modebar-container]:!right-1"
           />
         </CardContent>
       </Card>

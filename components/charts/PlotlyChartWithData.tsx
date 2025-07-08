@@ -16,7 +16,6 @@ import {
 import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
 import { AlertCircle, TrendingUp, MoreVertical, Pencil, Copy, Trash2, ScatterChart, ZoomIn } from 'lucide-react'
 import { ViewportBounds } from '@/utils/chartCoordinateUtils'
-import { CHART_MARGINS } from '@/utils/plotAreaUtils'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,16 +23,23 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
+import { useChartDimensions, AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
 
 // Dynamic import for Plotly to avoid SSR issues
 
 interface PlotlyChartWithDataProps {
   config: ChartConfiguration
-  aspectRatio?: number
+  aspectRatio?: number | AspectRatioPreset
   className?: string
   onEdit?: () => void
   onDuplicate?: () => void
   onDelete?: () => void
+  padding?: {
+    top?: number
+    right?: number
+    bottom?: number
+    left?: number
+  }
 }
 
 interface PlotSeries {
@@ -58,42 +64,33 @@ export function PlotlyChartWithData({
   className = '',
   onEdit,
   onDuplicate,
-  onDelete
+  onDelete,
+  padding
 }: PlotlyChartWithDataProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const plotRef = useRef<HTMLDivElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 800, height: 400 })
+  
+  // Convert aspect ratio preset to number if needed
+  const numericAspectRatio = typeof aspectRatio === 'string' 
+    ? ASPECT_RATIOS[aspectRatio] 
+    : aspectRatio
+  
+  // Use the new hook for dimensions
+  const dimensions = useChartDimensions(containerRef, {
+    aspectRatio: numericAspectRatio,
+    padding,
+    debounceMs: 150
+  })
+  
   const [loading, setLoading] = useState(true)
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [plotData, setPlotData] = useState<PlotData | null>(null)
   const [dataViewport, setDataViewport] = useState<ViewportBounds | null>(null)
   const [isPlotReady, setIsPlotReady] = useState(false)
-  const plotlyRef = useRef<any>(null)
+  const plotlyRef = useRef<typeof import('plotly.js-gl2d-dist')>(null)
   const hasPlotRef = useRef(false)
 
-  // Handle resize
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const borderBoxSize = entry.borderBoxSize?.[0]
-        const width = borderBoxSize ? borderBoxSize.inlineSize : entry.contentRect.width
-        const height = width / aspectRatio
-        
-        if (width > 0) {
-          setDimensions({ width: Math.floor(width), height: Math.floor(height) })
-        }
-      }
-    })
-
-    resizeObserver.observe(containerRef.current)
-
-    return () => {
-      resizeObserver.disconnect()
-    }
-  }, [aspectRatio])
 
   // Load and transform data
   useEffect(() => {
@@ -319,11 +316,11 @@ export function PlotlyChartWithData({
 
           const cssColor = `rgba(${Math.round(colors[index].r * 255)}, ${Math.round(colors[index].g * 255)}, ${Math.round(colors[index].b * 255)}, ${colors[index].a})`
 
-          const trace: any = {
+          const trace = {
             x: xData,
             y: yData,
-            type: 'scattergl',
-            mode: config.chartType === 'scatter' ? 'markers' : 'lines',
+            type: 'scattergl' as const,
+            mode: config.chartType === 'scatter' ? 'markers' as const : 'lines' as const,
             name: `${series.metadataLabel} - ${series.parameterInfo.parameterName}`,
             hovertemplate: 
               `${series.parameterInfo.parameterName}: %{y:.3g} ${series.parameterInfo.unit || ''}<br>` +
@@ -385,7 +382,7 @@ export function PlotlyChartWithData({
             automargin: false,
             fixedrange: false
           },
-          margin: { t: 15, r: 50, b: 35, l: 60, pad: 0 },
+          margin: { t: 40, r: 10, b: 35, l: 60, pad: 0 },
           showlegend: true,
           legend: {
             x: 0.01,
@@ -420,7 +417,7 @@ export function PlotlyChartWithData({
           modeBarButtonsToRemove: ['toImage'],
           displaylogo: false,
           displayModeBar: 'hover' as const,
-          responsive: true,
+          responsive: false,
           scrollZoom: true,
           doubleClick: 'reset' as const
         }
@@ -440,21 +437,26 @@ export function PlotlyChartWithData({
     return () => {
       disposed = true
       if (timeoutId) clearTimeout(timeoutId)
-      if (plotlyRef.current && plotRef.current && hasPlotRef.current) {
+      const plot = plotRef.current
+      const plotly = plotlyRef.current
+      if (plotly && plot && hasPlotRef.current) {
         try {
-          plotlyRef.current.purge(plotRef.current)
+          plotly.purge(plot)
           hasPlotRef.current = false
         } catch (e) {
           console.warn('Error purging plot on cleanup:', e)
         }
       }
     }
-  }, [plotData, dataViewport, config.chartType, config.xAxisParameter, isPlotReady])
+  }, [plotData, dataViewport, config.chartType, config.xAxisParameter, isPlotReady, dimensions.width, dimensions.height])
 
   // Update plot size when dimensions change
   useEffect(() => {
-    if (plotlyRef.current && plotRef.current && hasPlotRef.current && dimensions.width > 0) {
-      plotlyRef.current.Plots.resize(plotRef.current)
+    if (plotlyRef.current && plotRef.current && hasPlotRef.current && dimensions.isReady) {
+      plotlyRef.current.relayout(plotRef.current, {
+        width: dimensions.width,
+        height: dimensions.height
+      })
     }
   }, [dimensions])
 
@@ -558,13 +560,23 @@ export function PlotlyChartWithData({
       <CardContent>
         <div 
           ref={containerRef} 
-          className="w-full relative overflow-hidden"
-          style={{ height: dimensions.height || 400 }}
+          className="w-full relative"
+          style={{ 
+            height: dimensions.isReady ? dimensions.height : 400,
+            overflow: 'hidden'
+          }}
         >
           <div
             ref={plotRef}
-            className="absolute inset-0"
-            style={{ top: '0px' }}
+            className="[&_.modebar]:!z-[1000] [&_.modebar-container]:!absolute [&_.modebar-container]:!top-1 [&_.modebar-container]:!right-1"
+            style={{ 
+              width: dimensions.width || '100%',
+              height: dimensions.height || '100%',
+              boxSizing: 'border-box',
+              position: 'absolute',
+              top: 0,
+              left: 0
+            }}
           />
           <div className="absolute bottom-1 right-1 flex items-center gap-1 text-[10px] text-muted-foreground bg-background/80 px-1 py-0.5 rounded">
             <ZoomIn className="h-2.5 w-2.5" />
