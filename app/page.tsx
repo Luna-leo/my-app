@@ -113,7 +113,7 @@ export default function Home() {
     await chartConfigService.saveChartConfigurationDebounced(dbConfig)
   }
 
-  const handleDuplicateChart = (chartId: string) => {
+  const handleDuplicateChart = async (chartId: string) => {
     const chartToDuplicate = charts.find(c => c.id === chartId)
     if (chartToDuplicate) {
       const duplicatedChart = {
@@ -122,6 +122,15 @@ export default function Home() {
         title: `${chartToDuplicate.title} (Copy)`
       }
       setCharts([...charts, duplicatedChart])
+      
+      // Save to database
+      const dbConfig: DBChartConfiguration = {
+        ...duplicatedChart,
+        workspaceId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+      await chartConfigService.saveChartConfiguration(dbConfig)
     }
   }
 
