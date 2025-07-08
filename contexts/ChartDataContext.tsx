@@ -320,8 +320,14 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Preload data for multiple charts
-  const preloadChartData = async (configs: ChartConfiguration[]) => {
+  // Preload data for multiple charts with progressive loading
+  const preloadChartData = async (configs: ChartConfiguration[], options?: {
+    batchSize?: number;
+    onProgress?: (loaded: number, total: number) => void;
+  }) => {
+    const batchSize = options?.batchSize || 4; // Load 4 charts at a time
+    const onProgress = options?.onProgress;
+    
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
@@ -331,7 +337,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         config.selectedDataIds.forEach(id => allMetadataIds.add(id));
       });
 
-      // Preload all raw data
+      // Preload all raw data (this is fast with caching)
       await fetchRawData(Array.from(allMetadataIds));
 
       // Collect all unique parameter IDs
@@ -343,11 +349,25 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         config.yAxisParameters.forEach(p => allParameterIds.add(p));
       });
 
-      // Preload all parameters
+      // Preload all parameters (this is also fast with caching)
       await fetchParameters(Array.from(allParameterIds));
 
-      // Transform data for each configuration
-      await Promise.all(configs.map(config => getChartData(config)));
+      // Progressive loading: Process charts in batches
+      let loaded = 0;
+      for (let i = 0; i < configs.length; i += batchSize) {
+        const batch = configs.slice(i, Math.min(i + batchSize, configs.length));
+        
+        // Process batch in parallel
+        await Promise.all(batch.map(config => getChartData(config)));
+        
+        loaded += batch.length;
+        onProgress?.(loaded, configs.length);
+        
+        // Small delay to prevent UI blocking
+        if (i + batchSize < configs.length) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+      }
     } finally {
       setState(prev => ({ ...prev, isLoading: false }));
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { getDataChartComponent } from '@/components/charts/ChartProvider'
+import { LazyChart } from '@/components/charts/LazyChart'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CsvImportDialog } from '@/components/csv-import/CsvImportDialog'
@@ -37,6 +38,7 @@ export default function Home() {
   const [mounted, setMounted] = useState(false)
   const [workspaceId, setWorkspaceId] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [importProgress, setImportProgress] = useState<{ loaded: number; total: number } | null>(null)
   const { preloadChartData } = useChartDataContext()
   
   const loadWorkspaceAndCharts = useCallback(async () => {
@@ -56,9 +58,17 @@ export default function Home() {
       }))
       setCharts(convertedCharts)
       
-      // Preload data for all charts
+      // Preload only first few charts for faster initial render
       if (convertedCharts.length > 0) {
-        await preloadChartData(convertedCharts)
+        // Only preload first 4 charts, rest will load lazily
+        const chartsToPreload = convertedCharts.slice(0, 4)
+        await preloadChartData(chartsToPreload, {
+          batchSize: 4,
+          onProgress: (loaded, total) => {
+            setImportProgress({ loaded, total })
+          }
+        })
+        setImportProgress(null)
       }
     } catch (error) {
       console.error('Failed to load charts:', error)
@@ -197,6 +207,21 @@ export default function Home() {
           selectedDataIds: chart.selectedDataIds
         }))
         setCharts(convertedCharts)
+        
+        // Preload only first few charts for faster initial render
+        if (convertedCharts.length > 0) {
+          setLoading(true)
+          // Only preload first 4 charts, rest will load lazily
+          const chartsToPreload = convertedCharts.slice(0, 4)
+          await preloadChartData(chartsToPreload, {
+            batchSize: 4,
+            onProgress: (loaded, total) => {
+              setImportProgress({ loaded, total })
+            }
+          })
+          setImportProgress(null)
+          setLoading(false)
+        }
       } catch (error) {
         console.error('Failed to import workspace:', error)
         alert('Failed to import workspace. Please check the file format.')
@@ -250,24 +275,54 @@ export default function Home() {
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Loading charts...</p>
+              <p className="text-muted-foreground">
+                {importProgress 
+                  ? `Loading charts... (${importProgress.loaded}/${importProgress.total})`
+                  : 'Loading charts...'}
+              </p>
+              {importProgress && (
+                <div className="mt-4 w-64 mx-auto">
+                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${(importProgress.loaded / importProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : charts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {mounted && charts.map((chart) => {
-              const ChartComponent = getDataChartComponent();
-              return (
-                <ChartComponent
-                  key={chart.id}
-                  config={chart}
-                  aspectRatio={1.5}
-                  className="w-full"
-                  onEdit={() => handleEditChart(chart.id)}
-                  onDuplicate={() => handleDuplicateChart(chart.id)}
-                  onDelete={() => handleDeleteChart(chart.id)}
-                />
-              );
+            {mounted && charts.map((chart, index) => {
+              // First 4 charts load immediately, rest use lazy loading
+              if (index < 4) {
+                const ChartComponent = getDataChartComponent();
+                return (
+                  <ChartComponent
+                    key={chart.id}
+                    config={chart}
+                    aspectRatio={1.5}
+                    className="w-full"
+                    onEdit={() => handleEditChart(chart.id)}
+                    onDuplicate={() => handleDuplicateChart(chart.id)}
+                    onDelete={() => handleDeleteChart(chart.id)}
+                  />
+                );
+              } else {
+                return (
+                  <LazyChart
+                    key={chart.id}
+                    config={chart}
+                    aspectRatio={1.5}
+                    className="w-full"
+                    onEdit={() => handleEditChart(chart.id)}
+                    onDuplicate={() => handleDuplicateChart(chart.id)}
+                    onDelete={() => handleDeleteChart(chart.id)}
+                    rootMargin="200px"
+                  />
+                );
+              }
             })}
           </div>
         ) : (
