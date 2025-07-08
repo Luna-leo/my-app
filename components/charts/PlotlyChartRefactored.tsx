@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, memo, useCallback } from 'react'
 import { useChartDimensions, AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
 import { usePlotlyInit } from '@/hooks/usePlotlyInit'
 import { useChartAnimation } from '@/hooks/useChartAnimation'
@@ -12,6 +12,9 @@ import {
   buildScatterTrace,
   tryCreatePlotlyChart,
   resizePlotlyChart,
+  updatePlotlyData,
+  hasExistingPlot,
+  isElementReady,
   PLOTLY_MODEBAR_CONFIG,
 } from '@/lib/utils/plotlyUtils'
 import { 
@@ -33,7 +36,7 @@ interface PlotlyChartProps {
   }
 }
 
-export function PlotlyChartRefactored({
+function PlotlyChartRefactoredComponent({
   aspectRatio = CHART_DEFAULTS.ASPECT_RATIO,
   lineColor = CHART_DEFAULTS.LINE_COLOR,
   updateFunction,
@@ -56,7 +59,8 @@ export function PlotlyChartRefactored({
     debounceMs: CHART_DEFAULTS.DEBOUNCE_MS
   })
   
-  const { plotlyRef, hasPlotRef, chartState, initPlotly, cleanup } = usePlotlyInit()
+  const { plotlyRef, hasPlotRef, chartState, initPlotly, cleanup, registerPlot } = usePlotlyInit()
+  const isInitializedRef = useRef(false)
   
   // Use animation hook
   useChartAnimation({
@@ -68,33 +72,46 @@ export function PlotlyChartRefactored({
     dataRef,
   })
   
-  // Initialize Plotly
+  // Initialize data only once
+  const initializeData = useCallback(() => {
+    if (dataRef.current.length === 0) {
+      const numPoints = ANIMATION_CONFIG.INITIAL_POINTS
+      const freq = ANIMATION_CONFIG.DEFAULT_FREQUENCY
+      const amp = ANIMATION_CONFIG.DEFAULT_AMPLITUDE
+      
+      for (let i = 0; i < numPoints; i++) {
+        const x = i / numPoints * 2 - 1 // Normalize to -1 to 1 range
+        const y = Math.sin(2 * Math.PI * i * freq) * amp
+        dataRef.current.push({ x, y })
+      }
+    }
+  }, [])
+  
+  // Create or update chart
   useEffect(() => {
-    if (!dimensions.isReady) return
+    if (!dimensions.isReady || !plotRef.current) return
     
     let disposed = false
     
-    const createChart = async () => {
+    const setupChart = async () => {
       if (disposed) return
       
-      const success = await initPlotly(plotRef.current)
-      if (!success || !plotlyRef.current || !plotRef.current) return
-      
-      // Initialize data
-      const initializeData = () => {
-        if (dataRef.current.length === 0) {
-          const numPoints = Math.min(ANIMATION_CONFIG.INITIAL_POINTS, Math.round(dimensions.width))
-          const freq = ANIMATION_CONFIG.DEFAULT_FREQUENCY
-          const amp = ANIMATION_CONFIG.DEFAULT_AMPLITUDE
-          
-          for (let i = 0; i < numPoints; i++) {
-            const x = i / numPoints * 2 - 1 // Normalize to -1 to 1 range
-            const y = Math.sin(2 * Math.PI * i * freq) * amp
-            dataRef.current.push({ x, y })
-          }
-        }
+      // Validate element is ready
+      if (!isElementReady(plotRef.current)) {
+        // Retry after a short delay
+        setTimeout(() => {
+          if (!disposed) setupChart()
+        }, 100)
+        return
       }
       
+      // Initialize Plotly if needed
+      if (!chartState.isPlotlyReady) {
+        const success = await initPlotly(plotRef.current)
+        if (!success || !plotlyRef.current) return
+      }
+      
+      // Initialize data
       initializeData()
       
       // Create trace
@@ -114,29 +131,58 @@ export function PlotlyChartRefactored({
         yRange: AXIS_RANGES.DEFAULT_Y,
       })
       
-      // Create config - spread to make mutable
-      const config = { ...PLOTLY_MODEBAR_CONFIG.DEFAULT }
+      // Get current plot element
+      const currentPlotElement = plotRef.current
+      if (!currentPlotElement) return
       
-      // Create plot
-      const plotCreated = await tryCreatePlotlyChart(
-        plotRef.current,
-        [trace],
-        layout,
-        config,
-        plotlyRef.current
-      )
-      
-      if (plotCreated) {
-        hasPlotRef.current = true
+      // Check if plot already exists
+      if (hasExistingPlot(currentPlotElement) && plotlyRef.current) {
+        // Update existing plot
+        const updated = await updatePlotlyData(
+          plotlyRef.current,
+          currentPlotElement,
+          [trace],
+          layout
+        )
+        if (!updated) {
+          // Fallback to creating new plot
+          const config = { ...PLOTLY_MODEBAR_CONFIG.DEFAULT }
+          const plotCreated = await tryCreatePlotlyChart(
+            currentPlotElement,
+            [trace],
+            layout,
+            config,
+            plotlyRef.current
+          )
+          if (plotCreated) {
+            hasPlotRef.current = true
+            registerPlot(currentPlotElement)
+          }
+        }
+      } else if (plotlyRef.current && !isInitializedRef.current) {
+        // Create new plot
+        const config = { ...PLOTLY_MODEBAR_CONFIG.DEFAULT }
+        const plotCreated = await tryCreatePlotlyChart(
+          currentPlotElement,
+          [trace],
+          layout,
+          config,
+          plotlyRef.current
+        )
+        if (plotCreated) {
+          hasPlotRef.current = true
+          isInitializedRef.current = true
+          registerPlot(currentPlotElement)
+        }
       }
     }
     
-    createChart()
+    setupChart()
     
     return () => {
       disposed = true
     }
-  }, [dimensions, lineColor, initPlotly, plotlyRef, hasPlotRef])
+  }, [dimensions, lineColor, chartState.isPlotlyReady, initPlotly, initializeData, registerPlot, plotlyRef, hasPlotRef])
   
   // Handle resize
   useEffect(() => {
@@ -184,3 +230,15 @@ export function PlotlyChartRefactored({
     </div>
   )
 }
+
+// Memoize component to prevent unnecessary re-renders
+export const PlotlyChartRefactored = memo(PlotlyChartRefactoredComponent, (prevProps, nextProps) => {
+  // Custom comparison function
+  return (
+    prevProps.aspectRatio === nextProps.aspectRatio &&
+    prevProps.className === nextProps.className &&
+    prevProps.updateFunction === nextProps.updateFunction &&
+    JSON.stringify(prevProps.lineColor) === JSON.stringify(nextProps.lineColor) &&
+    JSON.stringify(prevProps.padding) === JSON.stringify(nextProps.padding)
+  )
+})

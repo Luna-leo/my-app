@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, memo, useCallback } from 'react'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { useChartDimensions, AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
 import { useChartData } from '@/hooks/useChartData'
@@ -12,6 +12,9 @@ import {
   buildScatterTrace,
   tryCreatePlotlyChart,
   resizePlotlyChart,
+  updatePlotlyData,
+  hasExistingPlot,
+  isElementReady,
   PLOTLY_MODEBAR_CONFIG,
   PLOTLY_MARGINS,
 } from '@/lib/utils/plotlyUtils'
@@ -34,7 +37,7 @@ interface PlotlyChartWithDataProps {
   }
 }
 
-export function PlotlyChartWithDataRefactored({
+function PlotlyChartWithDataRefactoredComponent({
   config,
   aspectRatio = CHART_DEFAULTS.ASPECT_RATIO,
   className = '',
@@ -59,65 +62,89 @@ export function PlotlyChartWithDataRefactored({
   })
   
   const { plotData, dataViewport, loadingState } = useChartData(config)
-  const { plotlyRef, hasPlotRef, chartState, initPlotly, cleanup } = usePlotlyInit()
+  const { plotlyRef, hasPlotRef, chartState, initPlotly, cleanup, registerPlot } = usePlotlyInit()
+  const isInitializedRef = useRef(false)
+  const lastDataRef = useRef<string>('')
   
-  // Initialize Plotly when data is ready
+  // Build traces from plot data
+  const buildTraces = useCallback(() => {
+    if (!plotData) return []
+    
+    const colors = generateLineColors(plotData.series.length)
+    
+    return plotData.series.map((series, index) => {
+      // Filter out NaN values
+      const validIndices: number[] = []
+      for (let i = 0; i < series.yValues.length; i++) {
+        if (!isNaN(series.yValues[i])) {
+          validIndices.push(i)
+        }
+      }
+      
+      const xData = validIndices.map(i => series.xValues[i])
+      const yData = validIndices.map(i => series.yValues[i])
+      
+      const cssColor = rgbaToCSS(colors[index])
+      
+      // Build hover template
+      const hovertemplate = config.xAxisParameter === 'timestamp'
+        ? HOVER_TEMPLATES.TIME_SERIES(
+            series.parameterInfo.parameterName,
+            series.parameterInfo.unit || ''
+          )
+        : HOVER_TEMPLATES.XY_CHART(
+            series.parameterInfo.parameterName,
+            series.parameterInfo.unit || '',
+            plotData.xParameterInfo?.parameterName || 'X',
+            plotData.xParameterInfo?.unit || ''
+          )
+      
+      return buildScatterTrace({
+        x: xData,
+        y: yData,
+        name: `${series.metadataLabel} - ${series.parameterInfo.parameterName}`,
+        color: cssColor,
+        mode: config.chartType === 'scatter' ? 'markers' : 'lines',
+        hovertemplate,
+        lineWidth: CHART_DEFAULTS.LINE_WIDTH,
+        markerSize: CHART_DEFAULTS.MARKER_SIZE,
+      })
+    })
+  }, [plotData, config.xAxisParameter, config.chartType])
+  
+  // Initialize or update Plotly chart
   useEffect(() => {
-    if (!plotData || !dataViewport || !dimensions.isReady) return
+    if (!plotData || !dataViewport || !dimensions.isReady || !plotRef.current) return
     
     let disposed = false
     
-    const createChart = async () => {
+    const setupChart = async () => {
       if (disposed) return
       
-      // Cleanup existing plot
-      await cleanup(plotRef.current)
+      // Validate element is ready
+      if (!isElementReady(plotRef.current)) {
+        // Retry after a short delay
+        setTimeout(() => {
+          if (!disposed) setupChart()
+        }, 100)
+        return
+      }
       
-      const success = await initPlotly(plotRef.current)
-      if (!success || !plotlyRef.current || !plotRef.current) return
+      // Check if data has actually changed
+      const dataKey = JSON.stringify({ plotData, dataViewport })
+      if (dataKey === lastDataRef.current && isInitializedRef.current) {
+        return // No change, skip update
+      }
+      lastDataRef.current = dataKey
       
-      // Generate colors
-      const colors = generateLineColors(plotData.series.length)
+      // Initialize Plotly if needed
+      if (!chartState.isPlotlyReady) {
+        const success = await initPlotly(plotRef.current)
+        if (!success || !plotlyRef.current) return
+      }
       
-      // Prepare traces for Plotly
-      const traces = plotData.series.map((series, index) => {
-        // Filter out NaN values
-        const validIndices: number[] = []
-        for (let i = 0; i < series.yValues.length; i++) {
-          if (!isNaN(series.yValues[i])) {
-            validIndices.push(i)
-          }
-        }
-        
-        const xData = validIndices.map(i => series.xValues[i])
-        const yData = validIndices.map(i => series.yValues[i])
-        
-        const cssColor = rgbaToCSS(colors[index])
-        
-        // Build hover template
-        const hovertemplate = config.xAxisParameter === 'timestamp'
-          ? HOVER_TEMPLATES.TIME_SERIES(
-              series.parameterInfo.parameterName,
-              series.parameterInfo.unit || ''
-            )
-          : HOVER_TEMPLATES.XY_CHART(
-              series.parameterInfo.parameterName,
-              series.parameterInfo.unit || '',
-              plotData.xParameterInfo?.parameterName || 'X',
-              plotData.xParameterInfo?.unit || ''
-            )
-        
-        return buildScatterTrace({
-          x: xData,
-          y: yData,
-          name: `${series.metadataLabel} - ${series.parameterInfo.parameterName}`,
-          color: cssColor,
-          mode: config.chartType === 'scatter' ? 'markers' : 'lines',
-          hovertemplate,
-          lineWidth: CHART_DEFAULTS.LINE_WIDTH,
-          markerSize: CHART_DEFAULTS.MARKER_SIZE,
-        })
-      })
+      // Build traces
+      const traces = buildTraces()
       
       // Create layout
       const layout = buildPlotlyLayout({
@@ -136,37 +163,70 @@ export function PlotlyChartWithDataRefactored({
         xAxisType: config.xAxisParameter === 'timestamp' ? 'date' : 'linear',
       })
       
-      // Create config - spread to make mutable
-      const plotlyConfig = { 
-        ...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS,
-        modeBarButtonsToAdd: [...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS.modeBarButtonsToAdd],
-        modeBarButtonsToRemove: [...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS.modeBarButtonsToRemove]
-      }
+      // Get current plot element
+      const currentPlotElement = plotRef.current
+      if (!currentPlotElement) return
       
-      // Create plot
-      const plotCreated = await tryCreatePlotlyChart(
-        plotRef.current,
-        traces,
-        layout,
-        plotlyConfig,
-        plotlyRef.current
-      )
-      
-      if (plotCreated) {
-        hasPlotRef.current = true
-      } else {
-        throw new Error(ERROR_MESSAGES.PLOT_CREATION_FAILED)
+      // Check if plot already exists
+      if (hasExistingPlot(currentPlotElement) && plotlyRef.current) {
+        // Update existing plot
+        const updated = await updatePlotlyData(
+          plotlyRef.current,
+          currentPlotElement,
+          traces,
+          layout
+        )
+        if (!updated) {
+          // Fallback to creating new plot
+          const plotlyConfig = { 
+            ...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS,
+            modeBarButtonsToAdd: [...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS.modeBarButtonsToAdd],
+            modeBarButtonsToRemove: [...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS.modeBarButtonsToRemove]
+          }
+          const plotCreated = await tryCreatePlotlyChart(
+            currentPlotElement,
+            traces,
+            layout,
+            plotlyConfig,
+            plotlyRef.current
+          )
+          if (plotCreated) {
+            hasPlotRef.current = true
+            registerPlot(currentPlotElement)
+          }
+        }
+      } else if (plotlyRef.current && !isInitializedRef.current) {
+        // Create new plot
+        const plotlyConfig = { 
+          ...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS,
+          modeBarButtonsToAdd: [...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS.modeBarButtonsToAdd],
+          modeBarButtonsToRemove: [...PLOTLY_MODEBAR_CONFIG.WITH_TOOLS.modeBarButtonsToRemove]
+        }
+        const plotCreated = await tryCreatePlotlyChart(
+          currentPlotElement,
+          traces,
+          layout,
+          plotlyConfig,
+          plotlyRef.current
+        )
+        if (plotCreated) {
+          hasPlotRef.current = true
+          isInitializedRef.current = true
+          registerPlot(currentPlotElement)
+        } else {
+          throw new Error(ERROR_MESSAGES.PLOT_CREATION_FAILED)
+        }
       }
     }
     
-    createChart().catch(err => {
-      console.error('Error creating chart:', err)
+    setupChart().catch(err => {
+      console.error('Error setting up chart:', err)
     })
     
     return () => {
       disposed = true
     }
-  }, [plotData, dataViewport, config, dimensions, initPlotly, cleanup, plotlyRef, hasPlotRef])
+  }, [plotData, dataViewport, dimensions.width, dimensions.height, chartState.isPlotlyReady, initPlotly, buildTraces, registerPlot, config.xAxisParameter, dimensions.isReady, plotlyRef, hasPlotRef])
   
   // Handle resize
   useEffect(() => {
@@ -254,3 +314,17 @@ export function PlotlyChartWithDataRefactored({
     </ChartContainer>
   )
 }
+
+// Memoize component to prevent unnecessary re-renders
+export const PlotlyChartWithDataRefactored = memo(PlotlyChartWithDataRefactoredComponent, (prevProps, nextProps) => {
+  // Custom comparison function
+  return (
+    prevProps.aspectRatio === nextProps.aspectRatio &&
+    prevProps.className === nextProps.className &&
+    prevProps.onEdit === nextProps.onEdit &&
+    prevProps.onDuplicate === nextProps.onDuplicate &&
+    prevProps.onDelete === nextProps.onDelete &&
+    JSON.stringify(prevProps.config) === JSON.stringify(nextProps.config) &&
+    JSON.stringify(prevProps.padding) === JSON.stringify(nextProps.padding)
+  )
+})

@@ -257,3 +257,57 @@ export async function resizePlotlyChart(
     console.error('Error resizing Plotly chart:', error);
   }
 }
+
+// Update chart data without recreating
+export async function updatePlotlyData(
+  plotlyInstance: typeof import('plotly.js'),
+  plotElement: HTMLElement | null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  traces: any[],
+  layout?: Partial<Layout>
+): Promise<boolean> {
+  if (!plotlyInstance || !plotElement) return false;
+
+  try {
+    // Check if plot exists
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const plotDiv = plotElement as any;
+    if (plotDiv._fullLayout) {
+      // Update existing plot
+      await plotlyInstance.react(plotElement, traces, layout || plotDiv._fullLayout);
+    } else {
+      // Create new plot if doesn't exist
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Error updating Plotly data:', error);
+    return false;
+  }
+}
+
+// Check if plot exists on element
+export function hasExistingPlot(plotElement: HTMLElement | null): boolean {
+  if (!plotElement) return false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const plotDiv = plotElement as any;
+  return !!(plotDiv._fullLayout && plotDiv._fullData);
+}
+
+// Validate DOM element is ready for Plotly
+export function isElementReady(element: HTMLElement | null): boolean {
+  if (!element) return false;
+  
+  // Check element is in DOM
+  if (!document.contains(element)) return false;
+  
+  // Check element has dimensions
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  
+  // Check element is visible
+  const style = window.getComputedStyle(element);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  
+  return true;
+}
