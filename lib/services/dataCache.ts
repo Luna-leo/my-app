@@ -13,7 +13,7 @@ interface DataCacheKey {
 
 class DataCache {
   private static instance: DataCache;
-  private cache = new Map<string, CacheEntry<any>>();
+  private cache = new Map<string, CacheEntry<unknown>>();
   private readonly DEFAULT_TTL = 5 * 60 * 1000; // 5 minutes
   private readonly MAX_CACHE_SIZE = 100; // Maximum number of entries
 
@@ -30,7 +30,7 @@ class DataCache {
     return `${key.type}:${key.id}`;
   }
 
-  private isExpired(entry: CacheEntry<any>): boolean {
+  private isExpired(entry: CacheEntry<unknown>): boolean {
     return Date.now() - entry.timestamp > entry.ttl;
   }
 

@@ -1,4 +1,4 @@
-import type { PlotlyModule } from 'plotly.js-gl2d-dist';
+// PlotlyPreloadService - Manages preloading of Plotly module
 
 class PlotlyPreloadService {
   private static instance: PlotlyPreloadService;

@@ -13,7 +13,7 @@ import {
   generateLineColors,
   mergeTimeSeriesData
 } from '@/lib/utils/chartDataUtils'
-import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
+import { ParameterInfo } from '@/lib/db/schema'
 import { AlertCircle, TrendingUp, MoreVertical, Pencil, Copy, Trash2, ScatterChart, ZoomIn } from 'lucide-react'
 import { ViewportBounds } from '@/utils/chartCoordinateUtils'
 import {
