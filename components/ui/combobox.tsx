@@ -49,17 +49,17 @@ export function Combobox({
 
   const selectedOption = options.find((option) => option.value === value);
 
-  const filteredOptions = React.useMemo(() => {
-    if (!searchValue) return options;
+  const customFilter = React.useCallback((value: string, search: string) => {
+    const option = options.find(opt => opt.value === value);
+    if (!option) return 0;
     
-    const searchLower = searchValue.toLowerCase();
-    return options.filter((option) => {
-      const labelMatch = option.label.toLowerCase().includes(searchLower);
-      const valueMatch = option.value.toLowerCase().includes(searchLower);
-      const descriptionMatch = option.description?.toLowerCase().includes(searchLower);
-      return labelMatch || valueMatch || descriptionMatch;
-    });
-  }, [options, searchValue]);
+    const searchLower = search.toLowerCase();
+    const labelMatch = option.label.toLowerCase().includes(searchLower);
+    const valueMatch = option.value.toLowerCase().includes(searchLower);
+    const descriptionMatch = option.description?.toLowerCase().includes(searchLower);
+    
+    return (labelMatch || valueMatch || descriptionMatch) ? 1 : 0;
+  }, [options]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -75,7 +75,7 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-full p-0" align="start">
-        <Command>
+        <Command filter={customFilter}>
           <CommandInput 
             placeholder={searchPlaceholder} 
             value={searchValue}
@@ -84,7 +84,7 @@ export function Combobox({
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
-              {filteredOptions.map((option) => (
+              {options.map((option) => (
                 <CommandItem
                   key={option.value}
                   value={option.value}
@@ -142,17 +142,17 @@ export function MultiCombobox({
 
   const selectedOptions = options.filter((option) => value.includes(option.value));
 
-  const filteredOptions = React.useMemo(() => {
-    if (!searchValue) return options;
+  const customFilter = React.useCallback((value: string, search: string) => {
+    const option = options.find(opt => opt.value === value);
+    if (!option) return 0;
     
-    const searchLower = searchValue.toLowerCase();
-    return options.filter((option) => {
-      const labelMatch = option.label.toLowerCase().includes(searchLower);
-      const valueMatch = option.value.toLowerCase().includes(searchLower);
-      const descriptionMatch = option.description?.toLowerCase().includes(searchLower);
-      return labelMatch || valueMatch || descriptionMatch;
-    });
-  }, [options, searchValue]);
+    const searchLower = search.toLowerCase();
+    const labelMatch = option.label.toLowerCase().includes(searchLower);
+    const valueMatch = option.value.toLowerCase().includes(searchLower);
+    const descriptionMatch = option.description?.toLowerCase().includes(searchLower);
+    
+    return (labelMatch || valueMatch || descriptionMatch) ? 1 : 0;
+  }, [options]);
 
   const handleSelect = (optionValue: string) => {
     const newValue = value.includes(optionValue)
@@ -180,7 +180,7 @@ export function MultiCombobox({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-full p-0" align="start">
-          <Command>
+          <Command filter={customFilter}>
             <CommandInput 
               placeholder={searchPlaceholder} 
               value={searchValue}
@@ -189,7 +189,7 @@ export function MultiCombobox({
             <CommandList>
               <CommandEmpty>{emptyMessage}</CommandEmpty>
               <CommandGroup>
-                {filteredOptions.map((option) => (
+                {options.map((option) => (
                   <CommandItem
                     key={option.value}
                     value={option.value}
