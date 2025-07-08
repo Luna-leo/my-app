@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { useChartDimensions, AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
+import { plotlyPreloadService } from '@/lib/services/plotlyPreloadService'
+import { timeSeriesCache, metadataCache, parameterCache } from '@/lib/services/dataCache'
 
 // Dynamic import for Plotly to avoid SSR issues
 
@@ -100,17 +102,30 @@ export function PlotlyChartWithData({
         setLoadingProgress(10)
         setError(null)
 
-        // Load all time series data for selected metadata
-        const dataArrays: TimeSeriesData[][] = []
-        const totalSteps = config.selectedDataIds.length + 3
-        let currentStep = 0
+        // Calculate total steps for progress tracking
+        // Steps: data fetching (parallel), metadata fetching (parallel), parameter fetching (parallel), data processing
+        const totalSteps = 4
+        let completedSteps = 0
 
-        for (const metadataId of config.selectedDataIds) {
+        // Parallel data fetching with cache
+        const dataPromises = config.selectedDataIds.map(async metadataId => {
+          // Check cache first
+          const cached = timeSeriesCache.get(metadataId)
+          if (cached) {
+            console.log(`[Cache] Hit for timeseries data ${metadataId}`)
+            return cached
+          }
+          
+          // Fetch from DB and cache
+          console.log(`[Cache] Miss for timeseries data ${metadataId}, fetching...`)
           const data = await db.getTimeSeriesData(metadataId)
-          dataArrays.push(data)
-          currentStep++
-          setLoadingProgress((currentStep / totalSteps) * 100)
-        }
+          timeSeriesCache.set(metadataId, data)
+          return data
+        })
+        
+        const dataArrays = await Promise.all(dataPromises)
+        completedSteps++
+        setLoadingProgress((completedSteps / totalSteps) * 100)
 
         // Merge all data
         const mergedData = mergeTimeSeriesData(dataArrays)
@@ -119,10 +134,28 @@ export function PlotlyChartWithData({
           return
         }
 
-        // Load metadata info
-        const metadataMap = new Map<number, { label?: string; plant: string; machineNo: string }>()
-        for (const metadataId of config.selectedDataIds) {
+        // Load metadata info in parallel with cache
+        const metadataPromises = config.selectedDataIds.map(async metadataId => {
+          // Check cache first
+          const cached = metadataCache.get(metadataId)
+          if (cached) {
+            console.log(`[Cache] Hit for metadata ${metadataId}`)
+            return { metadataId, metadata: cached }
+          }
+          
+          // Fetch from DB and cache
+          console.log(`[Cache] Miss for metadata ${metadataId}, fetching...`)
           const metadata = await db.metadata.get(metadataId)
+          if (metadata) {
+            metadataCache.set(metadataId, metadata)
+          }
+          return { metadataId, metadata }
+        })
+        
+        const metadataResults = await Promise.all(metadataPromises)
+        const metadataMap = new Map<number, { label?: string; plant: string; machineNo: string }>()
+        
+        metadataResults.forEach(({ metadataId, metadata }) => {
           if (metadata) {
             metadataMap.set(metadataId, {
               label: metadata.label,
@@ -130,27 +163,45 @@ export function PlotlyChartWithData({
               machineNo: metadata.machineNo
             })
           }
-        }
+        })
 
-        // Load parameter info
+        // Load parameter info in parallel
         const parameterIds = [
           ...(config.xAxisParameter !== 'timestamp' ? [config.xAxisParameter] : []),
           ...config.yAxisParameters
         ]
         
-        const parameterInfoMap = new Map<string, ParameterInfo>()
-        for (const parameterId of parameterIds) {
+        const parameterPromises = parameterIds.map(async parameterId => {
+          // Check cache first
+          const cached = parameterCache.get(parameterId)
+          if (cached) {
+            console.log(`[Cache] Hit for parameter ${parameterId}`)
+            return { parameterId, paramInfo: cached }
+          }
+          
+          // Fetch from DB and cache
+          console.log(`[Cache] Miss for parameter ${parameterId}, fetching...`)
           const paramInfo = await db.parameters
             .where('parameterId')
             .equals(parameterId)
             .first()
-          
+          if (paramInfo) {
+            parameterCache.set(parameterId, paramInfo)
+          }
+          return { parameterId, paramInfo }
+        })
+        
+        const parameterResults = await Promise.all(parameterPromises)
+        const parameterInfoMap = new Map<string, ParameterInfo>()
+        
+        parameterResults.forEach(({ parameterId, paramInfo }) => {
           if (paramInfo) {
             parameterInfoMap.set(parameterId, paramInfo)
           }
-        }
-        currentStep++
-        setLoadingProgress((currentStep / totalSteps) * 100)
+        })
+        
+        completedSteps++
+        setLoadingProgress((completedSteps / totalSteps) * 100)
 
         // Transform data based on X-axis type
         let xParameterInfo: ParameterInfo | null = null
@@ -246,7 +297,7 @@ export function PlotlyChartWithData({
           setDataViewport({ xMin, xMax, yMin, yMax })
         }
         
-        currentStep++
+        completedSteps++
         setLoadingProgress(100)
         setIsPlotReady(true)
       } catch (err) {
@@ -272,8 +323,8 @@ export function PlotlyChartWithData({
 
     const initPlot = async () => {
       try {
-        // Wait a bit to ensure DOM is ready
-        await new Promise(resolve => setTimeout(resolve, 100))
+        // Use requestAnimationFrame for better DOM readiness detection
+        await new Promise(resolve => requestAnimationFrame(resolve))
         
         if (disposed) return
         
@@ -283,7 +334,7 @@ export function PlotlyChartWithData({
           // Retry after a short delay
           timeoutId = setTimeout(() => {
             if (!disposed) initPlot()
-          }, 100)
+          }, 50)
           return
         }
 
@@ -297,8 +348,8 @@ export function PlotlyChartWithData({
           }
         }
 
-        // Load Plotly module
-        const Plotly = await import('plotly.js-gl2d-dist')
+        // Load Plotly module from preload service
+        const Plotly = await plotlyPreloadService.getPlotly()
         plotlyRef.current = Plotly
 
         // Generate colors
