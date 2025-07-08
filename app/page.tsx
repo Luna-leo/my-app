@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { getDataChartComponent } from '@/components/charts/ChartProvider'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,6 +8,7 @@ import { CsvImportDialog } from '@/components/csv-import/CsvImportDialog'
 import { DataSelectionDialog } from '@/components/data-selection/DataSelectionDialog'
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { Upload, Database, LineChart, Download, FolderOpen, FileSearch } from 'lucide-react'
+import { useChartDataContext } from '@/contexts/ChartDataContext'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,13 +37,9 @@ export default function Home() {
   const [mounted, setMounted] = useState(false)
   const [workspaceId, setWorkspaceId] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const { preloadChartData } = useChartDataContext()
   
-  useEffect(() => {
-    setMounted(true)
-    loadWorkspaceAndCharts()
-  }, [])
-
-  const loadWorkspaceAndCharts = async () => {
+  const loadWorkspaceAndCharts = useCallback(async () => {
     try {
       setLoading(true)
       const workspace = await chartConfigService.initializeWorkspace()
@@ -58,12 +55,22 @@ export default function Home() {
         selectedDataIds: chart.selectedDataIds
       }))
       setCharts(convertedCharts)
+      
+      // Preload data for all charts
+      if (convertedCharts.length > 0) {
+        await preloadChartData(convertedCharts)
+      }
     } catch (error) {
       console.error('Failed to load charts:', error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [preloadChartData])
+  
+  useEffect(() => {
+    setMounted(true)
+    loadWorkspaceAndCharts()
+  }, [loadWorkspaceAndCharts])
 
 
   const handleImportComplete = () => {

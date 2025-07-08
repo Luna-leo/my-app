@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { PlotlyPreloader } from "@/components/PlotlyPreloader";
+import { ChartDataProvider } from "@/contexts/ChartDataContext";
 
 export const metadata: Metadata = {
   title: "My App",
@@ -16,7 +17,9 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <PlotlyPreloader>
-          {children}
+          <ChartDataProvider>
+            {children}
+          </ChartDataProvider>
         </PlotlyPreloader>
       </body>
     </html>
