@@ -65,7 +65,9 @@ function PlotlyChartWithDataOptimizedComponent({
     debounceMs: CHART_DEFAULTS.DEBOUNCE_MS
   })
   
-  const { plotData, dataViewport, loadingState } = useChartData(config)
+  // Add state for sampling control
+  const [enableSampling, setEnableSampling] = useState(true)
+  const { plotData, dataViewport, loadingState } = useChartData(config, enableSampling)
   const { plotlyRef, hasPlotRef, chartState, initPlotly, cleanup, registerPlot } = usePlotlyInit()
   const isInitializedRef = useRef(false)
   const lastDataRef = useRef<string>('')
@@ -468,12 +470,19 @@ function PlotlyChartWithDataOptimizedComponent({
           handleInteraction()
         }}
       >
-        {/* WebGL Mode Indicator */}
-        {isWebGLMode && (
-          <div className="absolute top-1 left-1 z-[1001] bg-green-500/20 text-green-700 dark:text-green-400 text-xs px-1.5 py-0.5 rounded-sm font-mono">
-            WebGL
-          </div>
-        )}
+        {/* Mode Indicators */}
+        <div className="absolute top-1 left-1 z-[1001] flex gap-1">
+          {isWebGLMode && (
+            <div className="bg-green-500/20 text-green-700 dark:text-green-400 text-xs px-1.5 py-0.5 rounded-sm font-mono">
+              WebGL
+            </div>
+          )}
+          {enableSampling && totalPoints > 5000 && (
+            <div className="bg-blue-500/20 text-blue-700 dark:text-blue-400 text-xs px-1.5 py-0.5 rounded-sm font-mono">
+              Sampled
+            </div>
+          )}
+        </div>
         <div
           ref={plotRef}
           className="[&_.modebar]:!z-[1000] [&_.modebar-container]:!absolute [&_.modebar-container]:!top-1 [&_.modebar-container]:!right-1"

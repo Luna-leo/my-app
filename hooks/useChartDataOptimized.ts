@@ -4,7 +4,7 @@ import { ChartPlotData, ChartLoadingState, PlotlyViewport } from '@/lib/types/pl
 import { ERROR_MESSAGES } from '@/lib/constants/plotlyConfig';
 import { useChartDataContext } from '@/contexts/ChartDataContext';
 
-export function useChartData(config: ChartConfiguration) {
+export function useChartData(config: ChartConfiguration, enableSampling: boolean = true) {
   const [plotData, setPlotData] = useState<ChartPlotData | null>(null);
   const [dataViewport, setDataViewport] = useState<PlotlyViewport | null>(null);
   const [loadingState, setLoadingState] = useState<ChartLoadingState>({
@@ -21,7 +21,7 @@ export function useChartData(config: ChartConfiguration) {
         setLoadingState({ loading: true, progress: 10, error: null });
 
         // Get data from the shared provider
-        const { plotData: data, dataViewport: viewport } = await getChartData(config);
+        const { plotData: data, dataViewport: viewport } = await getChartData(config, enableSampling);
         
         if (!data || !viewport) {
           setLoadingState({ loading: false, progress: 100, error: ERROR_MESSAGES.NO_DATA });
@@ -42,7 +42,7 @@ export function useChartData(config: ChartConfiguration) {
     };
 
     loadData();
-  }, [config, getChartData]);
+  }, [config, getChartData, enableSampling]);
 
   return { plotData, dataViewport, loadingState };
 }
