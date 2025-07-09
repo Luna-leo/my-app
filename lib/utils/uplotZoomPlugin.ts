@@ -40,26 +40,21 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
 
   return {
     hooks: {
-      setData: (u: uPlot) => {
-        // Store initial scales after data is set
-        if (Object.keys(initialScales).length === 0) {
-          Object.keys(u.scales).forEach(key => {
-            initialScales[key] = {
-              min: u.scales[key].min!,
-              max: u.scales[key].max!
-            }
-          })
-          
-          // Also update xMin, xMax, xRange
-          xMin = u.scales.x.min!
-          xMax = u.scales.x.max!
-          xRange = xMax - xMin
-          
-          // Initial scales stored after setData
-        }
-      },
       ready: (u: uPlot) => {
         const over = u.over
+
+        // Store initial scales if not already stored
+        if (Object.keys(initialScales).length === 0) {
+          Object.keys(u.scales).forEach(key => {
+            const scale = u.scales[key]
+            if (scale.min != null && scale.max != null) {
+              initialScales[key] = {
+                min: scale.min,
+                max: scale.max
+              }
+            }
+          })
+        }
 
         // Store initial scale ranges for zoom calculations
         xMin = u.scales.x.min!
@@ -215,9 +210,16 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
         // Add reset method to uPlot instance
         const uExtended = u as uPlot & { resetZoom: () => void }
         uExtended.resetZoom = () => {
+          if (Object.keys(initialScales).length === 0) {
+            console.warn('[uplotZoomPlugin] No initial scales stored, cannot reset zoom')
+            return
+          }
+          
           u.batch(() => {
             Object.keys(initialScales).forEach(key => {
-              u.setScale(key, initialScales[key])
+              if (u.scales[key]) {
+                u.setScale(key, initialScales[key])
+              }
             })
             
             // Reset interaction flag and notify

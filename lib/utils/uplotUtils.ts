@@ -1,7 +1,7 @@
 import uPlot from 'uplot'
 import { format } from 'date-fns'
 import { colorService } from '@/lib/services/colorService'
-import { createWheelZoomPlugin, createResetZoomPlugin } from './uplotZoomPlugin'
+import { createWheelZoomPlugin } from './uplotZoomPlugin'
 
 
 // Generate colors for series
@@ -137,9 +137,7 @@ export function buildUplotOptions({
   
   // Add zoom/pan plugin if enabled
   if (enableZoom || enablePan) {
-    // Add reset plugin first (it just adds a method)
-    allPlugins.push(createResetZoomPlugin())
-    // Then add the wheel zoom plugin
+    // Add the wheel zoom plugin (includes reset functionality)
     allPlugins.push(createWheelZoomPlugin({
       factor: zoomFactor,
       enablePan,
