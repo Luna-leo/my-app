@@ -3,6 +3,7 @@
 import { useEffect, useRef, memo, useCallback } from 'react'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
+import { areArraysEqual, getDataVersion } from '@/lib/utils/hashUtils'
 
 interface UplotChartProps {
   data: uPlot.AlignedData
@@ -99,12 +100,45 @@ function UplotChartComponent({
 
 // Memoize component to prevent unnecessary re-renders
 export const UplotChart = memo(UplotChartComponent, (prevProps, nextProps) => {
-  // Custom comparison function
+  // Custom comparison function - optimized for performance
+  if (
+    prevProps.className !== nextProps.className ||
+    prevProps.onCreate !== nextProps.onCreate ||
+    prevProps.onDestroy !== nextProps.onDestroy
+  ) {
+    return false;
+  }
+  
+  // Efficient data comparison
+  if (prevProps.data === nextProps.data) {
+    // Same reference, no change
+  } else if (!prevProps.data || !nextProps.data) {
+    return false;
+  } else if (prevProps.data.length !== nextProps.data.length) {
+    return false;
+  } else {
+    // Use version-based comparison for large datasets
+    const prevVersion = getDataVersion(prevProps.data);
+    const nextVersion = getDataVersion(nextProps.data);
+    if (prevVersion !== nextVersion) {
+      return false;
+    }
+  }
+  
+  // For options, check common properties that change
+  if (prevProps.options === nextProps.options) {
+    return true;
+  }
+  
+  if (!prevProps.options || !nextProps.options) {
+    return false;
+  }
+  
+  // Check key option properties that typically change
   return (
-    prevProps.className === nextProps.className &&
-    prevProps.onCreate === nextProps.onCreate &&
-    prevProps.onDestroy === nextProps.onDestroy &&
-    JSON.stringify(prevProps.data) === JSON.stringify(nextProps.data) &&
-    JSON.stringify(prevProps.options) === JSON.stringify(nextProps.options)
-  )
+    prevProps.options.width === nextProps.options.width &&
+    prevProps.options.height === nextProps.options.height &&
+    prevProps.options.title === nextProps.options.title &&
+    prevProps.options.series?.length === nextProps.options.series?.length
+  );
 })

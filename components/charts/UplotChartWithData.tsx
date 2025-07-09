@@ -3,6 +3,7 @@
 import { useEffect, useRef, memo, useCallback, useState, useMemo } from 'react'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { useChartDimensions, AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
+import { shallowEqual } from '@/lib/utils/hashUtils'
 import { useChartData } from '@/hooks/useChartDataOptimized'
 import { generateLineColors } from '@/lib/utils/chartDataUtils'
 import {
@@ -292,14 +293,50 @@ function UplotChartWithDataComponent({
 
 // Memoize component to prevent unnecessary re-renders
 export const UplotChartWithData = memo(UplotChartWithDataComponent, (prevProps, nextProps) => {
-  // Custom comparison function
-  return (
-    prevProps.aspectRatio === nextProps.aspectRatio &&
-    prevProps.className === nextProps.className &&
-    prevProps.onEdit === nextProps.onEdit &&
-    prevProps.onDuplicate === nextProps.onDuplicate &&
-    prevProps.onDelete === nextProps.onDelete &&
-    JSON.stringify(prevProps.config) === JSON.stringify(nextProps.config) &&
-    JSON.stringify(prevProps.padding) === JSON.stringify(nextProps.padding)
-  )
+  // Custom comparison function - optimized for performance
+  if (
+    prevProps.aspectRatio !== nextProps.aspectRatio ||
+    prevProps.className !== nextProps.className ||
+    prevProps.onEdit !== nextProps.onEdit ||
+    prevProps.onDuplicate !== nextProps.onDuplicate ||
+    prevProps.onDelete !== nextProps.onDelete
+  ) {
+    return false;
+  }
+  
+  // Efficient config comparison
+  if (prevProps.config === nextProps.config) {
+    // Same reference
+  } else if (!prevProps.config || !nextProps.config) {
+    return false;
+  } else {
+    // Compare key config properties
+    const configChanged = (
+      prevProps.config.id !== nextProps.config.id ||
+      prevProps.config.title !== nextProps.config.title ||
+      prevProps.config.chartType !== nextProps.config.chartType ||
+      prevProps.config.xAxisParameter !== nextProps.config.xAxisParameter ||
+      prevProps.config.yAxisParameters.length !== nextProps.config.yAxisParameters.length ||
+      prevProps.config.selectedDataIds.length !== nextProps.config.selectedDataIds.length ||
+      !prevProps.config.yAxisParameters.every((p, i) => p === nextProps.config.yAxisParameters[i]) ||
+      !prevProps.config.selectedDataIds.every((id, i) => id === nextProps.config.selectedDataIds[i])
+    );
+    
+    if (configChanged) return false;
+  }
+  
+  // Efficient padding comparison
+  if (prevProps.padding === nextProps.padding) {
+    return true;
+  }
+  
+  if (!prevProps.padding && !nextProps.padding) {
+    return true;
+  }
+  
+  if (!prevProps.padding || !nextProps.padding) {
+    return false;
+  }
+  
+  return shallowEqual(prevProps.padding, nextProps.padding);
 })

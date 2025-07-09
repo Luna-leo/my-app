@@ -14,6 +14,7 @@ import {
 import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache, samplingCache } from '@/lib/services/dataCache';
 import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig, getMemoryAwareSamplingConfig } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
+import { hashChartConfig, hashSamplingConfig } from '@/lib/utils/hashUtils';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
@@ -40,28 +41,17 @@ const ChartDataContext = createContext<ChartDataContextType | undefined>(undefin
 
 // Generate a stable hash for chart configuration
 function getConfigHash(config: ChartConfiguration, samplingOption: boolean | SamplingConfig = true): string {
-  const samplingKey = typeof samplingOption === 'boolean' 
-    ? { enabled: samplingOption }
-    : {
-        enabled: samplingOption.enabled,
-        method: samplingOption.method,
-        targetPoints: samplingOption.targetPoints,
-        preserveExtremes: samplingOption.preserveExtremes
-      };
-  
-  return JSON.stringify({
+  return hashChartConfig({
     xAxisParameter: config.xAxisParameter,
-    yAxisParameters: config.yAxisParameters.sort(),
-    selectedDataIds: config.selectedDataIds.sort(),
+    yAxisParameters: config.yAxisParameters,
+    selectedDataIds: config.selectedDataIds,
     chartType: config.chartType,
-    sampling: samplingKey
-  });
+  }, samplingOption);
 }
 
 // Generate a cache key for sampled data
 function getSamplingCacheKey(metadataIds: number[], samplingConfig: SamplingConfig): string {
-  return JSON.stringify({
-    dataIds: metadataIds.sort(),
+  return hashSamplingConfig(metadataIds, {
     method: samplingConfig.method,
     targetPoints: samplingConfig.targetPoints,
     preserveExtremes: samplingConfig.preserveExtremes

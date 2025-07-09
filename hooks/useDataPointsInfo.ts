@@ -24,9 +24,14 @@ export function useDataPointsInfo(
   const { getChartData } = useChartDataContext();
 
   // Use debounce to avoid too frequent recalculations
+  // Create a stable dependency key without JSON.stringify
+  const chartIdsKey = useMemo(() => {
+    return visibleCharts.map(c => c.id).sort().join(',');
+  }, [visibleCharts]);
+  
   const debouncedCharts = useMemo(() => {
     return visibleCharts;
-  }, [JSON.stringify(visibleCharts.map(c => c.id))]);
+  }, [chartIdsKey]);
 
   useEffect(() => {
     let isCancelled = false;
