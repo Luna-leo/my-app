@@ -35,6 +35,7 @@ interface UplotChartWithDataProps {
     left?: number
   }
   samplingConfig?: SamplingConfig
+  additionalPlugins?: uPlot.Plugin[]
 }
 
 function UplotChartWithDataComponent({
@@ -45,7 +46,8 @@ function UplotChartWithDataComponent({
   onDuplicate,
   onDelete,
   padding,
-  samplingConfig
+  samplingConfig,
+  additionalPlugins = []
 }: UplotChartWithDataProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<uPlot | null>(null)
@@ -172,6 +174,11 @@ function UplotChartWithDataComponent({
       }))
       options.plugins.push(createTooltipPlugin(chartData))
       
+      // Add any additional plugins
+      if (additionalPlugins.length > 0) {
+        options.plugins.push(...additionalPlugins)
+      }
+      
       // Apply series colors based on metadata ID
       options.series.forEach((series, i) => {
         if (i > 0 && plotData.series[i - 1]) {
@@ -195,7 +202,7 @@ function UplotChartWithDataComponent({
       setError(UPLOT_ERROR_MESSAGES.INIT_FAILED)
       return null
     }
-  }, [plotData, dimensions, config, dataViewport])
+  }, [plotData, dimensions, config, dataViewport, additionalPlugins])
   
   // Handle chart creation
   const handleChartCreate = useCallback((chart: uPlot) => {

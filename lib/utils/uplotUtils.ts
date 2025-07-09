@@ -115,6 +115,7 @@ export interface BuildUplotOptionsParams {
   showLegend?: boolean
   xRange?: [number, number]
   yRange?: [number, number]
+  plugins?: uPlot.Plugin[]
 }
 
 export function buildUplotOptions({
@@ -129,6 +130,7 @@ export function buildUplotOptions({
   showLegend = true,
   xRange,
   yRange,
+  plugins,
 }: BuildUplotOptionsParams): uPlot.Options {
   const colors = generateSeriesColors(seriesNames.length)
 
@@ -166,6 +168,7 @@ export function buildUplotOptions({
       },
     },
     hooks: {},
+    plugins: plugins || [],
   }
 
   return options
