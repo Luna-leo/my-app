@@ -173,9 +173,9 @@ export function buildScatterTrace(options: ScatterTraceOptions) {
     forceNonWebGL = false,
   } = options;
 
-  // Always use regular scatter if no data or forced
+  // Always prefer WebGL unless forced otherwise or no data
   const hasData = x && y && x.length > 0 && y.length > 0;
-  const type = (!hasData || forceNonWebGL) ? 'scatter' : 'scattergl';
+  const type = (hasData && !forceNonWebGL) ? 'scattergl' : 'scatter';
 
   return {
     x,

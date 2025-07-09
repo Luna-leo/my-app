@@ -85,15 +85,8 @@ function PlotlyChartWithDataOptimizedComponent({
     dataPoints: totalDataPoints,
   })
   
-  // Progressive WebGL initialization strategy
-  const [hasInteracted, setHasInteracted] = useState(false)
-  const [isInitialRender, setIsInitialRender] = useState(true)
-  
-  // Determine if we should use WebGL
-  // 1. For initial render with small datasets, use SVG
-  // 2. For large datasets or after interaction, consider WebGL
-  const shouldForceNonWebGL = isInitialRender && totalDataPoints < 1000
-  const forceNonWebGL = shouldForceNonWebGL || (!hasInteracted && !isWebGLMode)
+  // Always prefer WebGL, fallback to SVG only on error
+  const forceNonWebGL = false
   
   // Build traces from plot data
   const buildTraces = useCallback(() => {
@@ -142,13 +135,13 @@ function PlotlyChartWithDataOptimizedComponent({
         hovertemplate,
         lineWidth: CHART_DEFAULTS.LINE_WIDTH,
         markerSize: CHART_DEFAULTS.MARKER_SIZE,
-        forceNonWebGL: forceNonWebGL, // Use non-WebGL by default
+        forceNonWebGL: false, // Always try WebGL first
       })
     })
     
     // Filter out null traces
     return traces.filter(trace => trace !== null)
-  }, [plotData, config.xAxisParameter, config.chartType, forceNonWebGL])
+  }, [plotData, config.xAxisParameter, config.chartType])
   
   // Initialize or update Plotly chart
   useEffect(() => {
@@ -317,17 +310,8 @@ function PlotlyChartWithDataOptimizedComponent({
     return () => {
       disposed = true
     }
-  }, [plotData, dataViewport, dimensions.width, dimensions.height, chartState.isPlotlyReady, initPlotly, buildTraces, registerPlot, config, dimensions.isReady, plotlyRef, hasPlotRef, cleanup, isWebGLMode])
+  }, [plotData, dataViewport, dimensions.width, dimensions.height, chartState.isPlotlyReady, initPlotly, buildTraces, registerPlot, config, dimensions.isReady, plotlyRef, hasPlotRef, cleanup])
   
-  // Mark initial render as complete after first successful plot
-  useEffect(() => {
-    if (hasPlotRef.current && isInitialRender) {
-      // Delay to ensure smooth initial render
-      setTimeout(() => {
-        setIsInitialRender(false)
-      }, 100)
-    }
-  }, [hasPlotRef, isInitialRender])
   
   // Handle resize
   useEffect(() => {
@@ -352,7 +336,7 @@ function PlotlyChartWithDataOptimizedComponent({
       
       // Transition trace types instead of re-initializing
       const performTransition = async () => {
-        const shouldUseWebGL = isWebGLMode && !forceNonWebGL;
+        const shouldUseWebGL = true; // Always try WebGL
         const transitioned = await transitionTraceTypes(plotlyRef.current!, plotRef.current, shouldUseWebGL);
         
         if (transitioned) {
@@ -369,13 +353,13 @@ function PlotlyChartWithDataOptimizedComponent({
       
       performTransition();
     }
-  }, [isWebGLMode, hasPlotRef, config.title, forceNonWebGL, plotlyRef, plotRef])
+  }, [isWebGLMode, hasPlotRef, config.title, plotlyRef, plotRef])
   
   // Register WebGL context when in WebGL mode and plot exists
   useEffect(() => {
     const chartId = chartIdRef.current
     
-    if (isWebGLMode && !forceNonWebGL && hasPlotRef.current && plotRef.current && plotlyRef.current) {
+    if (isWebGLMode && hasPlotRef.current && plotRef.current && plotlyRef.current) {
       // Only register if actually using WebGL
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const hasWebGLTraces = (plotRef.current as any).data?.some((trace: any) => trace.type === 'scattergl')

@@ -23,7 +23,7 @@ export function useWebGLMode(options: UseWebGLModeOptions) {
   } = options;
 
   const [state, setState] = useState<WebGLModeState>({
-    isWebGLMode: false,
+    isWebGLMode: true, // Start with WebGL enabled
     isInViewport: false,
     lastInteraction: 0,
   });

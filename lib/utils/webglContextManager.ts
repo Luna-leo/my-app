@@ -24,7 +24,7 @@ class WebGLContextManager extends EventEmitter {
   private activeContexts: Map<string, ContextInfo> = new Map();
   private contextQueue: ContextRequest[] = [];
   
-  private readonly MAX_CONTEXTS = 16; // Support up to 16 charts display
+  private readonly MAX_CONTEXTS = 32; // Support up to 32 charts display
   private readonly VIEWPORT_PRIORITY = 1;
   private readonly NORMAL_PRIORITY = 0;
   
@@ -264,14 +264,9 @@ class WebGLContextManager extends EventEmitter {
   
   // Check if chart should use WebGL based on data points
   shouldUseWebGL(dataPoints: number): boolean {
-    // Very small datasets don't benefit from WebGL
-    if (dataPoints < 500) return false;
-    
-    // Large datasets strongly benefit from WebGL
-    if (dataPoints > 5000) return true;
-    
-    // Medium datasets: use WebGL if we have available contexts
-    return this.canAddContext();
+    // Always prefer WebGL for better performance
+    // The tryCreatePlotlyChart function will handle fallback if WebGL fails
+    return true;
   }
   
   // Clean up all contexts
