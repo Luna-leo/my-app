@@ -21,6 +21,8 @@ import { AppHeader } from '@/components/layout/AppHeader'
 import { LoadingState } from '@/components/common/LoadingState'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ChartGrid } from '@/components/charts/ChartGrid'
+import { LayoutOption } from '@/components/layout/LayoutSelector'
+import { layoutService } from '@/lib/services/layoutService'
 
 export default function Home() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -38,6 +40,7 @@ export default function Home() {
   const [workspaceId, setWorkspaceId] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [importProgress, setImportProgress] = useState<{ loaded: number; total: number } | null>(null)
+  const [layoutOption, setLayoutOption] = useState<LayoutOption | null>(null)
   const { preloadChartData } = useChartDataContext()
   
   const loadWorkspaceAndCharts = useCallback(async () => {
@@ -79,6 +82,12 @@ export default function Home() {
   useEffect(() => {
     setMounted(true)
     loadWorkspaceAndCharts()
+    
+    // Load saved layout preference
+    const savedLayout = layoutService.loadLayout()
+    if (savedLayout) {
+      setLayoutOption(savedLayout)
+    }
   }, [loadWorkspaceAndCharts])
 
 
@@ -162,6 +171,11 @@ export default function Home() {
     setDeleteConfirmation({ open: false, chartId: null })
   }
 
+  const handleLayoutChange = (layout: LayoutOption | null) => {
+    setLayoutOption(layout)
+    layoutService.saveLayout(layout)
+  }
+
   const handleExportWorkspace = async () => {
     try {
       const jsonData = await chartConfigService.exportWorkspace(workspaceId)
@@ -241,6 +255,8 @@ export default function Home() {
           onImportWorkspaceClick={handleImportWorkspace}
           isCreateChartDisabled={selectedDataIds.length === 0}
           isExportDisabled={charts.length === 0}
+          layoutOption={layoutOption}
+          onLayoutChange={handleLayoutChange}
         />
         
         {loading ? (
@@ -255,6 +271,7 @@ export default function Home() {
               onEdit={handleEditChart}
               onDuplicate={handleDuplicateChart}
               onDelete={handleDeleteChart}
+              layoutOption={layoutOption}
             />
           )
         ) : (
