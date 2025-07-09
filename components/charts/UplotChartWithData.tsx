@@ -260,7 +260,7 @@ function UplotChartWithDataComponent({
         className="w-full relative"
         style={{ 
           height: dimensions.height || 400,
-          minHeight: 400,
+          minHeight: 100,
           overflow: 'hidden'
         }}
       >
