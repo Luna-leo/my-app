@@ -17,12 +17,20 @@ export interface ChartLoadingState {
   error: string | null
 }
 
+// Range for data bounds
+export interface DataRange {
+  min: number
+  max: number
+}
+
 // Series data for charts
 export interface ChartSeriesData {
   xValues: number[]
   yValues: number[]
   parameterInfo: ParameterInfo
   metadataLabel: string
+  xRange?: DataRange
+  yRange?: DataRange
 }
 
 // Plot data structure

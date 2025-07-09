@@ -224,11 +224,10 @@ export function createTooltipPlugin(): uPlot.Plugin {
           let xFormatted = String(xVal)
           
           // Format x value
-          if (u.axes[0].values && typeof u.axes[0].values === 'function') {
-            const formatted = u.axes[0].values(u, [xVal])
-            if (formatted && formatted[0]) {
-              xFormatted = formatted[0]
-            }
+          if (u.scales.x && u.scales.x.time) {
+            xFormatted = formatTimestamp(xVal)
+          } else {
+            xFormatted = formatNumber(xVal)
           }
 
           content += `<div style="margin-bottom: 4px">${xFormatted}</div>`

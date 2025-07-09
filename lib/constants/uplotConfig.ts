@@ -75,6 +75,10 @@ export const UPLOT_ERROR_MESSAGES = {
   RENDER_ERROR: 'Error rendering uPlot chart',
   UPDATE_FAILED: 'Failed to update chart data',
   RESIZE_FAILED: 'Failed to resize chart',
+  NO_DATA: 'No data points found for the selected parameters',
+  DATA_TRANSFORM_ERROR: 'Failed to transform data for chart',
+  CACHE_ERROR: 'Error accessing cached data',
+  DATA_LOAD_FAILED: 'Failed to load chart data',
 } as const
 
 // Data limits

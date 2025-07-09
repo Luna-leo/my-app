@@ -207,11 +207,14 @@ export function useChartData(config: ChartConfiguration) {
 
         // Set initial viewport
         if (chartData.series.length > 0) {
-          const xMin = Math.min(...chartData.series.map(s => s.xRange.min));
-          const xMax = Math.max(...chartData.series.map(s => s.xRange.max));
-          const yMin = Math.min(...chartData.series.map(s => s.yRange.min));
-          const yMax = Math.max(...chartData.series.map(s => s.yRange.max));
-          setDataViewport({ xMin, xMax, yMin, yMax });
+          const validSeries = chartData.series.filter(s => s.xRange && s.yRange);
+          if (validSeries.length > 0) {
+            const xMin = Math.min(...validSeries.map(s => s.xRange!.min));
+            const xMax = Math.max(...validSeries.map(s => s.xRange!.max));
+            const yMin = Math.min(...validSeries.map(s => s.yRange!.min));
+            const yMax = Math.max(...validSeries.map(s => s.yRange!.max));
+            setDataViewport({ xMin, xMax, yMin, yMax });
+          }
         }
 
         currentStep++;

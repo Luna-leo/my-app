@@ -10,7 +10,6 @@ import {
   transformToUplotData,
   createTooltipPlugin,
   resizeUplotChart,
-  updateUplotData,
   isValidChart,
 } from '@/lib/utils/uplotUtils'
 import { UPLOT_DEFAULTS, UPLOT_ERROR_MESSAGES, UPLOT_DATA_LIMITS } from '@/lib/constants/uplotConfig'
@@ -74,9 +73,6 @@ function UplotChartWithDataComponent({
     dataViewport,
     loadingState
   })
-  
-  // Calculate total data points
-  const totalDataPoints = plotData?.series.reduce((acc, series) => acc + series.xValues.length, 0) || 0
   
   // Transform data to uPlot format
   const uplotData = useMemo(() => {
@@ -199,7 +195,7 @@ function UplotChartWithDataComponent({
   }, [config.title])
   
   // Handle chart destruction
-  const handleChartDestroy = useCallback((chart: uPlot) => {
+  const handleChartDestroy = useCallback(() => {
     chartRef.current = null
     console.log(`[Chart ${config.title}] uPlot chart destroyed`)
   }, [config.title])
