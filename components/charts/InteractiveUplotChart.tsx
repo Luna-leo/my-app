@@ -46,6 +46,12 @@ interface InteractiveUplotChartProps {
     yMax: number
   }
   onViewportChange?: (viewport: { xMin: number; xMax: number; yMin: number; yMax: number }) => void
+  
+  // Zoom and pan options
+  enableZoom?: boolean
+  enablePan?: boolean
+  zoomFactor?: number
+  panButton?: number
 }
 
 export function InteractiveUplotChart({
@@ -64,6 +70,10 @@ export function InteractiveUplotChart({
   enableViewportControl = true,
   initialViewport,
   onViewportChange,
+  enableZoom = true,
+  enablePan = true,
+  zoomFactor = 0.75,
+  panButton = 1,
 }: InteractiveUplotChartProps) {
   const chartRef = useRef<uPlot | null>(null)
   
@@ -244,8 +254,8 @@ export function InteractiveUplotChart({
         </div>
       )}
       
-      {/* Reset Viewport Button */}
-      {enableViewportControl && viewport && initialViewport && (
+      {/* Reset Viewport Button - Hidden when using UplotChartWithData's reset */}
+      {false && enableViewportControl && viewport && initialViewport && (
         <div className="absolute top-2 left-2 z-[1002]">
           <button
             onClick={viewportActions.resetViewport}
@@ -268,6 +278,10 @@ export function InteractiveUplotChart({
         padding={padding}
         samplingConfig={samplingConfig}
         additionalPlugins={selectionPlugin ? [selectionPlugin] : []}
+        enableZoom={enableZoom}
+        enablePan={enablePan}
+        zoomFactor={zoomFactor}
+        panButton={panButton}
       />
     </div>
   )

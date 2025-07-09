@@ -1,6 +1,7 @@
 import uPlot from 'uplot'
 import { format } from 'date-fns'
 import { colorService } from '@/lib/services/colorService'
+import { createWheelZoomPlugin, createResetZoomPlugin } from './uplotZoomPlugin'
 
 
 // Generate colors for series
@@ -103,6 +104,11 @@ export interface BuildUplotOptionsParams {
   xRange?: [number, number]
   yRange?: [number, number]
   plugins?: uPlot.Plugin[]
+  enableZoom?: boolean
+  enablePan?: boolean
+  zoomFactor?: number
+  panButton?: number
+  onZoomChange?: (isZoomed: boolean) => void
 }
 
 export function buildUplotOptions({
@@ -118,8 +124,29 @@ export function buildUplotOptions({
   xRange,
   yRange,
   plugins,
+  enableZoom = true,
+  enablePan = true,
+  zoomFactor = 0.75,
+  panButton = 1,
+  onZoomChange,
 }: BuildUplotOptionsParams): uPlot.Options {
   const colors = generateSeriesColors(seriesNames.length)
+
+  // Build plugins array
+  const allPlugins: uPlot.Plugin[] = [...(plugins || [])]
+  
+  // Add zoom/pan plugin if enabled
+  if (enableZoom || enablePan) {
+    // Add reset plugin first (it just adds a method)
+    allPlugins.push(createResetZoomPlugin())
+    // Then add the wheel zoom plugin
+    allPlugins.push(createWheelZoomPlugin({
+      factor: zoomFactor,
+      enablePan,
+      panButton,
+      onZoomChange,
+    }))
+  }
 
   const options: uPlot.Options = {
     width,
@@ -139,6 +166,11 @@ export function buildUplotOptions({
         key: 'chart-sync',
         setSeries: true,
       },
+      // Enable cursor drag for better interaction
+      drag: {
+        x: true,
+        y: true,
+      },
     },
     series: buildSeriesOptions(seriesNames, colors, chartType),
     axes: [
@@ -155,7 +187,7 @@ export function buildUplotOptions({
       },
     },
     hooks: {},
-    plugins: plugins || [],
+    plugins: allPlugins,
   }
 
   return options
