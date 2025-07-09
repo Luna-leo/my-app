@@ -149,7 +149,7 @@ function UplotChartWithDataComponent({
         seriesNames,
         chartType: config.chartType,
         isTimeAxis: config.xAxisParameter === 'timestamp',
-        showLegend: true,
+        showLegend: false,
         xRange: dataViewport ? [
           config.xAxisParameter === 'timestamp' ? dataViewport.xMin / 1000 : dataViewport.xMin,
           config.xAxisParameter === 'timestamp' ? dataViewport.xMax / 1000 : dataViewport.xMax
