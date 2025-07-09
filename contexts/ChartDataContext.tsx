@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog';
-import { ChartPlotData, ChartViewport } from '@/lib/types/chart';
+import { ChartPlotData, ChartViewport, SamplingInfo } from '@/lib/types/chart';
 import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema';
 import { db } from '@/lib/db';
 import {
@@ -215,8 +215,10 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
 
       // Apply sampling if enabled and data is large
       let processedTimeSeries = rawData.timeSeries;
+      let samplingInfo: SamplingInfo | undefined;
       
       const shouldSample = typeof enableSampling === 'boolean' ? enableSampling : enableSampling.enabled;
+      const originalCount = rawData.timeSeries.length;
       
       if (shouldSample) {
         const samplingConfig = typeof enableSampling === 'boolean' 
@@ -228,6 +230,26 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         // due to non-deterministic parameter ordering in Object.keys()
         const samplingParameter = config.yAxisParameters.length > 0 ? config.yAxisParameters[0] : undefined;
         processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+        
+        // Track sampling info
+        const wasSampled = processedTimeSeries.length < originalCount;
+        if (wasSampled) {
+          samplingInfo = {
+            originalCount,
+            sampledCount: processedTimeSeries.length,
+            wasSampled: true,
+            method: samplingConfig.method
+          };
+        }
+      }
+      
+      // If not sampled but we still want to track the count
+      if (!samplingInfo) {
+        samplingInfo = {
+          originalCount,
+          sampledCount: processedTimeSeries.length,
+          wasSampled: false
+        };
       }
 
       // Transform data based on X-axis type
@@ -269,6 +291,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
               yRange: combinedYRange,
             };
           }),
+          samplingInfo,
         };
       } else {
         // XY chart
@@ -307,6 +330,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
               yRange: combinedYRange,
             };
           }),
+          samplingInfo,
         };
       }
 

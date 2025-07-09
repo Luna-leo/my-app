@@ -33,10 +33,19 @@ export interface ChartSeriesData {
   yRange?: DataRange
 }
 
+// Sampling information for chart data
+export interface SamplingInfo {
+  originalCount: number
+  sampledCount: number
+  wasSampled: boolean
+  method?: string
+}
+
 // Plot data structure
 export interface ChartPlotData {
   xParameterInfo: ParameterInfo | null
   series: ChartSeriesData[]
+  samplingInfo?: SamplingInfo
 }
 
 // Animation function type

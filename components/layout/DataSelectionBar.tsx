@@ -16,6 +16,11 @@ interface DataSelectionBarProps {
   onPageChange: (page: number) => void
   samplingConfig: SamplingConfig
   onSamplingConfigChange: (config: SamplingConfig) => void
+  dataPointsInfo?: {
+    original: number
+    sampled: number
+    isLoading: boolean
+  }
 }
 
 export function DataSelectionBar({
@@ -27,7 +32,8 @@ export function DataSelectionBar({
   totalPages,
   onPageChange,
   samplingConfig,
-  onSamplingConfigChange
+  onSamplingConfigChange,
+  dataPointsInfo
 }: DataSelectionBarProps) {
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg bg-background/50">
@@ -52,6 +58,10 @@ export function DataSelectionBar({
         <SamplingControls
           config={samplingConfig}
           onChange={onSamplingConfigChange}
+          dataPointsInfo={dataPointsInfo && !dataPointsInfo.isLoading ? {
+            original: dataPointsInfo.original,
+            sampled: dataPointsInfo.sampled
+          } : undefined}
         />
         
         {layoutOption && paginationEnabled && totalPages > 1 && (

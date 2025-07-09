@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { CsvImportDialog } from '@/components/csv-import/CsvImportDialog'
 import { DataSelectionDialog } from '@/components/data-selection/DataSelectionDialog'
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
@@ -25,6 +25,7 @@ import { LayoutOption } from '@/components/layout/LayoutSelector'
 import { DataSelectionBar } from '@/components/layout/DataSelectionBar'
 import { layoutService } from '@/lib/services/layoutService'
 import { SamplingConfig, DEFAULT_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling'
+import { useDataPointsInfo } from '@/hooks/useDataPointsInfo'
 
 export default function Home() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -192,6 +193,19 @@ export default function Home() {
     setCurrentPage(1)
   }
 
+  // Calculate visible charts for pagination
+  const visibleCharts = useMemo(() => {
+    if (!paginationEnabled || !layoutOption) {
+      return charts;
+    }
+    const startIndex = (currentPage - 1) * chartsPerPage;
+    const endIndex = startIndex + chartsPerPage;
+    return charts.slice(startIndex, endIndex);
+  }, [charts, paginationEnabled, layoutOption, currentPage, chartsPerPage]);
+
+  // Get data points info for visible charts
+  const dataPointsInfo = useDataPointsInfo(visibleCharts, samplingConfig);
+
   const handleExportWorkspace = async () => {
     try {
       const jsonData = await chartConfigService.exportWorkspace(workspaceId)
@@ -294,6 +308,7 @@ export default function Home() {
                   onPageChange={setCurrentPage}
                   samplingConfig={samplingConfig}
                   onSamplingConfigChange={setSamplingConfig}
+                  dataPointsInfo={dataPointsInfo}
                 />
               </div>
               <ChartGrid

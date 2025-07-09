@@ -59,9 +59,17 @@ export function SamplingControls({ config, onChange, dataPointsInfo }: SamplingC
         <Button variant="outline" size="sm" className="gap-2">
           <Settings2 className="h-4 w-4" />
           <span>Sampling</span>
-          {config.enabled && dataPointsInfo && (
+          {dataPointsInfo && (
             <span className="text-xs text-muted-foreground">
-              ({dataPointsInfo.sampled}/{dataPointsInfo.original})
+              {config.enabled ? (
+                dataPointsInfo.sampled < dataPointsInfo.original ? (
+                  `(${(dataPointsInfo.sampled / 1000).toFixed(1)}K/${(dataPointsInfo.original / 1000).toFixed(1)}K)`
+                ) : (
+                  `(${(dataPointsInfo.original / 1000).toFixed(1)}K)`
+                )
+              ) : (
+                '(OFF)'
+              )}
             </span>
           )}
         </Button>
@@ -148,11 +156,30 @@ export function SamplingControls({ config, onChange, dataPointsInfo }: SamplingC
 
           {dataPointsInfo && (
             <div className="pt-2 border-t">
-              <p className="text-xs text-muted-foreground">
-                {config.enabled
-                  ? `Displaying ${dataPointsInfo.sampled.toLocaleString()} of ${dataPointsInfo.original.toLocaleString()} points`
-                  : `Displaying all ${dataPointsInfo.original.toLocaleString()} points`}
-              </p>
+              <div className="space-y-1">
+                <p className="text-sm font-medium">
+                  {config.enabled && dataPointsInfo.sampled < dataPointsInfo.original
+                    ? 'Status: Active'
+                    : config.enabled
+                    ? 'Status: Ready (data below threshold)'
+                    : 'Status: Disabled'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {config.enabled && dataPointsInfo.sampled < dataPointsInfo.original
+                    ? `Displaying ${dataPointsInfo.sampled.toLocaleString()} of ${dataPointsInfo.original.toLocaleString()} points (${Math.round((dataPointsInfo.sampled / dataPointsInfo.original) * 100)}%)`
+                    : `Displaying all ${dataPointsInfo.original.toLocaleString()} points`}
+                </p>
+                {config.enabled && dataPointsInfo.sampled < dataPointsInfo.original && (
+                  <div className="mt-2">
+                    <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-primary transition-all duration-300"
+                        style={{ width: `${(dataPointsInfo.sampled / dataPointsInfo.original) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
