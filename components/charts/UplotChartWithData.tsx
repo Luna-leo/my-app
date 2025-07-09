@@ -140,7 +140,6 @@ function UplotChartWithDataComponent({
       const options = buildUplotOptions({
         width: chartWidth,
         height: chartHeight,
-        title: config.title,
         xLabel: plotData.xParameterInfo 
           ? `${plotData.xParameterInfo.parameterName} [${plotData.xParameterInfo.unit || ''}]`
           : 'Time',
@@ -266,16 +265,13 @@ function UplotChartWithDataComponent({
         }}
       >
         {/* Mode Indicators */}
-        <div className="absolute top-1 left-1 z-[1001] flex gap-1">
-          <div className="bg-blue-500/20 text-blue-700 dark:text-blue-400 text-xs px-1.5 py-0.5 rounded-sm font-mono">
-            uPlot
-          </div>
-          {enableSampling && totalPoints > UPLOT_DATA_LIMITS.MAX_POINTS_WITHOUT_SAMPLING && (
+        {enableSampling && totalPoints > UPLOT_DATA_LIMITS.MAX_POINTS_WITHOUT_SAMPLING && (
+          <div className="absolute top-1 left-1 z-[1001]">
             <div className="bg-amber-500/20 text-amber-700 dark:text-amber-400 text-xs px-1.5 py-0.5 rounded-sm font-mono">
               Sampled
             </div>
-          )}
-        </div>
+          </div>
+        )}
         {uplotData && uplotOptions && (
           <UplotChart
             data={uplotData}

@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Pencil, Copy, Trash2, ScatterChart, TrendingUp, ZoomIn } from 'lucide-react';
+import { MoreVertical, Pencil, Copy, Trash2, ScatterChart, TrendingUp } from 'lucide-react';
 
 interface ChartContainerProps {
   title: string;
@@ -79,10 +79,6 @@ export function ChartContainer({
       <CardContent>
         <div className="relative">
           {children}
-          <div className="absolute bottom-1 right-1 flex items-center gap-1 text-[10px] text-muted-foreground bg-background/80 px-1 py-0.5 rounded">
-            <ZoomIn className="h-2.5 w-2.5" />
-            <span>Scroll to zoom • Drag to pan</span>
-          </div>
         </div>
       </CardContent>
     </Card>
