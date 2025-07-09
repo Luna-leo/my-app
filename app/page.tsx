@@ -22,6 +22,7 @@ import { LoadingState } from '@/components/common/LoadingState'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ChartGrid } from '@/components/charts/ChartGrid'
 import { LayoutOption } from '@/components/layout/LayoutSelector'
+import { DataSelectionBar } from '@/components/layout/DataSelectionBar'
 import { layoutService } from '@/lib/services/layoutService'
 
 export default function Home() {
@@ -41,6 +42,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [importProgress, setImportProgress] = useState<{ loaded: number; total: number } | null>(null)
   const [layoutOption, setLayoutOption] = useState<LayoutOption | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
   const { preloadChartData } = useChartDataContext()
   
   const loadWorkspaceAndCharts = useCallback(async () => {
@@ -174,6 +176,18 @@ export default function Home() {
   const handleLayoutChange = (layout: LayoutOption | null) => {
     setLayoutOption(layout)
     layoutService.saveLayout(layout)
+    // Reset to first page when layout changes
+    setCurrentPage(1)
+  }
+
+  // Calculate pagination info
+  const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
+  const totalPages = Math.ceil(charts.length / chartsPerPage)
+  const paginationEnabled = layoutOption?.paginationEnabled ?? false
+
+  // Ensure current page is valid
+  if (currentPage > totalPages && totalPages > 0) {
+    setCurrentPage(1)
   }
 
   const handleExportWorkspace = async () => {
@@ -266,13 +280,28 @@ export default function Home() {
           />
         ) : charts.length > 0 ? (
           mounted && (
-            <ChartGrid
-              charts={charts}
-              onEdit={handleEditChart}
-              onDuplicate={handleDuplicateChart}
-              onDelete={handleDeleteChart}
-              layoutOption={layoutOption}
-            />
+            <>
+              <div className="mb-4">
+                <DataSelectionBar
+                  selectedDataIds={selectedDataIds}
+                  totalCharts={charts.length}
+                  layoutOption={layoutOption}
+                  paginationEnabled={paginationEnabled}
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                />
+              </div>
+              <ChartGrid
+                charts={charts}
+                onEdit={handleEditChart}
+                onDuplicate={handleDuplicateChart}
+                onDelete={handleDeleteChart}
+                layoutOption={layoutOption}
+                paginationEnabled={paginationEnabled}
+                currentPage={currentPage}
+              />
+            </>
           )
         ) : (
           <EmptyState />
