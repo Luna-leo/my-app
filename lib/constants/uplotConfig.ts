@@ -105,7 +105,7 @@ export const UPLOT_CHART_CONFIGS = {
   line: {
     lineWidth: 2,
     showPoints: false,
-    fillArea: true,
+    fillArea: false,
     fillOpacity: 0.1,
   },
   scatter: {
