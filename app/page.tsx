@@ -46,6 +46,7 @@ export default function Home() {
   const [layoutOption, setLayoutOption] = useState<LayoutOption | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [samplingConfig, setSamplingConfig] = useState<SamplingConfig>(DEFAULT_SAMPLING_CONFIG)
+  const [isUpdatingSampling, setIsUpdatingSampling] = useState(false)
   const { preloadChartData } = useChartDataContext()
   
   const loadWorkspaceAndCharts = useCallback(async () => {
@@ -223,6 +224,28 @@ export default function Home() {
     }
   }
 
+  // Handle sampling config changes with batch processing
+  const handleSamplingConfigChange = useCallback(async (newConfig: SamplingConfig) => {
+    setSamplingConfig(newConfig)
+    
+    // Only trigger batch update if sampling is enabled and target points actually changed
+    if (newConfig.enabled && newConfig.targetPoints !== samplingConfig.targetPoints) {
+      setIsUpdatingSampling(true)
+      
+      try {
+        // Use the same batch processing as initial load
+        await preloadChartData(visibleCharts, {
+          batchSize: 4,
+          onProgress: (loaded, total) => {
+            console.log(`Sampling progress: ${loaded}/${total}`)
+          }
+        })
+      } finally {
+        setIsUpdatingSampling(false)
+      }
+    }
+  }, [samplingConfig.targetPoints, visibleCharts, preloadChartData])
+
   const handleImportWorkspace = async () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -307,8 +330,9 @@ export default function Home() {
                   totalPages={totalPages}
                   onPageChange={setCurrentPage}
                   samplingConfig={samplingConfig}
-                  onSamplingConfigChange={setSamplingConfig}
+                  onSamplingConfigChange={handleSamplingConfigChange}
                   dataPointsInfo={dataPointsInfo}
+                  isUpdatingSampling={isUpdatingSampling}
                 />
               </div>
               <ChartGrid

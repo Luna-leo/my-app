@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Settings2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Settings2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/popover'
 import { Checkbox } from '@/components/ui/checkbox'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
+import { useDebounce } from '@/hooks/useDebounce'
 
 interface SamplingControlsProps {
   config: SamplingConfig
@@ -27,10 +28,30 @@ interface SamplingControlsProps {
     original: number
     sampled: number
   }
+  isUpdating?: boolean
 }
 
-export function SamplingControls({ config, onChange, dataPointsInfo }: SamplingControlsProps) {
+export function SamplingControls({ config, onChange, dataPointsInfo, isUpdating }: SamplingControlsProps) {
   const [open, setOpen] = useState(false)
+  const [localTargetPoints, setLocalTargetPoints] = useState(config.targetPoints.toString())
+  const [isDebouncing, setIsDebouncing] = useState(false)
+  
+  // Debounced target points value
+  const debouncedTargetPoints = useDebounce(localTargetPoints, 300)
+  
+  // Update config when debounced value changes
+  useEffect(() => {
+    const targetPoints = parseInt(debouncedTargetPoints, 10)
+    if (!isNaN(targetPoints) && targetPoints > 0 && targetPoints !== config.targetPoints) {
+      onChange({ ...config, targetPoints })
+      setIsDebouncing(false)
+    }
+  }, [debouncedTargetPoints, config, onChange])
+  
+  // Sync local state with external config changes
+  useEffect(() => {
+    setLocalTargetPoints(config.targetPoints.toString())
+  }, [config.targetPoints])
 
   const handleEnabledChange = (checked: boolean | 'indeterminate') => {
     if (checked !== 'indeterminate') {
@@ -43,9 +64,10 @@ export function SamplingControls({ config, onChange, dataPointsInfo }: SamplingC
   }
 
   const handleTargetPointsChange = (value: string) => {
+    setLocalTargetPoints(value)
     const targetPoints = parseInt(value, 10)
-    if (!isNaN(targetPoints) && targetPoints > 0) {
-      onChange({ ...config, targetPoints })
+    if (!isNaN(targetPoints) && targetPoints > 0 && targetPoints !== config.targetPoints) {
+      setIsDebouncing(true)
     }
   }
 
@@ -57,11 +79,17 @@ export function SamplingControls({ config, onChange, dataPointsInfo }: SamplingC
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
-          <Settings2 className="h-4 w-4" />
+          {isUpdating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Settings2 className="h-4 w-4" />
+          )}
           <span>Sampling</span>
           {dataPointsInfo && (
             <span className="text-xs text-muted-foreground">
-              {config.enabled ? (
+              {isUpdating ? (
+                'Updating...'
+              ) : config.enabled ? (
                 dataPointsInfo.sampled < dataPointsInfo.original ? (
                   `(${(dataPointsInfo.sampled / 1000).toFixed(1)}K/${(dataPointsInfo.original / 1000).toFixed(1)}K)`
                 ) : (
@@ -120,13 +148,21 @@ export function SamplingControls({ config, onChange, dataPointsInfo }: SamplingC
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="target-points" className={!config.enabled ? 'text-muted-foreground' : ''}>
-                Target Points
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="target-points" className={!config.enabled ? 'text-muted-foreground' : ''}>
+                  Target Points
+                </Label>
+                {isDebouncing && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span>Updating...</span>
+                  </div>
+                )}
+              </div>
               <Input
                 id="target-points"
                 type="number"
-                value={config.targetPoints}
+                value={localTargetPoints}
                 onChange={(e) => handleTargetPointsChange(e.target.value)}
                 disabled={!config.enabled}
                 min="100"

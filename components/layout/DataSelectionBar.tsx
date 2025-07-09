@@ -21,6 +21,7 @@ interface DataSelectionBarProps {
     sampled: number
     isLoading: boolean
   }
+  isUpdatingSampling?: boolean
 }
 
 export function DataSelectionBar({
@@ -33,7 +34,8 @@ export function DataSelectionBar({
   onPageChange,
   samplingConfig,
   onSamplingConfigChange,
-  dataPointsInfo
+  dataPointsInfo,
+  isUpdatingSampling
 }: DataSelectionBarProps) {
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg bg-background/50">
@@ -62,6 +64,7 @@ export function DataSelectionBar({
             original: dataPointsInfo.original,
             sampled: dataPointsInfo.sampled
           } : undefined}
+          isUpdating={isUpdatingSampling}
         />
         
         {layoutOption && paginationEnabled && totalPages > 1 && (

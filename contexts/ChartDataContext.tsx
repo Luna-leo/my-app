@@ -11,7 +11,7 @@ import {
   calculateDataRange,
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
-import { timeSeriesCache, metadataCache, parameterCache, transformCache } from '@/lib/services/dataCache';
+import { timeSeriesCache, metadataCache, parameterCache, transformCache, samplingCache } from '@/lib/services/dataCache';
 import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig } from '@/lib/utils/chartDataSampling';
 
 interface ChartDataProviderState {
@@ -60,6 +60,16 @@ function getConfigHash(config: ChartConfiguration, samplingOption: boolean | Sam
     selectedDataIds: config.selectedDataIds.sort(),
     chartType: config.chartType,
     sampling: samplingKey
+  });
+}
+
+// Generate a cache key for sampled data
+function getSamplingCacheKey(metadataIds: number[], samplingConfig: SamplingConfig): string {
+  return JSON.stringify({
+    dataIds: metadataIds.sort(),
+    method: samplingConfig.method,
+    targetPoints: samplingConfig.targetPoints,
+    preserveExtremes: samplingConfig.preserveExtremes
   });
 }
 
@@ -225,11 +235,24 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           ? getProgressiveSamplingConfig(rawData.timeSeries.length)
           : { ...enableSampling, enabled: true };
         
-        // Use the first Y-axis parameter for sampling to ensure consistency
-        // This prevents different charts from sampling the same data differently
-        // due to non-deterministic parameter ordering in Object.keys()
-        const samplingParameter = config.yAxisParameters.length > 0 ? config.yAxisParameters[0] : undefined;
-        processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+        // Check shared sampling cache first
+        const samplingCacheKey = getSamplingCacheKey(config.selectedDataIds, samplingConfig);
+        const cachedSampledData = samplingCache.get<TimeSeriesData[]>(samplingCacheKey);
+        
+        if (cachedSampledData) {
+          processedTimeSeries = cachedSampledData;
+          console.log(`[ChartDataContext] Using cached sampling for ${config.selectedDataIds.length} datasets`);
+        } else {
+          // Use the first Y-axis parameter for sampling to ensure consistency
+          // This prevents different charts from sampling the same data differently
+          // due to non-deterministic parameter ordering in Object.keys()
+          const samplingParameter = config.yAxisParameters.length > 0 ? config.yAxisParameters[0] : undefined;
+          processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+          
+          // Cache the sampled data for reuse by other charts
+          samplingCache.set(samplingCacheKey, processedTimeSeries);
+          console.log(`[ChartDataContext] Cached sampling result for ${config.selectedDataIds.length} datasets`);
+        }
         
         // Track sampling info
         const wasSampled = processedTimeSeries.length < originalCount;
@@ -427,6 +450,12 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       rawDataCache: new Map(),
       isLoading: false
     });
+    // Clear all cache types including sampling cache
+    timeSeriesCache.clear?.();
+    metadataCache.clear?.();
+    parameterCache.clear?.();
+    transformCache.clear?.();
+    samplingCache.clear?.();
   };
 
   const value = useMemo(() => ({

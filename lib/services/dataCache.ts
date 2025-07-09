@@ -7,7 +7,7 @@ interface CacheEntry<T> {
 }
 
 interface DataCacheKey {
-  type: 'timeseries' | 'metadata' | 'parameter' | 'transform';
+  type: 'timeseries' | 'metadata' | 'parameter' | 'transform' | 'sampling';
   id: string | number;
 }
 
@@ -157,6 +157,10 @@ export const timeSeriesCache = {
   },
   has: (metadataId: number): boolean => {
     return dataCache.has({ type: 'timeseries', id: metadataId });
+  },
+  clear: (): void => {
+    // Clear all timeseries entries
+    dataCache.clear();
   }
 };
 
@@ -169,6 +173,10 @@ export const metadataCache = {
   },
   has: (metadataId: number): boolean => {
     return dataCache.has({ type: 'metadata', id: metadataId });
+  },
+  clear: (): void => {
+    // Clear all metadata entries
+    dataCache.clear();
   }
 };
 
@@ -181,6 +189,10 @@ export const parameterCache = {
   },
   has: (parameterId: string): boolean => {
     return dataCache.has({ type: 'parameter', id: parameterId });
+  },
+  clear: (): void => {
+    // Clear all parameter entries
+    dataCache.clear();
   }
 };
 
@@ -194,5 +206,29 @@ export const transformCache = {
   },
   has: (key: string): boolean => {
     return dataCache.has({ type: 'transform', id: key });
+  },
+  clear: (): void => {
+    // Clear all transform entries
+    dataCache.clear();
+  }
+};
+
+// Cache for sampled data
+export const samplingCache = {
+  get: <T>(key: string): T | null => {
+    return dataCache.get<T>({ type: 'sampling', id: key });
+  },
+  set: <T>(key: string, data: T, ttl?: number): void => {
+    dataCache.set({ type: 'sampling', id: key }, data, ttl);
+  },
+  has: (key: string): boolean => {
+    return dataCache.has({ type: 'sampling', id: key });
+  },
+  delete: (key: string): void => {
+    dataCache.delete({ type: 'sampling', id: key });
+  },
+  clear: (): void => {
+    // Clear all sampling entries
+    dataCache.clear();
   }
 };
