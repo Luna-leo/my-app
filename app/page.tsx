@@ -326,8 +326,6 @@ export default function Home() {
           onImportWorkspaceClick={handleImportWorkspace}
           isCreateChartDisabled={selectedDataIds.length === 0}
           isExportDisabled={charts.length === 0}
-          layoutOption={layoutOption}
-          onLayoutChange={handleLayoutChange}
         />
         
         {loading ? (
@@ -343,6 +341,7 @@ export default function Home() {
                   selectedDataIds={selectedDataIds}
                   totalCharts={charts.length}
                   layoutOption={layoutOption}
+                  onLayoutChange={handleLayoutChange}
                   paginationEnabled={paginationEnabled}
                   currentPage={currentPage}
                   totalPages={totalPages}

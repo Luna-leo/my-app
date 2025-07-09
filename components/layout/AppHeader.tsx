@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button'
 import { Upload, Database, LineChart, Download, FolderOpen } from 'lucide-react'
-import { LayoutSelector, LayoutOption } from '@/components/layout/LayoutSelector'
 
 interface AppHeaderProps {
   onImportClick: () => void
@@ -10,8 +9,6 @@ interface AppHeaderProps {
   onImportWorkspaceClick: () => void
   isCreateChartDisabled: boolean
   isExportDisabled: boolean
-  layoutOption: LayoutOption | null
-  onLayoutChange: (layout: LayoutOption | null) => void
 }
 
 export function AppHeader({
@@ -21,12 +18,10 @@ export function AppHeader({
   onExportClick,
   onImportWorkspaceClick,
   isCreateChartDisabled,
-  isExportDisabled,
-  layoutOption,
-  onLayoutChange
+  isExportDisabled
 }: AppHeaderProps) {
   return (
-    <div className="flex justify-between items-center mb-8">
+    <div className="flex justify-between items-center mb-4">
       <h1 className="text-4xl font-bold">Time Series Data Visualization</h1>
       <div className="flex gap-2">
         <Button onClick={onImportClick}>
@@ -45,10 +40,6 @@ export function AppHeader({
           <LineChart className="mr-2 h-4 w-4" />
           Create Chart
         </Button>
-        <LayoutSelector 
-          value={layoutOption} 
-          onChange={onLayoutChange} 
-        />
         <Button
           onClick={onExportClick}
           variant="outline"
