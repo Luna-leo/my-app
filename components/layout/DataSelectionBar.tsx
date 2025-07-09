@@ -8,6 +8,8 @@ import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 interface DataSelectionBarProps {
   selectedDataIds: number[]
+  selectedDataLabels?: Map<number, string>
+  selectedDataColors?: Map<number, string>
   totalCharts: number
   layoutOption: LayoutOption | null
   onLayoutChange: (layout: LayoutOption | null) => void
@@ -27,6 +29,8 @@ interface DataSelectionBarProps {
 
 export function DataSelectionBar({
   selectedDataIds,
+  selectedDataLabels,
+  selectedDataColors,
   totalCharts,
   layoutOption,
   onLayoutChange,
@@ -40,25 +44,37 @@ export function DataSelectionBar({
   isUpdatingSampling
 }: DataSelectionBarProps) {
   return (
-    <div className="flex items-center justify-between p-4 border rounded-lg bg-background/50">
+    <div className="flex items-center justify-between py-2 px-4 border rounded-lg bg-background/50">
       {/* Left side: Selected data badges */}
-      <div className="flex items-center gap-2 flex-1">
-        <span className="text-sm text-muted-foreground mr-2">Selected Data:</span>
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <span className="text-xs text-muted-foreground flex-shrink-0">Data:</span>
         {selectedDataIds.length > 0 ? (
-          <div className="flex gap-2 flex-wrap">
-            {selectedDataIds.map(id => (
-              <Badge key={id} variant="secondary">
-                ID: {id}
-              </Badge>
-            ))}
+          <div className="flex gap-1 flex-wrap">
+            {selectedDataIds.map(id => {
+              const color = selectedDataColors?.get(id)
+              return (
+                <Badge 
+                  key={id} 
+                  variant="secondary" 
+                  className="text-xs py-0 px-2"
+                  style={color ? { 
+                    backgroundColor: color,
+                    color: 'white',
+                    borderColor: color 
+                  } : undefined}
+                >
+                  {selectedDataLabels?.get(id) || `ID: ${id}`}
+                </Badge>
+              )
+            })}
           </div>
         ) : (
-          <span className="text-sm text-muted-foreground italic">No data selected</span>
+          <span className="text-xs text-muted-foreground italic">None selected</span>
         )}
       </div>
 
       {/* Right side: Layout, Sampling and Pagination controls */}
-      <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+      <div className="flex items-center gap-3 flex-shrink-0 ml-4">
         <LayoutSelector 
           value={layoutOption} 
           onChange={onLayoutChange} 

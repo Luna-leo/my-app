@@ -6,6 +6,7 @@ import { useChartDimensions, AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/us
 import { shallowEqual } from '@/lib/utils/hashUtils'
 import { useChartData } from '@/hooks/useChartDataOptimized'
 import { generateLineColors } from '@/lib/utils/chartDataUtils'
+import { colorService } from '@/lib/services/colorService'
 import {
   buildUplotOptions,
   transformToUplotData,
@@ -171,11 +172,15 @@ function UplotChartWithDataComponent({
       }))
       options.plugins.push(createTooltipPlugin(chartData))
       
-      // Apply series colors - convert from normalized (0-1) to RGB (0-255) values
-      const colors = generateLineColors(plotData.series.length)
+      // Apply series colors based on metadata ID
       options.series.forEach((series, i) => {
-        if (i > 0 && colors[i - 1]) {
-          const color = `rgba(${Math.round(colors[i - 1].r * 255)}, ${Math.round(colors[i - 1].g * 255)}, ${Math.round(colors[i - 1].b * 255)}, ${colors[i - 1].a})`
+        if (i > 0 && plotData.series[i - 1]) {
+          // Get the metadata ID from the series data
+          const seriesData = plotData.series[i - 1]
+          const metadataId = seriesData.metadataId
+          
+          // Use colorService to get consistent color for this metadata ID
+          const color = colorService.getColorForDataId(metadataId)
           series.stroke = color
           if (series.points) {
             series.points.fill = color

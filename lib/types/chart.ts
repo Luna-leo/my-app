@@ -28,6 +28,7 @@ export interface ChartSeriesData {
   xValues: number[]
   yValues: number[]
   parameterInfo: ParameterInfo
+  metadataId: number
   metadataLabel: string
   xRange?: DataRange
   yRange?: DataRange

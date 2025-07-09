@@ -1,5 +1,6 @@
 import uPlot from 'uplot'
 import { format } from 'date-fns'
+import { colorService } from '@/lib/services/colorService'
 
 // Color palette similar to Plotly defaults
 const DEFAULT_COLORS = [
@@ -17,11 +18,7 @@ const DEFAULT_COLORS = [
 
 // Generate colors for series
 export function generateSeriesColors(count: number): string[] {
-  const colors: string[] = []
-  for (let i = 0; i < count; i++) {
-    colors.push(DEFAULT_COLORS[i % DEFAULT_COLORS.length])
-  }
-  return colors
+  return colorService.generateColors(count)
 }
 
 // Format timestamp for axis labels

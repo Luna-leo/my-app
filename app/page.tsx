@@ -26,6 +26,8 @@ import { DataSelectionBar } from '@/components/layout/DataSelectionBar'
 import { layoutService } from '@/lib/services/layoutService'
 import { SamplingConfig, DEFAULT_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling'
 import { useDataPointsInfo } from '@/hooks/useDataPointsInfo'
+import { metadataService } from '@/lib/services/metadataService'
+import { colorService } from '@/lib/services/colorService'
 
 export default function Home() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -48,6 +50,8 @@ export default function Home() {
   const [samplingConfig, setSamplingConfig] = useState<SamplingConfig>(DEFAULT_SAMPLING_CONFIG)
   const [isUpdatingSampling, setIsUpdatingSampling] = useState(false)
   const [initialLoadComplete, setInitialLoadComplete] = useState(false)
+  const [selectedDataLabels, setSelectedDataLabels] = useState<Map<number, string>>(new Map())
+  const [selectedDataColors, setSelectedDataColors] = useState<Map<number, string>>(new Map())
   const { preloadChartData, clearCache } = useChartDataContext()
   
   const loadWorkspaceAndCharts = useCallback(async () => {
@@ -101,6 +105,21 @@ export default function Home() {
     }
   }, [loadWorkspaceAndCharts])
 
+  // Fetch labels and colors when selectedDataIds change
+  useEffect(() => {
+    const fetchLabelsAndColors = async () => {
+      if (selectedDataIds.length > 0) {
+        const labels = await metadataService.getLabelsForIds(selectedDataIds)
+        const colors = colorService.getColorsForDataIds(selectedDataIds)
+        setSelectedDataLabels(labels)
+        setSelectedDataColors(colors)
+      } else {
+        setSelectedDataLabels(new Map())
+        setSelectedDataColors(new Map())
+      }
+    }
+    fetchLabelsAndColors()
+  }, [selectedDataIds])
 
   const handleImportComplete = () => {
     // Refresh data or update plot after import
@@ -339,6 +358,8 @@ export default function Home() {
               <div className="mb-4">
                 <DataSelectionBar
                   selectedDataIds={selectedDataIds}
+                  selectedDataLabels={selectedDataLabels}
+                  selectedDataColors={selectedDataColors}
                   totalCharts={charts.length}
                   layoutOption={layoutOption}
                   onLayoutChange={handleLayoutChange}
