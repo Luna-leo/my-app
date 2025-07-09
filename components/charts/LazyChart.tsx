@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
-import { PlotlyChartWithDataOptimized } from './PlotlyChartWithDataOptimized'
+import { getDataChartComponent } from './ChartProvider'
 import { ChartLoadingState } from './ChartStates'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 
@@ -55,10 +55,12 @@ export function LazyChart({
     }
   }, [threshold, rootMargin, hasBeenVisible])
 
+  const ChartComponent = getDataChartComponent()
+
   return (
     <div ref={containerRef} className={className}>
       {hasBeenVisible ? (
-        <PlotlyChartWithDataOptimized
+        <ChartComponent
           config={config}
           aspectRatio={aspectRatio}
           className={className}

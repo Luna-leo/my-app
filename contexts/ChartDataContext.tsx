@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog';
-import { ChartPlotData, PlotlyViewport } from '@/lib/types/plotly';
+import { ChartPlotData, ChartViewport } from '@/lib/types/chart';
 import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema';
 import { db } from '@/lib/db';
 import {
@@ -18,7 +18,7 @@ interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
   chartDataCache: Map<string, {
     plotData: ChartPlotData;
-    viewport: PlotlyViewport;
+    viewport: ChartViewport;
   }>;
   // Shared raw data cache
   rawDataCache: Map<string, {
@@ -32,7 +32,7 @@ interface ChartDataProviderState {
 interface ChartDataContextType {
   getChartData: (config: ChartConfiguration, enableSampling?: boolean) => Promise<{
     plotData: ChartPlotData | null;
-    dataViewport: PlotlyViewport | null;
+    dataViewport: ChartViewport | null;
   }>;
   preloadChartData: (configs: ChartConfiguration[], options?: {
     batchSize?: number;
@@ -175,7 +175,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     }
     
     // Also check transform cache
-    const transformCached = transformCache.get<{ plotData: ChartPlotData; viewport: PlotlyViewport }>(configHash);
+    const transformCached = transformCache.get<{ plotData: ChartPlotData; viewport: ChartViewport }>(configHash);
     if (transformCached) {
       // Update in-memory cache
       setState(prev => ({
@@ -297,7 +297,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       }
 
       // Calculate viewport
-      let dataViewport: PlotlyViewport | null = null;
+      let dataViewport: ChartViewport | null = null;
       if (chartData.series.length > 0) {
         const xMin = Math.min(...chartData.series.map(s => s.xRange.min));
         const xMax = Math.max(...chartData.series.map(s => s.xRange.max));

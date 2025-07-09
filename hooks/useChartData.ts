@@ -8,13 +8,13 @@ import {
   calculateDataRange,
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
-import { ChartPlotData, ChartLoadingState, PlotlyViewport } from '@/lib/types/plotly';
-import { ERROR_MESSAGES } from '@/lib/constants/plotlyConfig';
+import { ChartPlotData, ChartLoadingState, ChartViewport } from '@/lib/types/chart';
+import { UPLOT_ERROR_MESSAGES as ERROR_MESSAGES } from '@/lib/constants/uplotConfig';
 import { timeSeriesCache, metadataCache, parameterCache } from '@/lib/services/dataCache';
 
 export function useChartData(config: ChartConfiguration) {
   const [plotData, setPlotData] = useState<ChartPlotData | null>(null);
-  const [dataViewport, setDataViewport] = useState<PlotlyViewport | null>(null);
+  const [dataViewport, setDataViewport] = useState<ChartViewport | null>(null);
   const [loadingState, setLoadingState] = useState<ChartLoadingState>({
     loading: true,
     progress: 0,

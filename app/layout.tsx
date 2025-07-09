@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { PlotlyPreloader } from "@/components/PlotlyPreloader";
+// PlotlyPreloader removed - uPlot doesn't need preloading
 import { ChartDataProvider } from "@/contexts/ChartDataContext";
 
 export const metadata: Metadata = {
@@ -16,11 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <PlotlyPreloader>
-          <ChartDataProvider>
-            {children}
-          </ChartDataProvider>
-        </PlotlyPreloader>
+        <ChartDataProvider>
+          {children}
+        </ChartDataProvider>
       </body>
     </html>
   );

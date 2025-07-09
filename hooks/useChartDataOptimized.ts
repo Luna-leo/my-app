@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog';
-import { ChartPlotData, ChartLoadingState, PlotlyViewport } from '@/lib/types/plotly';
-import { ERROR_MESSAGES } from '@/lib/constants/plotlyConfig';
+import { ChartPlotData, ChartLoadingState, ChartViewport } from '@/lib/types/chart';
+import { UPLOT_ERROR_MESSAGES as ERROR_MESSAGES } from '@/lib/constants/uplotConfig';
 import { useChartDataContext } from '@/contexts/ChartDataContext';
 
 export function useChartData(config: ChartConfiguration, enableSampling: boolean = true) {
   const [plotData, setPlotData] = useState<ChartPlotData | null>(null);
-  const [dataViewport, setDataViewport] = useState<PlotlyViewport | null>(null);
+  const [dataViewport, setDataViewport] = useState<ChartViewport | null>(null);
   const [loadingState, setLoadingState] = useState<ChartLoadingState>({
     loading: true,
     progress: 0,

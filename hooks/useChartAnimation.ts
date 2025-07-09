@@ -1,26 +1,24 @@
 import { useEffect, useRef } from 'react';
-import { PlotlyAnimationFunction } from '@/lib/types/plotly';
+import { ChartAnimationFunction } from '@/lib/types/chart';
 import { 
   createAnimationState, 
   shouldUpdateAnimation 
-} from '@/lib/utils/plotlyUtils';
-import { ANIMATION_CONFIG } from '@/lib/constants/plotlyConfig';
+} from '@/lib/utils/animationUtils';
+import { ANIMATION_CONFIG } from '@/lib/constants/uplotConfig';
+import uPlot from 'uplot';
 
 interface UseChartAnimationProps {
-  isPlotlyReady: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  plotlyRef: React.RefObject<any>;
-  plotRef: React.RefObject<HTMLDivElement | null>;
-  hasPlot: boolean;
-  updateFunction?: PlotlyAnimationFunction;
+  isChartReady: boolean;
+  chartRef: React.RefObject<uPlot | null>;
+  hasChart: boolean;
+  updateFunction?: ChartAnimationFunction;
   dataRef: React.MutableRefObject<Array<{ x: number; y: number }>>;
 }
 
 export function useChartAnimation({
-  isPlotlyReady,
-  plotlyRef,
-  plotRef,
-  hasPlot,
+  isChartReady,
+  chartRef,
+  hasChart,
   updateFunction,
   dataRef,
 }: UseChartAnimationProps) {
@@ -35,7 +33,7 @@ export function useChartAnimation({
   }, [updateFunction]);
 
   // Default update function if none provided
-  const defaultUpdate: PlotlyAnimationFunction = (data, frame) => {
+  const defaultUpdate: ChartAnimationFunction = (data, frame) => {
     const { DEFAULT_FREQUENCY, DEFAULT_AMPLITUDE, DEFAULT_SPEED } = ANIMATION_CONFIG;
     
     return data.map((point, i) => ({
@@ -46,7 +44,7 @@ export function useChartAnimation({
 
   // Animation loop
   useEffect(() => {
-    if (!plotlyRef.current || !isPlotlyReady || !plotRef.current) return;
+    if (!chartRef.current || !isChartReady) return;
 
     const animate = (currentTime: number) => {
       const state = animationStateRef.current;
@@ -57,7 +55,7 @@ export function useChartAnimation({
         frameRef.current++;
         
         try {
-          if (plotlyRef.current && plotRef.current && dataRef.current && hasPlot) {
+          if (chartRef.current && dataRef.current && hasChart) {
             // Update data
             if (updateFunctionRef.current) {
               dataRef.current = updateFunctionRef.current(dataRef.current, frameRef.current);
@@ -65,13 +63,13 @@ export function useChartAnimation({
               dataRef.current = defaultUpdate(dataRef.current, frameRef.current);
             }
             
-            // Update plot more efficiently using restyle
-            const update = {
-              x: [dataRef.current.map(d => d.x)],
-              y: [dataRef.current.map(d => d.y)],
-            };
+            // Update uPlot chart data
+            const newData: uPlot.AlignedData = [
+              dataRef.current.map(d => d.x),
+              dataRef.current.map(d => d.y),
+            ];
             
-            plotlyRef.current.restyle(plotRef.current, update, [0]);
+            chartRef.current.setData(newData, false);
           }
         } catch (error) {
           console.error('Error updating plot:', error);
@@ -106,7 +104,7 @@ export function useChartAnimation({
         animationRef.current = undefined;
       }
     };
-  }, [isPlotlyReady, plotlyRef, plotRef, hasPlot, dataRef]);
+  }, [isChartReady, chartRef, hasChart, dataRef]);
 
   // Cleanup on unmount
   useEffect(() => {
