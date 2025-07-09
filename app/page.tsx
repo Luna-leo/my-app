@@ -1,14 +1,9 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { getDataChartComponent } from '@/components/charts/ChartProvider'
-import { LazyChart } from '@/components/charts/LazyChart'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CsvImportDialog } from '@/components/csv-import/CsvImportDialog'
 import { DataSelectionDialog } from '@/components/data-selection/DataSelectionDialog'
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
-import { Upload, Database, LineChart, Download, FolderOpen, FileSearch } from 'lucide-react'
 import { useChartDataContext } from '@/contexts/ChartDataContext'
 import {
   AlertDialog,
@@ -22,6 +17,10 @@ import {
 } from '@/components/ui/alert-dialog'
 import { chartConfigService } from '@/lib/services/chartConfigurationService'
 import { ChartConfiguration as DBChartConfiguration } from '@/lib/db/schema'
+import { AppHeader } from '@/components/layout/AppHeader'
+import { LoadingState } from '@/components/common/LoadingState'
+import { EmptyState } from '@/components/common/EmptyState'
+import { ChartGrid } from '@/components/charts/ChartGrid'
 
 export default function Home() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -234,149 +233,32 @@ export default function Home() {
   return (
     <>
       <div className="container mx-auto p-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold">Time Series Data Visualization</h1>
-          <div className="flex gap-2">
-            <Button onClick={() => setImportDialogOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" />
-              Import CSV Data
-            </Button>
-            <Button onClick={() => setDataSelectionOpen(true)} variant="outline">
-              <Database className="mr-2 h-4 w-4" />
-              Data Selection
-            </Button>
-            <Button 
-              onClick={() => setCreateChartOpen(true)} 
-              variant="outline"
-              disabled={selectedDataIds.length === 0}
-            >
-              <LineChart className="mr-2 h-4 w-4" />
-              Create Chart
-            </Button>
-            <Button
-              onClick={handleExportWorkspace}
-              variant="outline"
-              disabled={charts.length === 0}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
-            <Button
-              onClick={handleImportWorkspace}
-              variant="outline"
-            >
-              <FolderOpen className="mr-2 h-4 w-4" />
-              Import
-            </Button>
-          </div>
-        </div>
+        <AppHeader
+          onImportClick={() => setImportDialogOpen(true)}
+          onDataSelectionClick={() => setDataSelectionOpen(true)}
+          onCreateChartClick={() => setCreateChartOpen(true)}
+          onExportClick={handleExportWorkspace}
+          onImportWorkspaceClick={handleImportWorkspace}
+          isCreateChartDisabled={selectedDataIds.length === 0}
+          isExportDisabled={charts.length === 0}
+        />
         
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-muted-foreground">
-                {importProgress 
-                  ? `Loading charts... (${importProgress.loaded}/${importProgress.total})`
-                  : 'Loading charts...'}
-              </p>
-              {importProgress && (
-                <div className="mt-4 w-64 mx-auto">
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-primary transition-all duration-300"
-                      style={{ width: `${(importProgress.loaded / importProgress.total) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <LoadingState
+            message="Loading charts..."
+            progress={importProgress ? importProgress : undefined}
+          />
         ) : charts.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {mounted && charts.map((chart, index) => {
-              // First 4 charts load immediately, rest use lazy loading
-              if (index < 4) {
-                const ChartComponent = getDataChartComponent();
-                return (
-                  <ChartComponent
-                    key={chart.id}
-                    config={chart}
-                    aspectRatio={1.5}
-                    className="w-full"
-                    onEdit={() => handleEditChart(chart.id)}
-                    onDuplicate={() => handleDuplicateChart(chart.id)}
-                    onDelete={() => handleDeleteChart(chart.id)}
-                  />
-                );
-              } else {
-                return (
-                  <LazyChart
-                    key={chart.id}
-                    config={chart}
-                    aspectRatio={1.5}
-                    className="w-full"
-                    onEdit={() => handleEditChart(chart.id)}
-                    onDuplicate={() => handleDuplicateChart(chart.id)}
-                    onDelete={() => handleDeleteChart(chart.id)}
-                    rootMargin="200px"
-                  />
-                );
-              }
-            })}
-          </div>
+          mounted && (
+            <ChartGrid
+              charts={charts}
+              onEdit={handleEditChart}
+              onDuplicate={handleDuplicateChart}
+              onDelete={handleDeleteChart}
+            />
+          )
         ) : (
-          <Card className="max-w-4xl mx-auto">
-            <CardHeader>
-              <CardTitle>No Chart Created</CardTitle>
-              <CardDescription>
-                Follow these steps to create a chart
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6 py-8">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    1
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold">Import CSV Data</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Use the &quot;Import CSV Data&quot; button to load your time series data
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    2
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold">Select Data Sources</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Click &quot;Data Selection&quot; to choose which datasets to use
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    3
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold">Create Chart</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Use &quot;Create Chart&quot; to configure X/Y axis parameters and generate your visualization
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="mt-8 flex justify-center">
-                  <FileSearch className="h-16 w-16 text-muted-foreground/50" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <EmptyState />
         )}
 
       </div>
