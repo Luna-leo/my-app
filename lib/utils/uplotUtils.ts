@@ -90,10 +90,6 @@ export function buildSeriesOptions(
       },
     }
 
-    if (chartType === 'line') {
-      seriesOpts.fill = `${colors[i]}10` // Add transparency for area fill
-    }
-
     series.push(seriesOpts)
   })
 

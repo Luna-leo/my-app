@@ -177,9 +177,6 @@ function UplotChartWithDataComponent({
           if (series.points) {
             series.points.fill = color
           }
-          if (config.chartType === 'line' && series.fill) {
-            series.fill = `${color.replace('1)', '0.1)')}` // Add transparency
-          }
         }
       })
       
