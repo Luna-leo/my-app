@@ -10,7 +10,7 @@ const demoConfig: ChartConfiguration = {
   chartType: 'line',
   xAxisParameter: 'index',
   yAxisParameters: ['value1', 'value2'],
-  selectedDataIds: ['demo-series-1', 'demo-series-2'],
+  selectedDataIds: [1, 2],
 }
 
 export default function InteractiveChartDemo() {

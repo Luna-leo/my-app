@@ -1,7 +1,8 @@
 'use client'
 
-import { SelectionRange, formatSelectionRange, exportSelectedData } from '@/hooks/useChartSelection'
+import { formatSelectionRange, exportSelectedData } from '@/hooks/useChartSelection'
 import { ChartSelectionState, ChartSelectionActions } from '@/hooks/useChartSelection'
+import { SelectionRange } from '@/lib/utils/uplotSelectionPlugin'
 import { useState } from 'react'
 import {
   Crosshair2Icon,

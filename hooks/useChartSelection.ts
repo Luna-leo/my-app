@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { SelectionRange } from '@/utils/uplotSelectionPlugin';
+import { SelectionRange } from '@/lib/utils/uplotSelectionPlugin';
 import { Point2D } from '@/utils/chartCoordinateUtils';
 
 export interface ChartSelectionState {
