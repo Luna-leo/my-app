@@ -8,6 +8,8 @@ import { createSelectionPlugin, createZoomToSelectionPlugin, SelectionRange } fr
 import { useChartInteraction } from '@/hooks/useChartInteraction'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
+import { SelectionControls } from './SelectionControls'
+import { useChartData } from '@/hooks/useChartDataOptimized'
 
 interface UplotChartWithSelectionProps {
   config: ChartConfiguration
@@ -47,11 +49,25 @@ export function UplotChartWithSelection({
   onSelectionChange,
   selectionOptions = {},
 }: UplotChartWithSelectionProps) {
+  // Get chart data for series names
+  const { plotData } = useChartData(config, samplingConfig ?? true)
+  
+  // Extract series names
+  const seriesNames = useMemo(() => {
+    if (!plotData) return []
+    return plotData.series.map(series => 
+      `${series.metadataLabel} - ${series.parameterInfo.parameterName}`
+    )
+  }, [plotData])
+  
   // Use selection hook
-  const [selectionState, selectionActions] = useChartSelection(undefined, {
-    onSelectionChange,
-    autoDisableOnSelect: false,
-  })
+  const [selectionState, selectionActions] = useChartSelection(
+    plotData ? plotData.series.map(s => ({ series: s.xValues.map((x, i) => ({ x, y: s.yValues[i] })), name: s.metadataLabel })) : undefined,
+    {
+      onSelectionChange,
+      autoDisableOnSelect: false,
+    }
+  )
 
   // Handle selection events
   const handleSelect = useCallback((range: SelectionRange) => {
@@ -115,39 +131,14 @@ export function UplotChartWithSelection({
     <div className="relative">
       {/* Selection Controls */}
       {(enableSelection || enableZoomToSelection) && (
-        <div className="absolute top-2 right-2 z-[1002] flex gap-2">
-          <button
-            onClick={selectionActions.toggleSelectionMode}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              selectionState.isSelectionMode
-                ? 'bg-blue-500 text-white hover:bg-blue-600'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            {enableZoomToSelection ? 'Zoom Selection' : 'Box Selection'}
-          </button>
-          {selectionState.selectedRange && (
-            <button
-              onClick={selectionActions.clearSelection}
-              className="px-3 py-1 text-xs bg-gray-200 text-gray-700 hover:bg-gray-300 rounded transition-colors"
-            >
-              Clear Selection
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Selection Info */}
-      {selectionState.selectedRange && (
-        <div className="absolute top-12 right-2 z-[1002] bg-white border border-gray-300 rounded p-2 text-xs">
-          <div className="font-semibold mb-1">Selected Range:</div>
-          <div>X: [{selectionState.selectedRange.xMin.toFixed(2)}, {selectionState.selectedRange.xMax.toFixed(2)}]</div>
-          <div>Y: [{selectionState.selectedRange.yMin.toFixed(2)}, {selectionState.selectedRange.yMax.toFixed(2)}]</div>
-          {selectionState.selectedDataPoints.length > 0 && (
-            <div className="mt-1">
-              Points: {selectionState.selectedDataPoints.reduce((acc, s) => acc + s.points.length, 0)}
-            </div>
-          )}
+        <div className="absolute top-2 right-2 z-[1002] max-w-sm">
+          <SelectionControls
+            selectionState={selectionState}
+            selectionActions={selectionActions}
+            enableZoomToSelection={enableZoomToSelection}
+            seriesNames={seriesNames}
+            onZoomToSelection={enableZoomToSelection ? handleZoom : undefined}
+          />
         </div>
       )}
 
