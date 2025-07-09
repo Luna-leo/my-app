@@ -446,11 +446,9 @@ function PlotlyChartWithDataOptimizedComponent({
           overflow: 'hidden'
         }}
         onClick={() => {
-          setHasInteracted(true)
           handleInteraction()
         }}
         onMouseEnter={() => {
-          setHasInteracted(true)
           handleInteraction()
         }}
       >

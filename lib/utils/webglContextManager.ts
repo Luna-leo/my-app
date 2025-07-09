@@ -263,6 +263,7 @@ class WebGLContextManager extends EventEmitter {
   }
   
   // Check if chart should use WebGL based on data points
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   shouldUseWebGL(dataPoints: number): boolean {
     // Always prefer WebGL for better performance
     // The tryCreatePlotlyChart function will handle fallback if WebGL fails
