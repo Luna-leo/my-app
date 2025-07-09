@@ -6,10 +6,6 @@
 import { TimeSeriesData } from '@/lib/db/schema';
 import { sampleData, SamplingOptions, DataPoint } from './dataSamplingUtils';
 
-// Extended DataPoint type for time series sampling
-interface TimeSeriesDataPoint extends DataPoint {
-  originalData: TimeSeriesData;
-}
 
 // Extended DataPoint type for parameter series with index
 interface IndexedDataPoint extends DataPoint {
@@ -27,9 +23,9 @@ export interface SamplingConfig {
 export const DEFAULT_SAMPLING_CONFIG: SamplingConfig = {
   enabled: true,
   method: 'lttb',
-  targetPoints: 2000,
+  targetPoints: 1000, // Reduced for better memory efficiency
   preserveExtremes: true,
-  samplingThreshold: 5000
+  samplingThreshold: 2000 // More aggressive sampling
 };
 
 /**
@@ -74,12 +70,19 @@ export function sampleTimeSeriesData(
     return data;
   }
 
-  // Convert to sampling format
-  const dataPoints: TimeSeriesDataPoint[] = data.map(item => ({
-    x: item.timestamp,
-    y: item.data[parameterForSampling] as number || 0,
-    originalData: item // Keep reference to original
-  }));
+  // Create lightweight data points for sampling without copying all data
+  const dataPointsGenerator = function*() {
+    for (let i = 0; i < data.length; i++) {
+      yield {
+        x: data[i].timestamp,
+        y: data[i].data[parameterForSampling] as number || 0,
+        index: i // Store index instead of full data
+      };
+    }
+  };
+
+  // Convert generator to array for sampling (only creates minimal data)
+  const dataPoints = Array.from(dataPointsGenerator());
 
   // Apply sampling
   const samplingOptions: SamplingOptions = {
@@ -90,11 +93,14 @@ export function sampleTimeSeriesData(
 
   const samplingResult = sampleData(dataPoints, samplingOptions);
 
-  // Convert back to TimeSeriesData format
-  const sampledData = samplingResult.data.map(point => {
-    const original = (point as TimeSeriesDataPoint).originalData;
-    return original;
-  });
+  // Extract only the sampled data using indices
+  const sampledData: TimeSeriesData[] = [];
+  for (const point of samplingResult.data) {
+    const index = (point as IndexedDataPoint).index;
+    if (typeof index === 'number' && index >= 0 && index < data.length) {
+      sampledData.push(data[index]);
+    }
+  }
 
   console.log(`Time series sampled: ${samplingResult.originalCount} → ${samplingResult.sampledCount} points (using parameter: ${parameterForSampling})`);
 
@@ -118,12 +124,16 @@ export function sampleParameterSeriesIndependently(
   const indicesToKeep = new Set<number>();
 
   // Sample each parameter independently and combine results
-  parameters.forEach(param => {
-    const dataPoints: IndexedDataPoint[] = data.map((item, index) => ({
-      x: item.timestamp,
-      y: typeof item.data[param] === 'number' ? item.data[param] as number : 0,
-      index
-    }));
+  for (const param of parameters) {
+    // Create data points without copying all data
+    const dataPoints: IndexedDataPoint[] = [];
+    for (let i = 0; i < data.length; i++) {
+      dataPoints.push({
+        x: data[i].timestamp,
+        y: typeof data[i].data[param] === 'number' ? data[i].data[param] as number : 0,
+        index: i
+      });
+    }
 
     const samplingOptions: SamplingOptions = {
       method: config.method,
@@ -134,18 +144,20 @@ export function sampleParameterSeriesIndependently(
     const samplingResult = sampleData(dataPoints, samplingOptions);
     
     // Add sampled indices to the keep set
-    samplingResult.data.forEach(point => {
+    for (const point of samplingResult.data) {
       const index = (point as IndexedDataPoint).index;
       if (typeof index === 'number') {
         indicesToKeep.add(index);
       }
-    });
-  });
+    }
+  }
 
   // Return data points that were selected by any parameter sampling
-  const sampledData = Array.from(indicesToKeep)
-    .sort((a, b) => a - b)
-    .map(index => data[index]);
+  const sortedIndices = Array.from(indicesToKeep).sort((a, b) => a - b);
+  const sampledData: TimeSeriesData[] = [];
+  for (const index of sortedIndices) {
+    sampledData.push(data[index]);
+  }
 
   console.log(`Multi-parameter sampled: ${data.length} → ${sampledData.length} points`);
 
@@ -154,26 +166,77 @@ export function sampleParameterSeriesIndependently(
 
 /**
  * Progressive sampling strategy for viewport-based loading
+ * Optimized for memory efficiency
  */
 export function getProgressiveSamplingConfig(
   dataLength: number,
-  viewportWidth?: number
+  viewportWidth?: number,
+  memoryPressure?: 'low' | 'medium' | 'high'
 ): SamplingConfig {
+  // Base target points on memory pressure
+  let baseTargetPoints = DEFAULT_SAMPLING_CONFIG.targetPoints;
+  let threshold = DEFAULT_SAMPLING_CONFIG.samplingThreshold;
+  
+  // Adjust based on memory pressure
+  if (memoryPressure === 'high') {
+    baseTargetPoints = 500;
+    threshold = 1000;
+  } else if (memoryPressure === 'medium') {
+    baseTargetPoints = 750;
+    threshold = 1500;
+  }
+  
   // Determine target points based on data size and viewport
-  let targetPoints = DEFAULT_SAMPLING_CONFIG.targetPoints;
+  let targetPoints = baseTargetPoints;
   
   if (viewportWidth) {
-    // Aim for ~2-3 points per pixel
-    targetPoints = Math.min(viewportWidth * 2.5, 10000);
+    // More conservative points per pixel
+    targetPoints = Math.min(viewportWidth * 1.5, 5000);
+  } else if (dataLength > 1000000) {
+    // Very large datasets
+    targetPoints = Math.min(baseTargetPoints * 2, 2000);
+  } else if (dataLength > 500000) {
+    targetPoints = Math.min(baseTargetPoints * 1.5, 1500);
   } else if (dataLength > 100000) {
-    targetPoints = 5000; // Higher quality for very large datasets
-  } else if (dataLength > 50000) {
-    targetPoints = 3000;
+    targetPoints = Math.min(baseTargetPoints * 1.2, 1200);
+  }
+
+  // Use more efficient sampling methods for large datasets
+  let method: SamplingConfig['method'] = 'lttb';
+  if (dataLength > 500000) {
+    method = 'adaptive'; // Better for very large datasets
+  } else if (dataLength > 100000) {
+    method = 'minmax'; // Faster while preserving peaks
   }
 
   return {
-    ...DEFAULT_SAMPLING_CONFIG,
+    enabled: true,
     targetPoints,
-    method: dataLength > 50000 ? 'adaptive' : 'lttb'
+    preserveExtremes: true,
+    samplingThreshold: threshold,
+    method
   };
+}
+
+/**
+ * Get memory-aware sampling configuration
+ * Monitors available memory and adjusts sampling accordingly
+ */
+export function getMemoryAwareSamplingConfig(
+  dataLength: number,
+  currentMemoryUsageMB?: number,
+  maxMemoryMB: number = 200
+): SamplingConfig {
+  let memoryPressure: 'low' | 'medium' | 'high' = 'low';
+  
+  if (currentMemoryUsageMB) {
+    const memoryUsageRatio = currentMemoryUsageMB / maxMemoryMB;
+    if (memoryUsageRatio > 0.8) {
+      memoryPressure = 'high';
+    } else if (memoryUsageRatio > 0.6) {
+      memoryPressure = 'medium';
+    }
+  }
+  
+  return getProgressiveSamplingConfig(dataLength, undefined, memoryPressure);
 }

@@ -1,10 +1,5 @@
 import { TimeSeriesData, Metadata, ParameterInfo } from '@/lib/db/schema';
-
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-  ttl: number;
-}
+import { MemoryEfficientCache } from './memoryEfficientCache';
 
 interface DataCacheKey {
   type: 'timeseries' | 'metadata' | 'parameter' | 'transform' | 'sampling';
@@ -13,12 +8,49 @@ interface DataCacheKey {
 
 class DataCache {
   private static instance: DataCache;
-  private cache = new Map<string, CacheEntry<unknown>>();
-  private readonly DEFAULT_TTL = 5 * 60 * 1000; // 5 minutes
-  private readonly MAX_CACHE_SIZE = 50; // Maximum number of entries
-  private readonly MAX_SAMPLING_CACHE_SIZE = 20; // Limit for sampling cache entries
+  private timeseriesCache: MemoryEfficientCache<TimeSeriesData[]>;
+  private metadataCache: MemoryEfficientCache<Metadata>;
+  private parameterCache: MemoryEfficientCache<ParameterInfo>;
+  private transformCache: MemoryEfficientCache<unknown>;
+  private samplingCache: MemoryEfficientCache<unknown>;
 
-  private constructor() {}
+  private constructor() {
+    // Different cache configurations for different data types
+    this.timeseriesCache = new MemoryEfficientCache<TimeSeriesData[]>({
+      maxSize: 20,
+      maxMemoryMB: 100, // 100MB for time series data
+      ttl: 5 * 60 * 1000
+    });
+    
+    this.metadataCache = new MemoryEfficientCache<Metadata>({
+      maxSize: 100,
+      maxMemoryMB: 10,
+      ttl: 30 * 60 * 1000 // 30 minutes for metadata
+    });
+    
+    this.parameterCache = new MemoryEfficientCache<ParameterInfo>({
+      maxSize: 200,
+      maxMemoryMB: 5,
+      ttl: 60 * 60 * 1000 // 1 hour for parameters
+    });
+    
+    this.transformCache = new MemoryEfficientCache<unknown>({
+      maxSize: 30,
+      maxMemoryMB: 50,
+      ttl: 5 * 60 * 1000
+    });
+    
+    this.samplingCache = new MemoryEfficientCache<unknown>({
+      maxSize: 20,
+      maxMemoryMB: 80, // 80MB for sampled data
+      ttl: 5 * 60 * 1000
+    });
+
+    // Run garbage collection periodically
+    setInterval(() => {
+      this.gc();
+    }, 60 * 1000); // Every minute
+  }
 
   static getInstance(): DataCache {
     if (!DataCache.instance) {
@@ -31,72 +63,27 @@ class DataCache {
     return `${key.type}:${key.id}`;
   }
 
-  private isExpired(entry: CacheEntry<unknown>): boolean {
-    return Date.now() - entry.timestamp > entry.ttl;
-  }
-
-  private cleanup(): void {
-    // Remove expired entries
-    for (const [key, entry] of this.cache.entries()) {
-      if (this.isExpired(entry)) {
-        this.cache.delete(key);
-      }
-    }
-
-    // If still over limit, remove oldest entries
-    if (this.cache.size > this.MAX_CACHE_SIZE) {
-      const entries = Array.from(this.cache.entries())
-        .sort((a, b) => a[1].timestamp - b[1].timestamp);
-      
-      const toRemove = entries.slice(0, this.cache.size - this.MAX_CACHE_SIZE);
-      toRemove.forEach(([key]) => this.cache.delete(key));
+  private getCache(type: DataCacheKey['type']): MemoryEfficientCache<unknown> {
+    switch (type) {
+      case 'timeseries': return this.timeseriesCache;
+      case 'metadata': return this.metadataCache;
+      case 'parameter': return this.parameterCache;
+      case 'transform': return this.transformCache;
+      case 'sampling': return this.samplingCache;
+      default: throw new Error(`Unknown cache type: ${type}`);
     }
   }
 
-  set<T>(key: DataCacheKey, data: T, ttl?: number): void {
+  set<T>(key: DataCacheKey, data: T): void {
+    const cache = this.getCache(key.type);
     const cacheKey = this.generateKey(key);
-    
-    // Check sampling cache size limit
-    if (key.type === 'sampling') {
-      const samplingCount = Array.from(this.cache.keys()).filter(k => k.startsWith('sampling:')).length;
-      if (samplingCount >= this.MAX_SAMPLING_CACHE_SIZE) {
-        // Remove oldest sampling cache entries
-        const samplingEntries = Array.from(this.cache.entries())
-          .filter(([k]) => k.startsWith('sampling:'))
-          .sort((a, b) => a[1].timestamp - b[1].timestamp);
-        
-        // Remove oldest entries to make room
-        const toRemove = samplingEntries.slice(0, samplingCount - this.MAX_SAMPLING_CACHE_SIZE + 1);
-        toRemove.forEach(([k]) => this.cache.delete(k));
-      }
-    }
-    
-    this.cache.set(cacheKey, {
-      data,
-      timestamp: Date.now(),
-      ttl: ttl || this.DEFAULT_TTL
-    });
-    
-    // Cleanup if needed
-    if (this.cache.size > this.MAX_CACHE_SIZE) {
-      this.cleanup();
-    }
+    cache.set(cacheKey, data);
   }
 
   get<T>(key: DataCacheKey): T | null {
+    const cache = this.getCache(key.type);
     const cacheKey = this.generateKey(key);
-    const entry = this.cache.get(cacheKey);
-    
-    if (!entry) {
-      return null;
-    }
-
-    if (this.isExpired(entry)) {
-      this.cache.delete(cacheKey);
-      return null;
-    }
-
-    return entry.data as T;
+    return cache.get(cacheKey) as T | null;
   }
 
   // Batch get with missing keys returned
@@ -104,61 +91,84 @@ class DataCache {
     const cached = new Map<string, T>();
     const missing: DataCacheKey[] = [];
 
-    keys.forEach(key => {
+    for (const key of keys) {
       const data = this.get<T>(key);
       if (data !== null) {
         cached.set(this.generateKey(key), data);
       } else {
         missing.push(key);
       }
-    });
+    }
 
     return { cached, missing };
   }
 
   // Batch set
-  setBatch<T>(entries: Array<{ key: DataCacheKey; data: T; ttl?: number }>): void {
-    entries.forEach(({ key, data, ttl }) => {
-      this.set(key, data, ttl);
-    });
+  setBatch<T>(entries: Array<{ key: DataCacheKey; data: T }>): void {
+    for (const { key, data } of entries) {
+      this.set(key, data);
+    }
   }
 
   has(key: DataCacheKey): boolean {
+    const cache = this.getCache(key.type);
     const cacheKey = this.generateKey(key);
-    const entry = this.cache.get(cacheKey);
-    
-    if (!entry) return false;
-    
-    if (this.isExpired(entry)) {
-      this.cache.delete(cacheKey);
-      return false;
-    }
-    
-    return true;
+    return cache.has(cacheKey);
   }
 
   delete(key: DataCacheKey): void {
+    const cache = this.getCache(key.type);
     const cacheKey = this.generateKey(key);
-    this.cache.delete(cacheKey);
+    cache.delete(cacheKey);
   }
 
   clear(): void {
-    this.cache.clear();
+    this.timeseriesCache.clear();
+    this.metadataCache.clear();
+    this.parameterCache.clear();
+    this.transformCache.clear();
+    this.samplingCache.clear();
   }
 
   // Get cache statistics
-  getStats(): { size: number; entries: Array<{ key: string; size: number; age: number }> } {
-    const now = Date.now();
-    const entries = Array.from(this.cache.entries()).map(([key, entry]) => ({
-      key,
-      size: JSON.stringify(entry.data).length,
-      age: now - entry.timestamp
-    }));
-
-    return {
-      size: this.cache.size,
-      entries
+  getStats(): { 
+    total: { size: number; memoryMB: number };
+    byType: Record<string, { size: number; memoryMB: number }>;
+  } {
+    const stats = {
+      timeseries: this.timeseriesCache.getStats(),
+      metadata: this.metadataCache.getStats(),
+      parameter: this.parameterCache.getStats(),
+      transform: this.transformCache.getStats(),
+      sampling: this.samplingCache.getStats()
     };
+
+    const total = {
+      size: 0,
+      memoryMB: 0
+    };
+
+    const byType: Record<string, { size: number; memoryMB: number }> = {};
+
+    for (const [type, stat] of Object.entries(stats)) {
+      total.size += stat.size;
+      total.memoryMB += stat.memoryMB;
+      byType[type] = {
+        size: stat.size,
+        memoryMB: stat.memoryMB
+      };
+    }
+
+    return { total, byType };
+  }
+
+  // Manual garbage collection
+  private gc(): void {
+    this.timeseriesCache.gc();
+    this.metadataCache.gc();
+    this.parameterCache.gc();
+    this.transformCache.gc();
+    this.samplingCache.gc();
   }
 }
 
@@ -169,8 +179,8 @@ export const timeSeriesCache = {
   get: (metadataId: number): TimeSeriesData[] | null => {
     return dataCache.get<TimeSeriesData[]>({ type: 'timeseries', id: metadataId });
   },
-  set: (metadataId: number, data: TimeSeriesData[], ttl?: number): void => {
-    dataCache.set({ type: 'timeseries', id: metadataId }, data, ttl);
+  set: (metadataId: number, data: TimeSeriesData[]): void => {
+    dataCache.set({ type: 'timeseries', id: metadataId }, data);
   },
   has: (metadataId: number): boolean => {
     return dataCache.has({ type: 'timeseries', id: metadataId });
@@ -185,8 +195,8 @@ export const metadataCache = {
   get: (metadataId: number): Metadata | null => {
     return dataCache.get<Metadata>({ type: 'metadata', id: metadataId });
   },
-  set: (metadataId: number, data: Metadata, ttl?: number): void => {
-    dataCache.set({ type: 'metadata', id: metadataId }, data, ttl);
+  set: (metadataId: number, data: Metadata): void => {
+    dataCache.set({ type: 'metadata', id: metadataId }, data);
   },
   has: (metadataId: number): boolean => {
     return dataCache.has({ type: 'metadata', id: metadataId });
@@ -201,8 +211,8 @@ export const parameterCache = {
   get: (parameterId: string): ParameterInfo | null => {
     return dataCache.get<ParameterInfo>({ type: 'parameter', id: parameterId });
   },
-  set: (parameterId: string, data: ParameterInfo, ttl?: number): void => {
-    dataCache.set({ type: 'parameter', id: parameterId }, data, ttl);
+  set: (parameterId: string, data: ParameterInfo): void => {
+    dataCache.set({ type: 'parameter', id: parameterId }, data);
   },
   has: (parameterId: string): boolean => {
     return dataCache.has({ type: 'parameter', id: parameterId });
@@ -218,8 +228,8 @@ export const transformCache = {
   get: <T>(key: string): T | null => {
     return dataCache.get<T>({ type: 'transform', id: key });
   },
-  set: <T>(key: string, data: T, ttl?: number): void => {
-    dataCache.set({ type: 'transform', id: key }, data, ttl);
+  set: <T>(key: string, data: T): void => {
+    dataCache.set({ type: 'transform', id: key }, data);
   },
   has: (key: string): boolean => {
     return dataCache.has({ type: 'transform', id: key });
@@ -235,8 +245,8 @@ export const samplingCache = {
   get: <T>(key: string): T | null => {
     return dataCache.get<T>({ type: 'sampling', id: key });
   },
-  set: <T>(key: string, data: T, ttl?: number): void => {
-    dataCache.set({ type: 'sampling', id: key }, data, ttl);
+  set: <T>(key: string, data: T): void => {
+    dataCache.set({ type: 'sampling', id: key }, data);
   },
   has: (key: string): boolean => {
     return dataCache.has({ type: 'sampling', id: key });

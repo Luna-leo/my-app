@@ -12,7 +12,8 @@ import {
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
 import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache, samplingCache } from '@/lib/services/dataCache';
-import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig } from '@/lib/utils/chartDataSampling';
+import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig, getMemoryAwareSamplingConfig } from '@/lib/utils/chartDataSampling';
+import { memoryMonitor } from '@/lib/services/memoryMonitor';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
@@ -72,6 +73,45 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     chartDataCache: new Map(),
     isLoading: false
   });
+
+  // Monitor memory pressure and clear caches when needed
+  useEffect(() => {
+    // Start memory monitoring
+    memoryMonitor.startMonitoring(5000); // Check every 5 seconds
+
+    // Subscribe to memory pressure changes
+    const unsubscribe = memoryMonitor.subscribe((stats) => {
+      console.log(`[Memory Monitor] Pressure: ${stats.pressure}, Used: ${stats.usedMB.toFixed(1)}MB / ${stats.totalMB.toFixed(1)}MB`);
+      
+      // Clear caches on high memory pressure
+      if (stats.pressure === 'critical') {
+        console.warn('[Memory Monitor] Critical memory pressure detected, clearing all caches');
+        dataCache.clear();
+        setState(prev => ({
+          ...prev,
+          chartDataCache: new Map()
+        }));
+      } else if (stats.pressure === 'high') {
+        console.warn('[Memory Monitor] High memory pressure detected, clearing sampling cache');
+        samplingCache.clear();
+        // Clear half of in-memory cache
+        setState(prev => {
+          const newCache = new Map(prev.chartDataCache);
+          const keys = Array.from(newCache.keys());
+          const halfSize = Math.floor(keys.length / 2);
+          keys.slice(0, halfSize).forEach(key => newCache.delete(key));
+          return {
+            ...prev,
+            chartDataCache: newCache
+          };
+        });
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Fetch and cache raw data for given metadata IDs
   const fetchRawData = async (metadataIds: number[]) => {
@@ -206,8 +246,12 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       const originalCount = rawData.timeSeries.length;
       
       if (shouldSample) {
+        // Get current memory stats for adaptive sampling
+        const memoryStats = memoryMonitor.getCurrentStats();
+        const currentMemoryMB = memoryStats?.usedMB || 0;
+        
         const samplingConfig = typeof enableSampling === 'boolean' 
-          ? getProgressiveSamplingConfig(rawData.timeSeries.length)
+          ? getMemoryAwareSamplingConfig(rawData.timeSeries.length, currentMemoryMB)
           : { ...enableSampling, enabled: true };
         
         // Check shared sampling cache first

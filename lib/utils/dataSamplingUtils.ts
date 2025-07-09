@@ -154,30 +154,37 @@ export function minMaxSample<T extends DataPoint>(
 
   for (let i = 0; i < data.length; i += bucketSize) {
     const bucketEnd = Math.min(i + bucketSize, data.length);
-    let minPoint = data[i];
-    let maxPoint = data[i];
+    let minIndex = i;
+    let maxIndex = i;
+    let minValue = data[i].y;
+    let maxValue = data[i].y;
 
-    // Find min and max in bucket
+    // Find min and max indices in bucket
     for (let j = i + 1; j < bucketEnd; j++) {
-      if (data[j].y < minPoint.y) {
-        minPoint = data[j];
+      if (data[j].y < minValue) {
+        minValue = data[j].y;
+        minIndex = j;
       }
-      if (data[j].y > maxPoint.y) {
-        maxPoint = data[j];
+      if (data[j].y > maxValue) {
+        maxValue = data[j].y;
+        maxIndex = j;
       }
     }
 
     // Add min first if it comes before max in time
-    if (toNumber(minPoint.x) < toNumber(maxPoint.x)) {
-      sampled.push(minPoint);
-      if (minPoint !== maxPoint) {
-        sampled.push(maxPoint);
+    if (minIndex < maxIndex) {
+      sampled.push(data[minIndex]);
+      if (minIndex !== maxIndex) {
+        sampled.push(data[maxIndex]);
+      }
+    } else if (maxIndex < minIndex) {
+      sampled.push(data[maxIndex]);
+      if (minIndex !== maxIndex) {
+        sampled.push(data[minIndex]);
       }
     } else {
-      sampled.push(maxPoint);
-      if (minPoint !== maxPoint) {
-        sampled.push(minPoint);
-      }
+      // Same point is both min and max
+      sampled.push(data[minIndex]);
     }
   }
 
@@ -197,30 +204,103 @@ export function adaptiveSample<T extends DataPoint>(
     return data;
   }
 
-  // If viewport is provided, focus on visible data
-  let visibleData = data;
+  // If viewport is provided, focus on visible data without creating a new array
+  let visibleStart = 0;
+  let visibleEnd = data.length;
+  let beforePoint: T | undefined;
+  let afterPoint: T | undefined;
+
   if (viewport) {
-    visibleData = data.filter(d => {
-      const x = toNumber(d.x);
-      return x >= viewport.xMin && x <= viewport.xMax;
-    });
+    // Find viewport boundaries using binary search for better performance
+    for (let i = 0; i < data.length; i++) {
+      const x = toNumber(data[i].x);
+      if (x < viewport.xMin) {
+        beforePoint = data[i];
+        visibleStart = i + 1;
+      } else if (x > viewport.xMax && afterPoint === undefined) {
+        afterPoint = data[i];
+        visibleEnd = i;
+        break;
+      }
+    }
   }
 
-  // Use LTTB for main sampling
-  const sampled = lttbSample(visibleData, targetPoints);
+  // Create a view of visible data without copying
+  const visibleLength = visibleEnd - visibleStart;
+  if (visibleLength <= targetPoints) {
+    // If visible data is small enough, return slice
+    const result = data.slice(visibleStart, visibleEnd);
+    if (beforePoint) result.unshift(beforePoint);
+    if (afterPoint) result.push(afterPoint);
+    return result;
+  }
 
-  // If we filtered by viewport, ensure continuity at edges
-  if (viewport && visibleData.length < data.length) {
-    // Find points just before and after viewport
-    const beforePoint = data.find(d => toNumber(d.x) < viewport.xMin);
-    const afterPoint = data.find(d => toNumber(d.x) > viewport.xMax);
+  // Create a custom LTTB implementation that works with array slice
+  const sampled: T[] = [];
+  const bucketSize = (visibleLength - 2) / (targetPoints - 2);
 
-    if (beforePoint && sampled[0] !== beforePoint) {
-      sampled.unshift(beforePoint);
+  // Always include first visible point
+  sampled.push(data[visibleStart]);
+
+  let prevSelectedIndex = visibleStart;
+
+  for (let i = 0; i < targetPoints - 2; i++) {
+    const bucketStart = Math.floor((i + 1) * bucketSize) + visibleStart + 1;
+    const bucketEnd = Math.floor((i + 2) * bucketSize) + visibleStart + 1;
+
+    // Calculate average point of next bucket
+    let avgX = 0;
+    let avgY = 0;
+    let avgCount = 0;
+
+    const nextBucketEnd = Math.min(visibleEnd, Math.floor((i + 3) * bucketSize) + visibleStart + 1);
+    for (let j = bucketEnd; j < nextBucketEnd; j++) {
+      avgX += toNumber(data[j].x);
+      avgY += data[j].y;
+      avgCount++;
     }
-    if (afterPoint && sampled[sampled.length - 1] !== afterPoint) {
-      sampled.push(afterPoint);
+
+    if (avgCount > 0) {
+      avgX /= avgCount;
+      avgY /= avgCount;
+    } else {
+      avgX = toNumber(data[visibleEnd - 1].x);
+      avgY = data[visibleEnd - 1].y;
     }
+
+    // Find point with largest triangle area
+    let maxArea = -1;
+    let selectedIndex = bucketStart;
+    const prevX = toNumber(data[prevSelectedIndex].x);
+
+    for (let j = bucketStart; j < Math.min(bucketEnd, visibleEnd); j++) {
+      const currX = toNumber(data[j].x);
+      const currY = data[j].y;
+
+      const area = Math.abs(
+        (prevX - avgX) * (currY - avgY) - 
+        (prevX - currX) * (avgY - data[prevSelectedIndex].y)
+      );
+
+      if (area > maxArea) {
+        maxArea = area;
+        selectedIndex = j;
+      }
+    }
+
+    sampled.push(data[selectedIndex]);
+    prevSelectedIndex = selectedIndex;
+  }
+
+  // Always include last visible point
+  sampled.push(data[visibleEnd - 1]);
+
+  // Add edge points for continuity
+  if (beforePoint && sampled[0] !== beforePoint) {
+    sampled.unshift(beforePoint);
+  }
+  if (afterPoint && sampled[sampled.length - 1] !== afterPoint) {
+    sampled.push(afterPoint);
   }
 
   return sampled;

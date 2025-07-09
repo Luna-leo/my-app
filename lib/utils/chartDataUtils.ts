@@ -31,8 +31,22 @@ export interface XYData {
  * Merge time series data from multiple sources
  */
 export function mergeTimeSeriesData(dataArrays: TimeSeriesData[][]): TimeSeriesData[] {
-  // Flatten all data
-  const allData = dataArrays.flat();
+  // Calculate total size to pre-allocate array
+  let totalSize = 0;
+  for (const arr of dataArrays) {
+    totalSize += arr.length;
+  }
+  
+  // Pre-allocate result array
+  const allData = new Array<TimeSeriesData>(totalSize);
+  let index = 0;
+  
+  // Copy data without using flat()
+  for (const arr of dataArrays) {
+    for (const item of arr) {
+      allData[index++] = item;
+    }
+  }
   
   // Sort by timestamp
   allData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
@@ -76,8 +90,15 @@ export async function transformDataForChart(
         throw new Error(`Parameter info not found for ${parameterId}`);
       }
 
-      const timestamps = dataPoints.map(d => d.timestamp.getTime());
-      const values = dataPoints.map(d => d.data[parameterId] ?? null);
+      // Pre-allocate arrays for better performance
+      const timestamps = new Array<number>(dataPoints.length);
+      const values = new Array<number | null>(dataPoints.length);
+      
+      // Fill arrays without creating intermediate objects
+      for (let i = 0; i < dataPoints.length; i++) {
+        timestamps[i] = dataPoints[i].timestamp.getTime();
+        values[i] = dataPoints[i].data[parameterId] ?? null;
+      }
 
       series.push({
         metadataId,
@@ -136,11 +157,16 @@ export async function transformDataForXYChart(
         throw new Error(`Parameter info not found for ${parameterId}`);
       }
 
-      const xValues = dataPoints.map(d => {
-        const value = d.data[xAxisParameter];
-        return value !== null ? value : NaN;
-      });
-      const yValues = dataPoints.map(d => d.data[parameterId] ?? null);
+      // Pre-allocate arrays for better performance
+      const xValues = new Array<number>(dataPoints.length);
+      const yValues = new Array<number | null>(dataPoints.length);
+      
+      // Fill arrays without creating intermediate objects
+      for (let i = 0; i < dataPoints.length; i++) {
+        const xValue = dataPoints[i].data[xAxisParameter];
+        xValues[i] = xValue !== null ? xValue : NaN;
+        yValues[i] = dataPoints[i].data[parameterId] ?? null;
+      }
 
       series.push({
         metadataId,
@@ -191,13 +217,18 @@ export function normalizeValues(
   max: number
 ): number[] {
   const range = max - min || 1;
+  const result = new Array<number>(values.length);
   
-  return values.map(value => {
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i];
     if (value === null || isNaN(value)) {
-      return 0; // Default to center for invalid values
+      result[i] = 0; // Default to center for invalid values
+    } else {
+      result[i] = ((value - min) / range) * 2 - 1;
     }
-    return ((value - min) / range) * 2 - 1;
-  });
+  }
+  
+  return result;
 }
 
 /**
