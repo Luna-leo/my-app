@@ -12,7 +12,7 @@ import {
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
 import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache, samplingCache } from '@/lib/services/dataCache';
-import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig, getMemoryAwareSamplingConfig } from '@/lib/utils/chartDataSampling';
+import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig, getMemoryAwareSamplingConfig } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig, hashSamplingConfig } from '@/lib/utils/hashUtils';
 import { StreamingDataPipeline } from '@/lib/utils/streamingDataUtils';
@@ -117,15 +117,24 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     const timeSeriesPromises = metadataIds.map(async (metadataId) => {
       const cachedData = timeSeriesCache.get(metadataId);
       if (cachedData) {
-        return cachedData;
+        return { metadataId, data: cachedData };
       }
       
       const data = await db.getTimeSeriesData(metadataId);
       timeSeriesCache.set(metadataId, data);
-      return data;
+      return { metadataId, data };
     });
 
-    const timeSeriesArrays = await Promise.all(timeSeriesPromises);
+    const timeSeriesResults = await Promise.all(timeSeriesPromises);
+    
+    // Create a map of data by metadataId for per-series sampling
+    const dataByMetadata = new Map<number, TimeSeriesData[]>();
+    timeSeriesResults.forEach(({ metadataId, data }) => {
+      dataByMetadata.set(metadataId, data);
+    });
+
+    // Also create merged data for backward compatibility
+    const timeSeriesArrays = timeSeriesResults.map(r => r.data);
     const mergedTimeSeries = mergeTimeSeriesData(timeSeriesArrays);
 
     // Fetch metadata in parallel
@@ -156,6 +165,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
 
     const rawData = {
       timeSeries: mergedTimeSeries,
+      dataByMetadata,
       metadata: metadataMap,
       parameters: new Map<string, ParameterInfo>()
     };
@@ -260,10 +270,20 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           console.log(`[ChartDataContext] Using cached sampling for ${config.selectedDataIds.length} datasets`);
         } else {
           // Use the first Y-axis parameter for sampling to ensure consistency
-          // This prevents different charts from sampling the same data differently
-          // due to non-deterministic parameter ordering in Object.keys()
           const samplingParameter = config.yAxisParameters.length > 0 ? config.yAxisParameters[0] : undefined;
-          processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+          
+          // Use per-metadata sampling when multiple series are present
+          if (config.selectedDataIds.length > 1) {
+            console.log(`[ChartDataContext] Using per-metadata sampling for ${config.selectedDataIds.length} series`);
+            processedTimeSeries = sampleTimeSeriesDataByMetadata(
+              rawData.dataByMetadata,
+              samplingConfig,
+              samplingParameter
+            );
+          } else {
+            // Single series - use regular sampling
+            processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+          }
           
           // Cache the sampled data for reuse by other charts
           samplingCache.set(samplingCacheKey, processedTimeSeries);

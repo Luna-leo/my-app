@@ -240,3 +240,82 @@ export function getMemoryAwareSamplingConfig(
   
   return getProgressiveSamplingConfig(dataLength, undefined, memoryPressure);
 }
+
+/**
+ * Sample time series data independently for each metadata ID
+ * This ensures each series maintains its shape when overlaid on the same chart
+ * @param dataByMetadata - Map of metadataId to time series data
+ * @param config - Base sampling configuration
+ * @param samplingParameter - Optional specific parameter to use for sampling decisions
+ */
+export function sampleTimeSeriesDataByMetadata(
+  dataByMetadata: Map<number, TimeSeriesData[]>,
+  config: SamplingConfig = DEFAULT_SAMPLING_CONFIG,
+  samplingParameter?: string
+): TimeSeriesData[] {
+  // Don't sample if disabled
+  if (!config.enabled) {
+    // Flatten and sort all data
+    const allData: TimeSeriesData[] = [];
+    dataByMetadata.forEach(data => {
+      allData.push(...data);
+    });
+    allData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    return allData;
+  }
+
+  const totalDataPoints = Array.from(dataByMetadata.values()).reduce((sum, data) => sum + data.length, 0);
+  
+  // If total data is small, don't sample
+  if (totalDataPoints <= config.samplingThreshold) {
+    const allData: TimeSeriesData[] = [];
+    dataByMetadata.forEach(data => {
+      allData.push(...data);
+    });
+    allData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    return allData;
+  }
+
+  // Calculate how many points each series should get
+  const seriesCount = dataByMetadata.size;
+  const minPointsPerSeries = 100; // Ensure each series has at least 100 points
+  const baseTargetPoints = Math.max(config.targetPoints, seriesCount * minPointsPerSeries);
+  
+  // Sample each metadata's data independently
+  const sampledDataArrays: TimeSeriesData[][] = [];
+  
+  dataByMetadata.forEach((data, metadataId) => {
+    if (data.length === 0) return;
+    
+    // Calculate proportional target points for this series
+    const proportion = data.length / totalDataPoints;
+    const targetPointsForSeries = Math.max(
+      minPointsPerSeries,
+      Math.floor(baseTargetPoints * proportion)
+    );
+    
+    // Create a config specific to this series
+    const seriesConfig: SamplingConfig = {
+      ...config,
+      targetPoints: targetPointsForSeries,
+      samplingThreshold: 0 // Force sampling since we already checked total threshold
+    };
+    
+    console.log(`[Sampling] Metadata ${metadataId}: ${data.length} → ${targetPointsForSeries} points (${(proportion * 100).toFixed(1)}% of total)`);
+    
+    // Sample this series
+    const sampledSeries = sampleTimeSeriesData(data, seriesConfig, samplingParameter);
+    sampledDataArrays.push(sampledSeries);
+  });
+  
+  // Merge and sort all sampled data
+  const allSampledData: TimeSeriesData[] = [];
+  for (const arr of sampledDataArrays) {
+    allSampledData.push(...arr);
+  }
+  allSampledData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  
+  console.log(`[Sampling] Total: ${totalDataPoints} → ${allSampledData.length} points across ${seriesCount} series`);
+  
+  return allSampledData;
+}
