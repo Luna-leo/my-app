@@ -171,11 +171,11 @@ function UplotChartWithDataComponent({
       }))
       options.plugins.push(createTooltipPlugin(chartData))
       
-      // Apply series colors
+      // Apply series colors - convert from normalized (0-1) to RGB (0-255) values
       const colors = generateLineColors(plotData.series.length)
       options.series.forEach((series, i) => {
         if (i > 0 && colors[i - 1]) {
-          const color = `rgba(${colors[i - 1].r}, ${colors[i - 1].g}, ${colors[i - 1].b}, ${colors[i - 1].a})`
+          const color = `rgba(${Math.round(colors[i - 1].r * 255)}, ${Math.round(colors[i - 1].g * 255)}, ${Math.round(colors[i - 1].b * 255)}, ${colors[i - 1].a})`
           series.stroke = color
           if (series.points) {
             series.points.fill = color
