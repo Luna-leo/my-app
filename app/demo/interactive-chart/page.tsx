@@ -14,8 +14,18 @@ const demoConfig: ChartConfiguration = {
 }
 
 export default function InteractiveChartDemo() {
-  const [selectedRange, setSelectedRange] = useState<any>(null)
-  const [viewport, setViewport] = useState<any>(null)
+  const [selectedRange, setSelectedRange] = useState<{
+    xMin: number
+    xMax: number
+    yMin: number
+    yMax: number
+  } | null>(null)
+  const [viewport, setViewport] = useState<{
+    xMin: number
+    xMax: number
+    yMin: number
+    yMax: number
+  } | null>(null)
 
   return (
     <div className="container mx-auto p-8">
@@ -26,7 +36,7 @@ export default function InteractiveChartDemo() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">Box Selection</h2>
           <p className="text-gray-600 mb-4">
-            Click the "Box Selection" button and drag on the chart to select a region. 
+            Click the &quot;Box Selection&quot; button and drag on the chart to select a region. 
             You can export the selected data as CSV or JSON.
           </p>
           <div className="border rounded-lg p-4 bg-gray-50">
@@ -49,8 +59,8 @@ export default function InteractiveChartDemo() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">Zoom to Selection</h2>
           <p className="text-gray-600 mb-4">
-            Click the "Zoom Selection" button, drag to select a region, then click "Apply Zoom" 
-            to zoom into the selected area. Use "Reset Zoom" to return to the original view.
+            Click the &quot;Zoom Selection&quot; button, drag to select a region, then click &quot;Apply Zoom&quot; 
+            to zoom into the selected area. Use &quot;Reset Zoom&quot; to return to the original view.
           </p>
           <div className="border rounded-lg p-4 bg-gray-50">
             <InteractiveUplotChart

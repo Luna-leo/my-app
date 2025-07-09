@@ -1,4 +1,4 @@
-import type { Plugin } from 'uplot';
+import uPlot, { Plugin } from 'uplot';
 
 export interface SelectionRange {
   xMin: number;
@@ -36,7 +36,7 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
   let endX = 0;
   let endY = 0;
   let selectionEl: HTMLDivElement | null = null;
-  let u: any = null;
+  let u: uPlot | null = null;
 
   const createSelectionElement = () => {
     const el = document.createElement('div');
@@ -181,7 +181,7 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
   return {
     hooks: {
       init: [
-        (uplot: any) => {
+        (uplot: uPlot) => {
           u = uplot;
           selectionEl = createSelectionElement();
           u.over.appendChild(selectionEl);

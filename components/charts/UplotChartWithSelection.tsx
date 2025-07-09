@@ -5,7 +5,6 @@ import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialo
 import { UplotChartWithData } from './UplotChartWithData'
 import { useChartSelection } from '@/hooks/useChartSelection'
 import { createSelectionPlugin, createZoomToSelectionPlugin, SelectionRange } from '@/lib/utils/uplotSelectionPlugin'
-import { useChartInteraction } from '@/hooks/useChartInteraction'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 import { SelectionControls } from './SelectionControls'

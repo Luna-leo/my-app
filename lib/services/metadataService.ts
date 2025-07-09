@@ -41,7 +41,7 @@ class MetadataService {
     // Fetch uncached metadata from database
     if (uncachedIds.length > 0) {
       const metadataList = await db.metadata.bulkGet(uncachedIds)
-      metadataList.forEach((metadata, index) => {
+      metadataList.forEach((metadata) => {
         if (metadata && metadata.id) {
           this.metadataCache.set(metadata.id, metadata)
           result.set(metadata.id, metadata)

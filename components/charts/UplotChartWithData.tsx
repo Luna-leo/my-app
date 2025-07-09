@@ -5,7 +5,6 @@ import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialo
 import { useChartDimensions, AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
 import { shallowEqual } from '@/lib/utils/hashUtils'
 import { useChartData } from '@/hooks/useChartDataOptimized'
-import { generateLineColors } from '@/lib/utils/chartDataUtils'
 import { colorService } from '@/lib/services/colorService'
 import {
   buildUplotOptions,

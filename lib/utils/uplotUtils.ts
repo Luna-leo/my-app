@@ -2,19 +2,6 @@ import uPlot from 'uplot'
 import { format } from 'date-fns'
 import { colorService } from '@/lib/services/colorService'
 
-// Color palette similar to Plotly defaults
-const DEFAULT_COLORS = [
-  'rgb(99, 110, 250)',
-  'rgb(239, 85, 59)',
-  'rgb(0, 204, 150)',
-  'rgb(171, 99, 250)',
-  'rgb(255, 161, 90)',
-  'rgb(25, 211, 243)',
-  'rgb(255, 102, 146)',
-  'rgb(182, 232, 128)',
-  'rgb(255, 151, 255)',
-  'rgb(254, 203, 82)'
-]
 
 // Generate colors for series
 export function generateSeriesColors(count: number): string[] {

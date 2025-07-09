@@ -109,31 +109,6 @@ export function InteractiveUplotChart({
     }
   }, [dataViewport, viewport, viewportActions, enableViewportControl])
   
-  // Handle chart creation
-  const handleChartCreate = useCallback((chart: uPlot) => {
-    chartRef.current = chart
-    
-    // Apply viewport if available
-    if (viewport && enableViewportControl) {
-      const xScale = chart.scales.x
-      const yScale = chart.scales.y || chart.scales[chart.series[1]?.scale || 'y']
-      
-      if (xScale && yScale) {
-        // For time series, convert to seconds
-        const xMin = config.xAxisParameter === 'timestamp' ? viewport.xMin / 1000 : viewport.xMin
-        const xMax = config.xAxisParameter === 'timestamp' ? viewport.xMax / 1000 : viewport.xMax
-        
-        chart.setScale('x', { min: xMin, max: xMax })
-        
-        // Set y scale for all y scales
-        Object.keys(chart.scales).forEach(scale => {
-          if (scale !== 'x') {
-            chart.setScale(scale, { min: viewport.yMin, max: viewport.yMax })
-          }
-        })
-      }
-    }
-  }, [viewport, enableViewportControl, config.xAxisParameter])
   
   // Handle selection events
   const handleSelect = useCallback((range: SelectionRange) => {
