@@ -34,23 +34,42 @@ export const DEFAULT_SAMPLING_CONFIG: SamplingConfig = {
 
 /**
  * Sample time series data while preserving all parameters
+ * @param data - Time series data to sample
+ * @param config - Sampling configuration
+ * @param samplingParameter - Optional specific parameter to use for sampling decisions. If not provided, uses the first numeric parameter (sorted alphabetically)
  */
 export function sampleTimeSeriesData(
   data: TimeSeriesData[],
-  config: SamplingConfig = DEFAULT_SAMPLING_CONFIG
+  config: SamplingConfig = DEFAULT_SAMPLING_CONFIG,
+  samplingParameter?: string
 ): TimeSeriesData[] {
   // Don't sample if disabled or data is small
   if (!config.enabled || data.length <= config.samplingThreshold) {
     return data;
   }
 
-  // Convert to DataPoint format for sampling
-  // Use the first numeric parameter for sampling decisions
-  const firstParam = data.length > 0 && data[0].data 
-    ? Object.keys(data[0].data).find(key => typeof data[0].data[key] === 'number')
-    : null;
+  // Determine which parameter to use for sampling
+  let parameterForSampling: string | null = null;
+  
+  if (samplingParameter) {
+    // Use the provided parameter if it exists and is numeric
+    if (data.length > 0 && data[0].data && 
+        samplingParameter in data[0].data && 
+        typeof data[0].data[samplingParameter] === 'number') {
+      parameterForSampling = samplingParameter;
+    }
+  }
+  
+  if (!parameterForSampling && data.length > 0 && data[0].data) {
+    // Get all numeric parameters and sort them alphabetically for deterministic selection
+    const numericParams = Object.keys(data[0].data)
+      .filter(key => typeof data[0].data[key] === 'number')
+      .sort(); // Sort alphabetically to ensure consistent ordering
+    
+    parameterForSampling = numericParams[0] || null;
+  }
 
-  if (!firstParam) {
+  if (!parameterForSampling) {
     console.warn('No numeric parameter found for sampling, returning original data');
     return data;
   }
@@ -58,7 +77,7 @@ export function sampleTimeSeriesData(
   // Convert to sampling format
   const dataPoints: TimeSeriesDataPoint[] = data.map(item => ({
     x: item.timestamp,
-    y: item.data[firstParam] as number || 0,
+    y: item.data[parameterForSampling] as number || 0,
     originalData: item // Keep reference to original
   }));
 
@@ -77,7 +96,7 @@ export function sampleTimeSeriesData(
     return original;
   });
 
-  console.log(`Time series sampled: ${samplingResult.originalCount} → ${samplingResult.sampledCount} points`);
+  console.log(`Time series sampled: ${samplingResult.originalCount} → ${samplingResult.sampledCount} points (using parameter: ${parameterForSampling})`);
 
   return sampledData;
 }

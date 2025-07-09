@@ -209,7 +209,11 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       
       if (enableSampling) {
         const samplingConfig = getProgressiveSamplingConfig(rawData.timeSeries.length);
-        processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig);
+        // Use the first Y-axis parameter for sampling to ensure consistency
+        // This prevents different charts from sampling the same data differently
+        // due to non-deterministic parameter ordering in Object.keys()
+        const samplingParameter = config.yAxisParameters.length > 0 ? config.yAxisParameters[0] : undefined;
+        processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
       }
 
       // Transform data based on X-axis type
