@@ -60,6 +60,133 @@ export class AppDatabase extends Dexie {
     
     return await query.toArray();
   }
+
+  /**
+   * Stream time series data in chunks for memory-efficient processing
+   * @param metadataId - The metadata ID to query
+   * @param options - Streaming options including chunk size and time range
+   * @returns AsyncGenerator that yields chunks of time series data
+   */
+  async *streamTimeSeriesData(
+    metadataId: number,
+    options?: {
+      chunkSize?: number;
+      startTime?: Date;
+      endTime?: Date;
+    }
+  ): AsyncGenerator<TimeSeriesData[], void> {
+    const chunkSize = options?.chunkSize || 1000;
+    const collection = this.timeSeries.where('metadataId').equals(metadataId);
+    
+    // Get total count for progress tracking
+    const totalCount = await collection.count();
+    if (totalCount === 0) return;
+    
+    let offset = 0;
+    
+    while (offset < totalCount) {
+      // Fetch chunk with timestamp ordering
+      const chunk = await collection
+        .offset(offset)
+        .limit(chunkSize)
+        .sortBy('timestamp');
+      
+      if (chunk.length === 0) break;
+      
+      // Apply time filtering if specified
+      let filteredChunk = chunk;
+      if (options?.startTime || options?.endTime) {
+        filteredChunk = chunk.filter(item => {
+          if (options.startTime && item.timestamp < options.startTime) return false;
+          if (options.endTime && item.timestamp > options.endTime) return false;
+          return true;
+        });
+      }
+      
+      if (filteredChunk.length > 0) {
+        yield filteredChunk;
+      }
+      
+      offset += chunk.length;
+      
+      // Allow event loop to process other tasks
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
+
+  /**
+   * Stream multiple time series data sources and merge them
+   * @param metadataIds - Array of metadata IDs to stream
+   * @param options - Streaming options
+   * @returns AsyncGenerator that yields merged chunks
+   */
+  async *streamMultipleTimeSeriesData(
+    metadataIds: number[],
+    options?: {
+      chunkSize?: number;
+      startTime?: Date;
+      endTime?: Date;
+    }
+  ): AsyncGenerator<TimeSeriesData[], void> {
+    const chunkSize = options?.chunkSize || 1000;
+    
+    // Create streams for each metadata ID
+    const streams = metadataIds.map(id => 
+      this.streamTimeSeriesData(id, { ...options, chunkSize: Math.floor(chunkSize / metadataIds.length) })
+    );
+    
+    // Buffer for each stream
+    const buffers: { stream: AsyncGenerator<TimeSeriesData[]>; buffer: TimeSeriesData[]; done: boolean }[] = 
+      streams.map(stream => ({ stream, buffer: [], done: false }));
+    
+    // Merge sorted streams
+    while (buffers.some(b => !b.done || b.buffer.length > 0)) {
+      // Fill buffers
+      for (const buffer of buffers) {
+        if (!buffer.done && buffer.buffer.length < chunkSize / 2) {
+          const result = await buffer.stream.next();
+          if (result.done) {
+            buffer.done = true;
+          } else {
+            buffer.buffer.push(...result.value);
+          }
+        }
+      }
+      
+      // Merge and yield a chunk
+      const mergedChunk: TimeSeriesData[] = [];
+      const targetChunkSize = chunkSize;
+      
+      while (mergedChunk.length < targetChunkSize && buffers.some(b => b.buffer.length > 0)) {
+        // Find buffer with earliest timestamp
+        let earliestBufferIndex = -1;
+        let earliestTimestamp: Date | null = null;
+        
+        for (let i = 0; i < buffers.length; i++) {
+          if (buffers[i].buffer.length > 0) {
+            const timestamp = buffers[i].buffer[0].timestamp;
+            if (!earliestTimestamp || timestamp < earliestTimestamp) {
+              earliestTimestamp = timestamp;
+              earliestBufferIndex = i;
+            }
+          }
+        }
+        
+        if (earliestBufferIndex >= 0) {
+          mergedChunk.push(buffers[earliestBufferIndex].buffer.shift()!);
+        } else {
+          break;
+        }
+      }
+      
+      if (mergedChunk.length > 0) {
+        yield mergedChunk;
+      }
+      
+      // Allow event loop to process
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
 }
 
 export const db = new AppDatabase();

@@ -15,6 +15,7 @@ import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCac
 import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig, getMemoryAwareSamplingConfig } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig, hashSamplingConfig } from '@/lib/utils/hashUtils';
+import { StreamingDataPipeline } from '@/lib/utils/streamingDataUtils';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
@@ -30,6 +31,12 @@ interface ChartDataContextType {
     plotData: ChartPlotData | null;
     dataViewport: ChartViewport | null;
   }>;
+  getChartDataStream?: (config: ChartConfiguration, options?: {
+    enableSampling?: boolean | SamplingConfig;
+    chunkSize?: number;
+    onChunk?: (chunk: ChartPlotData) => void;
+    onProgress?: (processed: number) => void;
+  }) => Promise<AsyncGenerator<ChartPlotData, void>>;
   preloadChartData: (configs: ChartConfiguration[], options?: {
     batchSize?: number;
     onProgress?: (loaded: number, total: number) => void;
@@ -41,21 +48,21 @@ const ChartDataContext = createContext<ChartDataContextType | undefined>(undefin
 
 // Generate a stable hash for chart configuration
 function getConfigHash(config: ChartConfiguration, samplingOption: boolean | SamplingConfig = true): string {
+  const samplingConfig = typeof samplingOption === 'boolean' 
+    ? { enabled: samplingOption }
+    : samplingOption;
+  
   return hashChartConfig({
     xAxisParameter: config.xAxisParameter,
     yAxisParameters: config.yAxisParameters,
     selectedDataIds: config.selectedDataIds,
     chartType: config.chartType,
-  }, samplingOption);
+  }, samplingConfig);
 }
 
 // Generate a cache key for sampled data
 function getSamplingCacheKey(metadataIds: number[], samplingConfig: SamplingConfig): string {
-  return hashSamplingConfig(metadataIds, {
-    method: samplingConfig.method,
-    targetPoints: samplingConfig.targetPoints,
-    preserveExtremes: samplingConfig.preserveExtremes
-  });
+  return hashSamplingConfig(metadataIds, samplingConfig);
 }
 
 export function ChartDataProvider({ children }: { children: ReactNode }) {

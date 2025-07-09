@@ -3,7 +3,7 @@
 import { useEffect, useRef, memo, useCallback } from 'react'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
-import { areArraysEqual, getDataVersion } from '@/lib/utils/hashUtils'
+// Remove unused imports
 
 interface UplotChartProps {
   data: uPlot.AlignedData
@@ -117,12 +117,9 @@ export const UplotChart = memo(UplotChartComponent, (prevProps, nextProps) => {
   } else if (prevProps.data.length !== nextProps.data.length) {
     return false;
   } else {
-    // Use version-based comparison for large datasets
-    const prevVersion = getDataVersion(prevProps.data);
-    const nextVersion = getDataVersion(nextProps.data);
-    if (prevVersion !== nextVersion) {
-      return false;
-    }
+    // For very large datasets, consider implementing a version-based check
+    // For now, assume data has changed if references are different
+    return false;
   }
   
   // For options, check common properties that change

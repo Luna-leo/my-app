@@ -312,7 +312,6 @@ export const UplotChartWithData = memo(UplotChartWithDataComponent, (prevProps, 
   } else {
     // Compare key config properties
     const configChanged = (
-      prevProps.config.id !== nextProps.config.id ||
       prevProps.config.title !== nextProps.config.title ||
       prevProps.config.chartType !== nextProps.config.chartType ||
       prevProps.config.xAxisParameter !== nextProps.config.xAxisParameter ||
