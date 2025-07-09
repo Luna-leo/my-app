@@ -41,7 +41,7 @@ export function CreateChartDialog({
   onUpdateChart
 }: CreateChartDialogProps) {
   const [chartTitle, setChartTitle] = useState('');
-  const [chartType, setChartType] = useState<'line' | 'scatter'>('line');
+  const [chartType, setChartType] = useState<'line' | 'scatter'>('scatter');
   const [xAxisParameter, setXAxisParameter] = useState('timestamp');
   const [yAxisParameters, setYAxisParameters] = useState<string[]>([]);
   const [availableParameters, setAvailableParameters] = useState<ParameterInfo[]>([]);
@@ -58,7 +58,7 @@ export function CreateChartDialog({
     } else if (!editMode && open) {
       // Reset form for new chart
       setChartTitle('');
-      setChartType('line');
+      setChartType('scatter');
       setXAxisParameter('timestamp');
       setYAxisParameters([]);
     }
