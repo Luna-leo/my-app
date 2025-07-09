@@ -15,9 +15,7 @@ interface SVGOverlayProps {
   yParameterInfos: ParameterInfo[]
   xAxisType: 'timestamp' | 'parameter'
   showGrid?: boolean
-  hoveredPoint?: { point: Point2D; index: number; seriesIndex?: number } | null
   crosshairPosition?: Point2D | null
-  chartData?: Array<{ metadataLabel: string; parameterName: string; unit: string }>
 }
 
 export function SVGOverlay({
@@ -29,9 +27,7 @@ export function SVGOverlay({
   yParameterInfos,
   xAxisType,
   showGrid = true,
-  hoveredPoint,
-  crosshairPosition,
-  chartData = []
+  crosshairPosition
 }: SVGOverlayProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [scales, setScales] = useState<{
@@ -295,47 +291,6 @@ export function SVGOverlay({
                 fill="#333"
               >
                 {formatYTick(crosshairPosition.y)}
-              </text>
-            </g>
-          </g>
-        )}
-
-        {/* Tooltip */}
-        {hoveredPoint && chartData[hoveredPoint.seriesIndex ?? 0] && (
-          <g className="pointer-events-none">
-            {/* Highlight point */}
-            <circle
-              cx={scales.x(hoveredPoint.point.x)}
-              cy={scales.y(hoveredPoint.point.y)}
-              r="6"
-              fill="white"
-              stroke="#333"
-              strokeWidth="2"
-            />
-            {/* Tooltip box */}
-            <g transform={`translate(${Math.min(scales.x(hoveredPoint.point.x) + 10, innerWidth - 150)},${Math.max(scales.y(hoveredPoint.point.y) - 30, 10)})`}>
-              <rect
-                x="0"
-                y="0"
-                width="140"
-                height="60"
-                fill="white"
-                stroke="#333"
-                strokeWidth="1"
-                rx="4"
-                style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }}
-              />
-              <text x="10" y="20" fontSize="12" fill="#333" fontWeight="bold">
-                {chartData[hoveredPoint.seriesIndex ?? 0].metadataLabel}
-              </text>
-              <text x="10" y="35" fontSize="11" fill="#666">
-                {chartData[hoveredPoint.seriesIndex ?? 0].parameterName}
-              </text>
-              <text x="10" y="50" fontSize="11" fill="#333">
-                {xAxisType === 'timestamp' 
-                  ? formatXTick(hoveredPoint.point.x)
-                  : `X: ${hoveredPoint.point.x.toFixed(2)}`
-                }, Y: {hoveredPoint.point.y.toFixed(2)}
               </text>
             </g>
           </g>

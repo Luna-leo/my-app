@@ -157,11 +157,16 @@ function UplotChartWithDataComponent({
         yRange: dataViewport ? [dataViewport.yMin, dataViewport.yMax] : undefined,
       })
       
-      // Add tooltip plugin
+      // Add tooltip plugin with chart data
       if (!options.plugins) {
         options.plugins = []
       }
-      options.plugins.push(createTooltipPlugin())
+      const chartData = plotData.series.map(series => ({
+        metadataLabel: series.metadataLabel,
+        parameterName: series.parameterInfo.parameterName,
+        unit: series.parameterInfo.unit || ''
+      }))
+      options.plugins.push(createTooltipPlugin(chartData))
       
       // Apply series colors
       const colors = generateLineColors(plotData.series.length)

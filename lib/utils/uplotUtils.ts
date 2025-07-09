@@ -179,7 +179,9 @@ export function buildUplotOptions({
 }
 
 // Create tooltip plugin
-export function createTooltipPlugin(): uPlot.Plugin {
+export function createTooltipPlugin(
+  chartData?: Array<{ metadataLabel: string; parameterName: string; unit: string }>
+): uPlot.Plugin {
   return {
     hooks: {
       ready(u) {
@@ -188,15 +190,17 @@ export function createTooltipPlugin(): uPlot.Plugin {
         tooltip.style.cssText = `
           position: absolute;
           display: none;
-          padding: 8px;
-          background: rgba(0, 0, 0, 0.8);
-          color: white;
+          padding: 12px;
+          background: white;
+          color: #333;
+          border: 1px solid #333;
           border-radius: 4px;
           pointer-events: none;
           z-index: 100;
           font-size: 12px;
-          line-height: 1.4;
+          line-height: 1.5;
           white-space: nowrap;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         `
         u.over.appendChild(tooltip)
 
@@ -238,16 +242,51 @@ export function createTooltipPlugin(): uPlot.Plugin {
             const yVal = u.data[i]?.[idx]
             if (yVal !== null && yVal !== undefined) {
               const color = series.stroke || 'black'
-              const name = series.label || `Series ${i}`
               const value = formatNumber(yVal)
-              content += `<div style="color: ${color}">${name}: ${value}</div>`
+              
+              if (chartData && chartData[i - 1]) {
+                // Use metadata if available
+                const metadata = chartData[i - 1]
+                content += `<div style="margin-bottom: 4px;">
+                  <div style="font-weight: bold; color: ${color}">${metadata.metadataLabel}</div>
+                  <div style="color: #666; font-size: 11px">${metadata.parameterName}</div>
+                  <div style="color: #333">Value: ${value} ${metadata.unit}</div>
+                </div>`
+              } else {
+                // Fallback to series label
+                const name = series.label || `Series ${i}`
+                content += `<div style="color: ${color}">${name}: ${value}</div>`
+              }
             }
           })
 
           tooltip.innerHTML = content
           tooltip.style.display = 'block'
-          tooltip.style.left = `${e.offsetX + 10}px`
-          tooltip.style.top = `${e.offsetY - 10}px`
+          
+          // Get tooltip dimensions
+          const tooltipRect = tooltip.getBoundingClientRect()
+          
+          // Calculate position with edge detection
+          let tooltipLeft = e.offsetX + 10
+          let tooltipTop = e.offsetY - 30
+          
+          // Check right edge
+          if (tooltipLeft + tooltipRect.width > u.over.offsetWidth) {
+            tooltipLeft = e.offsetX - tooltipRect.width - 10
+          }
+          
+          // Check bottom edge
+          if (tooltipTop + tooltipRect.height > u.over.offsetHeight) {
+            tooltipTop = e.offsetY - tooltipRect.height - 10
+          }
+          
+          // Check top edge
+          if (tooltipTop < 0) {
+            tooltipTop = e.offsetY + 10
+          }
+          
+          tooltip.style.left = `${Math.max(0, tooltipLeft)}px`
+          tooltip.style.top = `${Math.max(0, tooltipTop)}px`
         })
       },
     },
