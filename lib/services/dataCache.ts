@@ -15,7 +15,8 @@ class DataCache {
   private static instance: DataCache;
   private cache = new Map<string, CacheEntry<unknown>>();
   private readonly DEFAULT_TTL = 5 * 60 * 1000; // 5 minutes
-  private readonly MAX_CACHE_SIZE = 100; // Maximum number of entries
+  private readonly MAX_CACHE_SIZE = 50; // Maximum number of entries
+  private readonly MAX_SAMPLING_CACHE_SIZE = 20; // Limit for sampling cache entries
 
   private constructor() {}
 
@@ -54,6 +55,22 @@ class DataCache {
 
   set<T>(key: DataCacheKey, data: T, ttl?: number): void {
     const cacheKey = this.generateKey(key);
+    
+    // Check sampling cache size limit
+    if (key.type === 'sampling') {
+      const samplingCount = Array.from(this.cache.keys()).filter(k => k.startsWith('sampling:')).length;
+      if (samplingCount >= this.MAX_SAMPLING_CACHE_SIZE) {
+        // Remove oldest sampling cache entries
+        const samplingEntries = Array.from(this.cache.entries())
+          .filter(([k]) => k.startsWith('sampling:'))
+          .sort((a, b) => a[1].timestamp - b[1].timestamp);
+        
+        // Remove oldest entries to make room
+        const toRemove = samplingEntries.slice(0, samplingCount - this.MAX_SAMPLING_CACHE_SIZE + 1);
+        toRemove.forEach(([k]) => this.cache.delete(k));
+      }
+    }
+    
     this.cache.set(cacheKey, {
       data,
       timestamp: Date.now(),

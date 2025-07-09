@@ -47,11 +47,15 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1)
   const [samplingConfig, setSamplingConfig] = useState<SamplingConfig>(DEFAULT_SAMPLING_CONFIG)
   const [isUpdatingSampling, setIsUpdatingSampling] = useState(false)
-  const { preloadChartData } = useChartDataContext()
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false)
+  const { preloadChartData, clearCache } = useChartDataContext()
   
   const loadWorkspaceAndCharts = useCallback(async () => {
     try {
       setLoading(true)
+      // Clear cache before loading new workspace
+      clearCache()
+      
       const workspace = await chartConfigService.initializeWorkspace()
       setWorkspaceId(workspace.id!)
       
@@ -78,12 +82,13 @@ export default function Home() {
         })
         setImportProgress(null)
       }
+      setInitialLoadComplete(true)
     } catch (error) {
       console.error('Failed to load charts:', error)
     } finally {
       setLoading(false)
     }
-  }, [preloadChartData])
+  }, [preloadChartData, clearCache])
   
   useEffect(() => {
     setMounted(true)
@@ -228,6 +233,11 @@ export default function Home() {
   const handleSamplingConfigChange = useCallback(async (newConfig: SamplingConfig) => {
     setSamplingConfig(newConfig)
     
+    // Skip batch update during initial load
+    if (!initialLoadComplete) {
+      return
+    }
+    
     // Only trigger batch update if sampling is enabled and target points actually changed
     if (newConfig.enabled && newConfig.targetPoints !== samplingConfig.targetPoints) {
       setIsUpdatingSampling(true)
@@ -244,7 +254,7 @@ export default function Home() {
         setIsUpdatingSampling(false)
       }
     }
-  }, [samplingConfig.targetPoints, visibleCharts, preloadChartData])
+  }, [samplingConfig.targetPoints, visibleCharts, preloadChartData, initialLoadComplete])
 
   const handleImportWorkspace = async () => {
     const input = document.createElement('input')
@@ -274,6 +284,12 @@ export default function Home() {
         }))
         setCharts(convertedCharts)
         
+        // Clear all caches before loading new workspace
+        clearCache()
+        
+        // Reset initial load state for new workspace
+        setInitialLoadComplete(false)
+        
         // Preload only first few charts for faster initial render
         if (convertedCharts.length > 0) {
           setLoading(true)
@@ -288,6 +304,8 @@ export default function Home() {
           setImportProgress(null)
           setLoading(false)
         }
+        
+        setInitialLoadComplete(true)
       } catch (error) {
         console.error('Failed to import workspace:', error)
         alert('Failed to import workspace. Please check the file format.')

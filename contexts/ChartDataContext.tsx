@@ -11,7 +11,7 @@ import {
   calculateDataRange,
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
-import { timeSeriesCache, metadataCache, parameterCache, transformCache, samplingCache } from '@/lib/services/dataCache';
+import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache, samplingCache } from '@/lib/services/dataCache';
 import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig } from '@/lib/utils/chartDataSampling';
 
 interface ChartDataProviderState {
@@ -19,12 +19,6 @@ interface ChartDataProviderState {
   chartDataCache: Map<string, {
     plotData: ChartPlotData;
     viewport: ChartViewport;
-  }>;
-  // Shared raw data cache
-  rawDataCache: Map<string, {
-    timeSeries: TimeSeriesData[];
-    metadata: any;
-    parameters: Map<string, ParameterInfo>;
   }>;
   isLoading: boolean;
 }
@@ -73,27 +67,14 @@ function getSamplingCacheKey(metadataIds: number[], samplingConfig: SamplingConf
   });
 }
 
-// Generate a cache key for raw data
-function getRawDataKey(metadataIds: number[]): string {
-  return metadataIds.sort().join(',');
-}
-
 export function ChartDataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ChartDataProviderState>({
     chartDataCache: new Map(),
-    rawDataCache: new Map(),
     isLoading: false
   });
 
   // Fetch and cache raw data for given metadata IDs
   const fetchRawData = async (metadataIds: number[]) => {
-    const rawDataKey = getRawDataKey(metadataIds);
-    
-    // Check if we already have this raw data combination
-    const cached = state.rawDataCache.get(rawDataKey);
-    if (cached) {
-      return cached;
-    }
 
     // Fetch time series data in parallel with caching
     const timeSeriesPromises = metadataIds.map(async (metadataId) => {
@@ -141,12 +122,6 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       metadata: metadataMap,
       parameters: new Map<string, ParameterInfo>()
     };
-
-    // Cache the raw data
-    setState(prev => ({
-      ...prev,
-      rawDataCache: new Map(prev.rawDataCache).set(rawDataKey, rawData)
-    }));
 
     return rawData;
   };
@@ -447,15 +422,10 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
   const clearCache = () => {
     setState({
       chartDataCache: new Map(),
-      rawDataCache: new Map(),
       isLoading: false
     });
-    // Clear all cache types including sampling cache
-    timeSeriesCache.clear?.();
-    metadataCache.clear?.();
-    parameterCache.clear?.();
-    transformCache.clear?.();
-    samplingCache.clear?.();
+    // Clear the shared data cache instance once
+    dataCache.clear();
   };
 
   const value = useMemo(() => ({
