@@ -12,7 +12,7 @@ import {
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
 import { timeSeriesCache, metadataCache, parameterCache, transformCache } from '@/lib/services/dataCache';
-import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig } from '@/lib/utils/chartDataSampling';
+import { sampleTimeSeriesData, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig } from '@/lib/utils/chartDataSampling';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
@@ -30,7 +30,7 @@ interface ChartDataProviderState {
 }
 
 interface ChartDataContextType {
-  getChartData: (config: ChartConfiguration, enableSampling?: boolean) => Promise<{
+  getChartData: (config: ChartConfiguration, enableSampling?: boolean | SamplingConfig) => Promise<{
     plotData: ChartPlotData | null;
     dataViewport: ChartViewport | null;
   }>;
@@ -44,13 +44,22 @@ interface ChartDataContextType {
 const ChartDataContext = createContext<ChartDataContextType | undefined>(undefined);
 
 // Generate a stable hash for chart configuration
-function getConfigHash(config: ChartConfiguration, enableSampling: boolean = true): string {
+function getConfigHash(config: ChartConfiguration, samplingOption: boolean | SamplingConfig = true): string {
+  const samplingKey = typeof samplingOption === 'boolean' 
+    ? { enabled: samplingOption }
+    : {
+        enabled: samplingOption.enabled,
+        method: samplingOption.method,
+        targetPoints: samplingOption.targetPoints,
+        preserveExtremes: samplingOption.preserveExtremes
+      };
+  
   return JSON.stringify({
     xAxisParameter: config.xAxisParameter,
     yAxisParameters: config.yAxisParameters.sort(),
     selectedDataIds: config.selectedDataIds.sort(),
     chartType: config.chartType,
-    sampled: enableSampling
+    sampling: samplingKey
   });
 }
 
@@ -162,7 +171,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     return parameterMap;
   };
 
-  const getChartData = async (config: ChartConfiguration, enableSampling: boolean = true) => {
+  const getChartData = async (config: ChartConfiguration, enableSampling: boolean | SamplingConfig = true) => {
     const configHash = getConfigHash(config, enableSampling);
     
     // Check if we already have transformed data for this configuration
@@ -207,8 +216,13 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       // Apply sampling if enabled and data is large
       let processedTimeSeries = rawData.timeSeries;
       
-      if (enableSampling) {
-        const samplingConfig = getProgressiveSamplingConfig(rawData.timeSeries.length);
+      const shouldSample = typeof enableSampling === 'boolean' ? enableSampling : enableSampling.enabled;
+      
+      if (shouldSample) {
+        const samplingConfig = typeof enableSampling === 'boolean' 
+          ? getProgressiveSamplingConfig(rawData.timeSeries.length)
+          : { ...enableSampling, enabled: true };
+        
         // Use the first Y-axis parameter for sampling to ensure consistency
         // This prevents different charts from sampling the same data differently
         // due to non-deterministic parameter ordering in Object.keys()

@@ -6,6 +6,7 @@ import { UplotChartWithData } from './UplotChartWithData'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 import { getChartEngine } from '@/lib/chartConfig'
+import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 // Props for basic chart component
 interface BasicChartProps {
@@ -22,7 +23,7 @@ interface BasicChartProps {
 }
 
 // Props for data-driven chart component
-interface DataChartProps {
+export interface DataChartProps {
   config: ChartConfiguration
   aspectRatio?: number | AspectRatioPreset
   className?: string
@@ -35,6 +36,7 @@ interface DataChartProps {
     bottom?: number
     left?: number
   }
+  samplingConfig?: SamplingConfig
 }
 
 // Factory function to get the appropriate basic chart component

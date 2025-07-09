@@ -7,6 +7,7 @@ import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialo
 import { LayoutOption } from '@/components/layout/LayoutSelector'
 import { cn } from '@/lib/utils'
 import { useDynamicGridAspectRatio } from '@/hooks/useDynamicGridAspectRatio'
+import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 interface ChartGridProps {
   charts: (ChartConfiguration & { id: string })[]
@@ -16,6 +17,7 @@ interface ChartGridProps {
   layoutOption?: LayoutOption | null
   paginationEnabled?: boolean
   currentPage?: number
+  samplingConfig?: SamplingConfig
 }
 
 export function ChartGrid({ 
@@ -25,7 +27,8 @@ export function ChartGrid({
   onDelete, 
   layoutOption,
   paginationEnabled = false,
-  currentPage = 1
+  currentPage = 1,
+  samplingConfig
 }: ChartGridProps) {
   const ChartComponent = getDataChartComponent()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -113,6 +116,7 @@ export function ChartGrid({
               onEdit={() => onEdit(chart.id)}
               onDuplicate={() => onDuplicate(chart.id)}
               onDelete={() => onDelete(chart.id)}
+              samplingConfig={samplingConfig}
             />
           )
         } else {
@@ -126,6 +130,7 @@ export function ChartGrid({
               onDuplicate={() => onDuplicate(chart.id)}
               onDelete={() => onDelete(chart.id)}
               rootMargin="200px"
+              samplingConfig={samplingConfig}
             />
           )
         }

@@ -17,6 +17,7 @@ import { ChartLoadingState, ChartErrorState, ChartEmptyState } from './ChartStat
 import { ChartContainer } from './ChartContainer'
 import { UplotChart } from './UplotChart'
 import uPlot from 'uplot'
+import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 interface UplotChartWithDataProps {
   config: ChartConfiguration
@@ -31,6 +32,7 @@ interface UplotChartWithDataProps {
     bottom?: number
     left?: number
   }
+  samplingConfig?: SamplingConfig
 }
 
 function UplotChartWithDataComponent({
@@ -40,7 +42,8 @@ function UplotChartWithDataComponent({
   onEdit,
   onDuplicate,
   onDelete,
-  padding
+  padding,
+  samplingConfig
 }: UplotChartWithDataProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<uPlot | null>(null)
@@ -63,9 +66,8 @@ function UplotChartWithDataComponent({
     dimensions
   })
   
-  // Add state for sampling control
-  const [enableSampling] = useState(true)
-  const { plotData, dataViewport, loadingState } = useChartData(config, enableSampling)
+  // Use sampling config from props
+  const { plotData, dataViewport, loadingState } = useChartData(config, samplingConfig ?? true)
   
   console.log('[UplotChartWithData] Chart data hook result:', {
     config,
@@ -267,7 +269,7 @@ function UplotChartWithDataComponent({
         }}
       >
         {/* Mode Indicators */}
-        {enableSampling && totalPoints > UPLOT_DATA_LIMITS.MAX_POINTS_WITHOUT_SAMPLING && (
+        {(samplingConfig?.enabled ?? true) && totalPoints > UPLOT_DATA_LIMITS.MAX_POINTS_WITHOUT_SAMPLING && (
           <div className="absolute top-1 left-1 z-[1001]">
             <div className="bg-amber-500/20 text-amber-700 dark:text-amber-400 text-xs px-1.5 py-0.5 rounded-sm font-mono">
               Sampled

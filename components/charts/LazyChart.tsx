@@ -5,6 +5,7 @@ import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialo
 import { getDataChartComponent } from './ChartProvider'
 import { ChartLoadingState } from './ChartStates'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
+import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 interface LazyChartProps {
   config: ChartConfiguration
@@ -15,6 +16,7 @@ interface LazyChartProps {
   onDelete?: () => void
   threshold?: number
   rootMargin?: string
+  samplingConfig?: SamplingConfig
 }
 
 export function LazyChart({
@@ -25,7 +27,8 @@ export function LazyChart({
   onDuplicate,
   onDelete,
   threshold = 0.1,
-  rootMargin = '100px'
+  rootMargin = '100px',
+  samplingConfig
 }: LazyChartProps) {
   const [hasBeenVisible, setHasBeenVisible] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -67,6 +70,7 @@ export function LazyChart({
           onEdit={onEdit}
           onDuplicate={onDuplicate}
           onDelete={onDelete}
+          samplingConfig={samplingConfig}
         />
       ) : (
         <ChartLoadingState

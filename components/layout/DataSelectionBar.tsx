@@ -2,7 +2,9 @@
 
 import { Badge } from '@/components/ui/badge'
 import { PaginationControls } from '@/components/layout/PaginationControls'
+import { SamplingControls } from '@/components/layout/SamplingControls'
 import { LayoutOption } from '@/components/layout/LayoutSelector'
+import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 interface DataSelectionBarProps {
   selectedDataIds: number[]
@@ -12,6 +14,8 @@ interface DataSelectionBarProps {
   currentPage: number
   totalPages: number
   onPageChange: (page: number) => void
+  samplingConfig: SamplingConfig
+  onSamplingConfigChange: (config: SamplingConfig) => void
 }
 
 export function DataSelectionBar({
@@ -21,7 +25,9 @@ export function DataSelectionBar({
   paginationEnabled,
   currentPage,
   totalPages,
-  onPageChange
+  onPageChange,
+  samplingConfig,
+  onSamplingConfigChange
 }: DataSelectionBarProps) {
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg bg-background/50">
@@ -41,9 +47,14 @@ export function DataSelectionBar({
         )}
       </div>
 
-      {/* Right side: Pagination controls */}
-      {layoutOption && paginationEnabled && totalPages > 1 && (
-        <div className="flex-shrink-0 ml-4">
+      {/* Right side: Sampling and Pagination controls */}
+      <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+        <SamplingControls
+          config={samplingConfig}
+          onChange={onSamplingConfigChange}
+        />
+        
+        {layoutOption && paginationEnabled && totalPages > 1 && (
           <PaginationControls
             currentPage={currentPage}
             totalPages={totalPages}
@@ -51,8 +62,8 @@ export function DataSelectionBar({
             totalCharts={totalCharts}
             layoutOption={layoutOption}
           />
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

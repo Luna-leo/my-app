@@ -3,8 +3,9 @@ import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialo
 import { ChartPlotData, ChartLoadingState, ChartViewport } from '@/lib/types/chart';
 import { UPLOT_ERROR_MESSAGES as ERROR_MESSAGES } from '@/lib/constants/uplotConfig';
 import { useChartDataContext } from '@/contexts/ChartDataContext';
+import { SamplingConfig } from '@/lib/utils/chartDataSampling';
 
-export function useChartData(config: ChartConfiguration, enableSampling: boolean = true) {
+export function useChartData(config: ChartConfiguration, enableSampling: boolean | SamplingConfig = true) {
   const [plotData, setPlotData] = useState<ChartPlotData | null>(null);
   const [dataViewport, setDataViewport] = useState<ChartViewport | null>(null);
   const [loadingState, setLoadingState] = useState<ChartLoadingState>({
