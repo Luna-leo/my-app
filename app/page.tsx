@@ -44,7 +44,7 @@ export default function Home() {
   const [mounted, setMounted] = useState(false)
   const [workspaceId, setWorkspaceId] = useState<string>('')
   const [loading, setLoading] = useState(true)
-  const [importProgress, setImportProgress] = useState<{ loaded: number; total: number } | null>(null)
+  // const [importProgress, setImportProgress] = useState<{ loaded: number; total: number } | null>(null)
   const [layoutOption, setLayoutOption] = useState<LayoutOption | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [samplingConfig, setSamplingConfig] = useState<SamplingConfig>(DEFAULT_SAMPLING_CONFIG)
@@ -82,7 +82,7 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }, [preloadChartData, clearCache])
+  }, [clearCache])
   
   useEffect(() => {
     setMounted(true)
@@ -330,7 +330,6 @@ export default function Home() {
         {loading ? (
           <LoadingState
             message="Loading charts..."
-            progress={importProgress ? importProgress : undefined}
           />
         ) : charts.length > 0 ? (
           mounted && (
