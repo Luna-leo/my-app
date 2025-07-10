@@ -76,10 +76,22 @@ export default function Home() {
       
       // Preload only first few charts for faster initial render
       if (convertedCharts.length > 0) {
-        // Only preload first 4 charts, rest will load lazily
-        const chartsToPreload = convertedCharts.slice(0, 4)
+        // Determine how many charts to preload based on total chart count
+        let chartsToPreloadCount = 2; // Default minimal preload
+        if (convertedCharts.length <= 4) {
+          chartsToPreloadCount = convertedCharts.length;
+        } else if (convertedCharts.length <= 8) {
+          chartsToPreloadCount = 3;
+        } else if (convertedCharts.length <= 12) {
+          chartsToPreloadCount = 2;
+        } else {
+          // For 16+ charts, only preload 1 chart to minimize memory usage
+          chartsToPreloadCount = 1;
+        }
+        
+        const chartsToPreload = convertedCharts.slice(0, chartsToPreloadCount)
         await preloadChartData(chartsToPreload, {
-          batchSize: 4,
+          batchSize: Math.min(2, chartsToPreloadCount), // Smaller batch size for memory efficiency
           onProgress: (loaded, total) => {
             setImportProgress({ loaded, total })
           }
@@ -312,10 +324,24 @@ export default function Home() {
         // Preload only first few charts for faster initial render
         if (convertedCharts.length > 0) {
           setLoading(true)
-          // Only preload first 4 charts, rest will load lazily
-          const chartsToPreload = convertedCharts.slice(0, 4)
+          
+          // Determine how many charts to preload based on total chart count
+          // More conservative for large workspaces to prevent memory issues
+          let chartsToPreloadCount = 2; // Default minimal preload
+          if (convertedCharts.length <= 4) {
+            chartsToPreloadCount = convertedCharts.length;
+          } else if (convertedCharts.length <= 8) {
+            chartsToPreloadCount = 3;
+          } else if (convertedCharts.length <= 12) {
+            chartsToPreloadCount = 2;
+          } else {
+            // For 16+ charts, only preload 1 chart to minimize memory usage
+            chartsToPreloadCount = 1;
+          }
+          
+          const chartsToPreload = convertedCharts.slice(0, chartsToPreloadCount)
           await preloadChartData(chartsToPreload, {
-            batchSize: 4,
+            batchSize: Math.min(2, chartsToPreloadCount), // Smaller batch size for memory efficiency
             onProgress: (loaded, total) => {
               setImportProgress({ loaded, total })
             }
