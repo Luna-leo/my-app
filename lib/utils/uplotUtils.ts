@@ -35,14 +35,14 @@ export function buildAxisOptions(
     labelGap: 5,
     size: 50,
     gap: 5,
-    stroke: 'rgba(0,0,0,0.4)',
+    stroke: 'rgba(0,0,0,0.6)',
     grid: {
       show: true,
-      stroke: 'rgba(0,0,0,0.15)',
+      stroke: 'rgba(0,0,0,0.2)',
       width: 1,
     },
     ticks: {
-      stroke: 'rgba(0,0,0,0.7)',
+      stroke: 'rgba(0,0,0,0.8)',
       width: 1,
       size: 4,
     },
@@ -139,6 +139,7 @@ export function buildUplotOptions({
     height,
     title,
     class: 'uplot-chart',
+    padding: [5, 5, 5, 5], // top, right, bottom, left
     legend: {
       show: showLegend,
       isolate: true,

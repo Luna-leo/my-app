@@ -23,8 +23,8 @@ export const UPLOT_DEFAULTS = {
   },
   
   // Colors
-  GRID_COLOR: 'rgba(0,0,0,0.15)',
-  AXIS_COLOR: 'rgba(0,0,0,0.4)',
+  GRID_COLOR: 'rgba(0,0,0,0.2)',
+  AXIS_COLOR: 'rgba(0,0,0,0.6)',
   
   // Legend
   LEGEND: {
@@ -43,21 +43,21 @@ export const UPLOT_DEFAULTS = {
 export const UPLOT_MARGINS = {
   DEFAULT: {
     TOP: 40,
-    RIGHT: 20,
-    BOTTOM: 60,
-    LEFT: 70,
+    RIGHT: 30,
+    BOTTOM: 80,
+    LEFT: 80,
   },
   WITH_LEGEND: {
     TOP: 40,
-    RIGHT: 120,
-    BOTTOM: 60,
-    LEFT: 70,
+    RIGHT: 130,
+    BOTTOM: 80,
+    LEFT: 80,
   },
   COMPACT: {
-    TOP: 20,
-    RIGHT: 10,
-    BOTTOM: 40,
-    LEFT: 50,
+    TOP: 30,
+    RIGHT: 20,
+    BOTTOM: 60,
+    LEFT: 60,
   },
 } as const
 
