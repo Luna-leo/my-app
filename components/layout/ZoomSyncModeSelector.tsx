@@ -55,13 +55,13 @@ export function ZoomSyncModeSelector() {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-muted-foreground">ズーム同期:</span>
+      <span className="text-xs text-muted-foreground">ズーム同期:</span>
       <Select value={mode} onValueChange={handleChange}>
-        <SelectTrigger className="w-[180px] h-9">
+        <SelectTrigger className="w-[140px] h-8">
           <SelectValue>
             <div className="flex items-center gap-2">
               {currentMode?.icon}
-              <span>{currentMode?.label}</span>
+              <span className="text-sm">{currentMode?.label}</span>
             </div>
           </SelectValue>
         </SelectTrigger>

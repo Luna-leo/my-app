@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { PaginationControls } from '@/components/layout/PaginationControls'
 import { SamplingControls } from '@/components/layout/SamplingControls'
 import { LayoutSelector, LayoutOption } from '@/components/layout/LayoutSelector'
+import { ZoomSyncModeSelector } from '@/components/layout/ZoomSyncModeSelector'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 interface DataSelectionBarProps {
@@ -73,12 +74,14 @@ export function DataSelectionBar({
         )}
       </div>
 
-      {/* Right side: Layout, Sampling and Pagination controls */}
+      {/* Right side: Layout, Zoom Sync, Sampling and Pagination controls */}
       <div className="flex items-center gap-3 flex-shrink-0 ml-4">
         <LayoutSelector 
           value={layoutOption} 
           onChange={onLayoutChange} 
         />
+        
+        <ZoomSyncModeSelector />
         
         <SamplingControls
           config={samplingConfig}
