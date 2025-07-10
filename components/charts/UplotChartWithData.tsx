@@ -242,8 +242,8 @@ function UplotChartWithDataComponent({
         xLabel: plotData.xParameterInfo 
           ? `${plotData.xParameterInfo.parameterName} [${plotData.xParameterInfo.unit || ''}]`
           : 'Time',
-        yLabel: plotData.series.length === 1
-          ? `${plotData.series[0].parameterInfo.parameterName} [${plotData.series[0].parameterInfo.unit || ''}]`
+        yLabel: plotData.series.length > 0
+          ? `${plotData.series[0].parameterInfo.parameterName}${plotData.series[0].parameterInfo.unit ? ` [${plotData.series[0].parameterInfo.unit}]` : ''}`
           : 'Value',
         seriesNames,
         chartType: config.chartType,

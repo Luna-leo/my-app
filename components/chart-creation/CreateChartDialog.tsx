@@ -118,10 +118,15 @@ export function CreateChartDialog({
 
 
   const handleCreate = () => {
+    // Generate default title from first Y parameter if title is empty
+    const defaultTitle = chartTitle || (yAxisParameters.length > 0 
+      ? availableParameters.find(p => p.parameterId === yAxisParameters[0])?.parameterName || 'Untitled Chart'
+      : 'Untitled Chart');
+
     if (editMode && chartToEdit && onUpdateChart) {
       const updatedConfig = {
         ...chartToEdit,
-        title: chartTitle || 'Untitled Chart',
+        title: defaultTitle,
         chartType,
         xAxisParameter,
         yAxisParameters
@@ -129,7 +134,7 @@ export function CreateChartDialog({
       onUpdateChart(updatedConfig);
     } else {
       const config: ChartConfiguration = {
-        title: chartTitle || 'Untitled Chart',
+        title: defaultTitle,
         chartType,
         xAxisParameter,
         yAxisParameters,

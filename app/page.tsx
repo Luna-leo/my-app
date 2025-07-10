@@ -165,7 +165,7 @@ export default function Home() {
       const duplicatedChart = {
         ...chartToDuplicate,
         id: Date.now().toString(),
-        title: `${chartToDuplicate.title} (Copy)`
+        title: chartToDuplicate.title
       }
       setCharts([...charts, duplicatedChart])
       
