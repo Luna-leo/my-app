@@ -74,30 +74,8 @@ export default function Home() {
       }))
       setCharts(convertedCharts)
       
-      // Preload only first few charts for faster initial render
-      if (convertedCharts.length > 0) {
-        // Determine how many charts to preload based on total chart count
-        let chartsToPreloadCount = 2; // Default minimal preload
-        if (convertedCharts.length <= 4) {
-          chartsToPreloadCount = convertedCharts.length;
-        } else if (convertedCharts.length <= 8) {
-          chartsToPreloadCount = 3;
-        } else if (convertedCharts.length <= 12) {
-          chartsToPreloadCount = 2;
-        } else {
-          // For 16+ charts, only preload 1 chart to minimize memory usage
-          chartsToPreloadCount = 1;
-        }
-        
-        const chartsToPreload = convertedCharts.slice(0, chartsToPreloadCount)
-        await preloadChartData(chartsToPreload, {
-          batchSize: Math.min(2, chartsToPreloadCount), // Smaller batch size for memory efficiency
-          onProgress: (loaded, total) => {
-            setImportProgress({ loaded, total })
-          }
-        })
-        setImportProgress(null)
-      }
+      // Don't preload any charts initially - let them load lazily
+      console.log(`[Initial Load] Found ${convertedCharts.length} charts in workspace`)
       setInitialLoadComplete(true)
     } catch (error) {
       console.error('Failed to load charts:', error)
@@ -321,34 +299,10 @@ export default function Home() {
         // Reset initial load state for new workspace
         setInitialLoadComplete(false)
         
-        // Preload only first few charts for faster initial render
-        if (convertedCharts.length > 0) {
-          setLoading(true)
-          
-          // Determine how many charts to preload based on total chart count
-          // More conservative for large workspaces to prevent memory issues
-          let chartsToPreloadCount = 2; // Default minimal preload
-          if (convertedCharts.length <= 4) {
-            chartsToPreloadCount = convertedCharts.length;
-          } else if (convertedCharts.length <= 8) {
-            chartsToPreloadCount = 3;
-          } else if (convertedCharts.length <= 12) {
-            chartsToPreloadCount = 2;
-          } else {
-            // For 16+ charts, only preload 1 chart to minimize memory usage
-            chartsToPreloadCount = 1;
-          }
-          
-          const chartsToPreload = convertedCharts.slice(0, chartsToPreloadCount)
-          await preloadChartData(chartsToPreload, {
-            batchSize: Math.min(2, chartsToPreloadCount), // Smaller batch size for memory efficiency
-            onProgress: (loaded, total) => {
-              setImportProgress({ loaded, total })
-            }
-          })
-          setImportProgress(null)
-          setLoading(false)
-        }
+        // Don't preload any charts initially - let them load lazily
+        // This prevents memory issues with large workspaces
+        console.log(`[Import] Workspace imported with ${convertedCharts.length} charts`)
+        setLoading(false)
         
         setInitialLoadComplete(true)
       } catch (error) {

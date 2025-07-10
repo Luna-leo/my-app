@@ -46,90 +46,19 @@ export class AppDatabase extends Dexie {
       .toArray();
   }
 
-  async getTimeSeriesData(
-    metadataId: number, 
-    startTime?: Date, 
-    endTime?: Date,
-    samplingOptions?: {
-      enabled: boolean;
-      targetPoints: number;
-      method: 'nth' | 'random';
-    }
-  ) {
+  async getTimeSeriesData(metadataId: number, startTime?: Date, endTime?: Date) {
     const query = this.timeSeries.where('metadataId').equals(metadataId);
     
-    // If sampling is enabled, apply database-level sampling
-    if (samplingOptions?.enabled && samplingOptions.targetPoints > 0) {
-      // Get total count first
-      const totalCount = await query.count();
-      
-      if (totalCount <= samplingOptions.targetPoints) {
-        // No need to sample if data is already small
-        const results = await query.toArray();
-        return this.filterByTimeRange(results, startTime, endTime);
-      }
-      
-      // Apply sampling based on method
-      if (samplingOptions.method === 'nth') {
-        // Nth-point sampling at database level
-        const step = Math.ceil(totalCount / samplingOptions.targetPoints);
-        const sampledData: TimeSeriesData[] = [];
-        
-        // Use offset to sample every nth record
-        for (let i = 0; i < totalCount; i += step) {
-          const items = await query.offset(i).limit(1).toArray();
-          if (items.length > 0) {
-            sampledData.push(items[0]);
-          }
-        }
-        
-        return this.filterByTimeRange(sampledData, startTime, endTime);
-      } else {
-        // Random sampling - get indices first
-        const indices = this.generateRandomIndices(totalCount, samplingOptions.targetPoints);
-        const sampledData: TimeSeriesData[] = [];
-        
-        // Fetch data at specific indices
-        for (const index of indices) {
-          const items = await query.offset(index).limit(1).toArray();
-          if (items.length > 0) {
-            sampledData.push(items[0]);
-          }
-        }
-        
-        // Sort by timestamp
-        sampledData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-        return this.filterByTimeRange(sampledData, startTime, endTime);
-      }
-    }
-    
-    // Original behavior - load all data
     if (startTime || endTime) {
       const results = await query.toArray();
-      return this.filterByTimeRange(results, startTime, endTime);
+      return results.filter(item => {
+        if (startTime && item.timestamp < startTime) return false;
+        if (endTime && item.timestamp > endTime) return false;
+        return true;
+      });
     }
     
     return await query.toArray();
-  }
-  
-  private filterByTimeRange(data: TimeSeriesData[], startTime?: Date, endTime?: Date): TimeSeriesData[] {
-    if (!startTime && !endTime) return data;
-    
-    return data.filter(item => {
-      if (startTime && item.timestamp < startTime) return false;
-      if (endTime && item.timestamp > endTime) return false;
-      return true;
-    });
-  }
-  
-  private generateRandomIndices(totalCount: number, sampleSize: number): number[] {
-    const indices = new Set<number>();
-    
-    while (indices.size < sampleSize && indices.size < totalCount) {
-      indices.add(Math.floor(Math.random() * totalCount));
-    }
-    
-    return Array.from(indices).sort((a, b) => a - b);
   }
 
   /**

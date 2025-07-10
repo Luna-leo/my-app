@@ -12,10 +12,9 @@ import {
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
 import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache, samplingCache } from '@/lib/services/dataCache';
-import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, getProgressiveSamplingConfig, SamplingConfig, getMemoryAwareSamplingConfig } from '@/lib/utils/chartDataSampling';
+import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, SamplingConfig, getMemoryAwareSamplingConfig } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig, hashSamplingConfig } from '@/lib/utils/hashUtils';
-import { StreamingDataPipeline } from '@/lib/utils/streamingDataUtils';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
@@ -31,12 +30,6 @@ interface ChartDataContextType {
     plotData: ChartPlotData | null;
     dataViewport: ChartViewport | null;
   }>;
-  getChartDataStream?: (config: ChartConfiguration, options?: {
-    enableSampling?: boolean | SamplingConfig;
-    chunkSize?: number;
-    onChunk?: (chunk: ChartPlotData) => void;
-    onProgress?: (processed: number) => void;
-  }) => Promise<AsyncGenerator<ChartPlotData, void>>;
   preloadChartData: (configs: ChartConfiguration[], options?: {
     batchSize?: number;
     onProgress?: (loaded: number, total: number) => void;
@@ -111,34 +104,17 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Fetch and cache raw data for given metadata IDs
-  const fetchRawData = async (metadataIds: number[], samplingConfig?: SamplingConfig) => {
+  const fetchRawData = async (metadataIds: number[]) => {
 
     // Fetch time series data in parallel with caching
     const timeSeriesPromises = metadataIds.map(async (metadataId) => {
-      // Check cache only if not sampling (sampling uses different cache key)
-      if (!samplingConfig?.enabled) {
-        const cachedData = timeSeriesCache.get(metadataId);
-        if (cachedData) {
-          return { metadataId, data: cachedData };
-        }
+      const cachedData = timeSeriesCache.get(metadataId);
+      if (cachedData) {
+        return { metadataId, data: cachedData };
       }
       
-      // Apply database-level sampling if enabled
-      const data = await db.getTimeSeriesData(
-        metadataId,
-        undefined, // startTime
-        undefined, // endTime
-        samplingConfig?.enabled ? {
-          enabled: true,
-          targetPoints: Math.ceil(samplingConfig.targetPoints / metadataIds.length), // Distribute points across series
-          method: 'nth' // Use nth sampling at DB level for consistency
-        } : undefined
-      );
-      
-      // Cache only if not sampling (sampled data has different requirements)
-      if (!samplingConfig?.enabled) {
-        timeSeriesCache.set(metadataId, data);
-      }
+      const data = await db.getTimeSeriesData(metadataId);
+      timeSeriesCache.set(metadataId, data);
       return { metadataId, data };
     });
 
@@ -221,11 +197,13 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
   };
 
   const getChartData = async (config: ChartConfiguration, enableSampling: boolean | SamplingConfig = true) => {
+    const startTime = performance.now();
     const configHash = getConfigHash(config, enableSampling);
     
     // Check if we already have transformed data for this configuration
     const cached = state.chartDataCache.get(configHash);
     if (cached) {
+      console.log(`[ChartDataContext] Cache hit for chart "${config.title}" (${performance.now() - startTime}ms)`);
       return {
         plotData: cached.plotData,
         dataViewport: cached.viewport
@@ -247,25 +225,10 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Determine sampling config before fetching data
-      const shouldSample = typeof enableSampling === 'boolean' ? enableSampling : enableSampling.enabled;
-      let samplingConfig: SamplingConfig | undefined;
-      
-      if (shouldSample) {
-        // Get current memory stats for adaptive sampling
-        const memoryStats = memoryMonitor.getCurrentStats();
-        const currentMemoryMB = memoryStats?.usedMB || 0;
-        
-        // Get estimated data size first (we can improve this with metadata)
-        const estimatedDataPoints = config.selectedDataIds.length * 32000; // Assuming worst case
-        
-        samplingConfig = typeof enableSampling === 'boolean' 
-          ? getMemoryAwareSamplingConfig(estimatedDataPoints, currentMemoryMB)
-          : { ...enableSampling, enabled: true };
-      }
-      
-      // Fetch raw data with database-level sampling if enabled
-      const rawData = await fetchRawData(config.selectedDataIds, samplingConfig);
+      // Fetch raw data (with caching)
+      const fetchStartTime = performance.now();
+      const rawData = await fetchRawData(config.selectedDataIds);
+      console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
       if (rawData.timeSeries.length === 0) {
         return { plotData: null, dataViewport: null };
@@ -279,27 +242,69 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       
       const parameterInfoMap = await fetchParameters(parameterIds);
 
-      // Data is already sampled at database level if sampling was enabled
+      // Apply sampling if enabled and data is large
       let processedTimeSeries = rawData.timeSeries;
       let samplingInfo: SamplingInfo | undefined;
       
-      // Track sampling info if database-level sampling was applied
-      if (samplingConfig?.enabled) {
-        // Estimate original count based on target points and series count
-        const estimatedOriginalCount = samplingConfig.targetPoints * 10; // Rough estimate
+      const shouldSample = typeof enableSampling === 'boolean' ? enableSampling : enableSampling.enabled;
+      const originalCount = rawData.timeSeries.length;
+      
+      if (shouldSample) {
+        const samplingStartTime = performance.now();
         
-        samplingInfo = {
-          originalCount: estimatedOriginalCount,
-          sampledCount: processedTimeSeries.length,
-          wasSampled: true,
-          method: 'nth' // Database uses nth sampling
-        };
+        // Get current memory stats for adaptive sampling
+        const memoryStats = memoryMonitor.getCurrentStats();
+        const currentMemoryMB = memoryStats?.usedMB || 0;
         
-        console.log(`[ChartDataContext] Database-level sampling applied: ~${estimatedOriginalCount} → ${processedTimeSeries.length} points`);
-      } else {
-        // No sampling applied
+        const samplingConfig = typeof enableSampling === 'boolean' 
+          ? getMemoryAwareSamplingConfig(rawData.timeSeries.length, currentMemoryMB)
+          : { ...enableSampling, enabled: true };
+        
+        // Check shared sampling cache first
+        const samplingCacheKey = getSamplingCacheKey(config.selectedDataIds, samplingConfig);
+        const cachedSampledData = samplingCache.get<TimeSeriesData[]>(samplingCacheKey);
+        
+        if (cachedSampledData) {
+          processedTimeSeries = cachedSampledData;
+          console.log(`[ChartDataContext] Sampling cache hit for "${config.title}" (${performance.now() - samplingStartTime}ms)`);
+        } else {
+          // Use the first Y-axis parameter for sampling to ensure consistency
+          const samplingParameter = config.yAxisParameters.length > 0 ? config.yAxisParameters[0] : undefined;
+          
+          // Use per-metadata sampling when multiple series are present
+          if (config.selectedDataIds.length > 1) {
+            processedTimeSeries = sampleTimeSeriesDataByMetadata(
+              rawData.dataByMetadata,
+              samplingConfig,
+              samplingParameter
+            );
+          } else {
+            // Single series - use regular sampling
+            processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+          }
+          
+          console.log(`[ChartDataContext] Sampling for "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
+          
+          // Cache the sampled data for reuse by other charts
+          samplingCache.set(samplingCacheKey, processedTimeSeries);
+        }
+        
+        // Track sampling info
+        const wasSampled = processedTimeSeries.length < originalCount;
+        if (wasSampled) {
+          samplingInfo = {
+            originalCount,
+            sampledCount: processedTimeSeries.length,
+            wasSampled: true,
+            method: samplingConfig.method
+          };
+        }
+      }
+      
+      // If not sampled but we still want to track the count
+      if (!samplingInfo) {
         samplingInfo = {
-          originalCount: processedTimeSeries.length,
+          originalCount,
           sampledCount: processedTimeSeries.length,
           wasSampled: false
         };
@@ -414,6 +419,8 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       // Also persist to transform cache
       transformCache.set(configHash, cacheData);
 
+      console.log(`[ChartDataContext] Total processing time for "${config.title}": ${performance.now() - startTime}ms`);
+
       return { plotData: chartData, dataViewport };
     } catch (error) {
       console.error('Error in getChartData:', error);
@@ -426,57 +433,28 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     batchSize?: number;
     onProgress?: (loaded: number, total: number) => void;
   }) => {
-    const batchSize = options?.batchSize || 4; // Load 4 charts at a time
     const onProgress = options?.onProgress;
     
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      // Collect all unique metadata IDs
-      const allMetadataIds = new Set<number>();
-      configs.forEach(config => {
-        config.selectedDataIds.forEach(id => allMetadataIds.add(id));
-      });
-
-      // Get memory stats for sampling decision
-      const memoryStats = memoryMonitor.getCurrentStats();
-      const currentMemoryMB = memoryStats?.usedMB || 0;
-      
-      // Estimate total data points and apply sampling if needed
-      const estimatedTotalPoints = allMetadataIds.size * 32000;
-      const samplingConfig = getMemoryAwareSamplingConfig(estimatedTotalPoints, currentMemoryMB);
-      
-      // Preload all raw data with sampling (this prevents OOM)
-      await fetchRawData(Array.from(allMetadataIds), samplingConfig);
-
-      // Collect all unique parameter IDs
-      const allParameterIds = new Set<string>();
-      configs.forEach(config => {
-        if (config.xAxisParameter !== 'timestamp') {
-          allParameterIds.add(config.xAxisParameter);
-        }
-        config.yAxisParameters.forEach(p => allParameterIds.add(p));
-      });
-
-      // Preload all parameters (this is also fast with caching)
-      await fetchParameters(Array.from(allParameterIds));
-
-      // Progressive loading: Process charts in batches
-      let loaded = 0;
-      for (let i = 0; i < configs.length; i += batchSize) {
-        const batch = configs.slice(i, Math.min(i + batchSize, configs.length));
+      // Process charts one by one
+      for (let i = 0; i < configs.length; i++) {
+        const config = configs[i];
         
-        // Process batch in parallel
-        await Promise.all(batch.map(config => getChartData(config)));
+        console.log(`[ChartDataContext] Loading chart ${i + 1}/${configs.length}`);
         
-        loaded += batch.length;
-        onProgress?.(loaded, configs.length);
+        // Load data for this chart
+        await getChartData(config);
         
-        // Small delay to prevent UI blocking
-        if (i + batchSize < configs.length) {
-          await new Promise(resolve => setTimeout(resolve, 10));
-        }
+        // Update progress
+        onProgress?.(i + 1, configs.length);
+        
+        // Small delay to allow UI updates
+        await new Promise(resolve => setTimeout(resolve, 10));
       }
+      
+      console.log(`[ChartDataContext] All ${configs.length} charts loaded`);
     } finally {
       setState(prev => ({ ...prev, isLoading: false }));
     }
@@ -491,59 +469,9 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     dataCache.clear();
   };
 
-  // Streaming implementation for large datasets
-  const getChartDataStream = async (
-    config: ChartConfiguration,
-    options?: {
-      enableSampling?: boolean | SamplingConfig;
-      chunkSize?: number;
-      onChunk?: (chunk: ChartPlotData) => void;
-      onProgress?: (processed: number) => void;
-    }
-  ): Promise<AsyncGenerator<ChartPlotData, void>> => {
-    const chunkSize = options?.chunkSize || 10000;
-    
-    // Return async generator
-    async function* generateStream(): AsyncGenerator<ChartPlotData, void> {
-      // Use streaming API to fetch data
-      let processedCount = 0;
-      for await (const chunk of db.streamMultipleTimeSeriesData(config.selectedDataIds, { chunkSize })) {
-        // Apply sampling if needed
-        let processedChunk = chunk;
-        if (options?.enableSampling) {
-          const samplingConfig = typeof options.enableSampling === 'boolean' 
-            ? DEFAULT_SAMPLING_CONFIG 
-            : options.enableSampling;
-          
-          // Use regular sampling on chunks
-          processedChunk = sampleTimeSeriesData(chunk, samplingConfig);
-        }
-        
-        // Transform chunk to chart data (simplified)
-        const chartData: ChartPlotData = {
-          xParameterInfo: null,
-          series: [], // TODO: Transform chunk to series
-          samplingInfo: {
-            originalCount: chunk.length,
-            sampledCount: processedChunk.length,
-            wasSampled: processedChunk.length < chunk.length
-          }
-        };
-        
-        processedCount += chunk.length;
-        options?.onProgress?.(processedCount);
-        options?.onChunk?.(chartData);
-        
-        yield chartData;
-      }
-    }
-    
-    return generateStream();
-  };
 
   const value = useMemo(() => ({
     getChartData,
-    getChartDataStream,
     preloadChartData,
     clearCache
   }), []);

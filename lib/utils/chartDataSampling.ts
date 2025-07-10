@@ -23,9 +23,9 @@ export interface SamplingConfig {
 export const DEFAULT_SAMPLING_CONFIG: SamplingConfig = {
   enabled: true,
   method: 'lttb',
-  targetPoints: 750, // Further reduced for better memory efficiency
+  targetPoints: 2000, // Target for each chart
   preserveExtremes: true,
-  samplingThreshold: 2000 // More aggressive sampling
+  samplingThreshold: 3000 // Sample if data exceeds this threshold
 };
 
 /**
@@ -177,13 +177,13 @@ export function getProgressiveSamplingConfig(
   let baseTargetPoints = DEFAULT_SAMPLING_CONFIG.targetPoints;
   let threshold = DEFAULT_SAMPLING_CONFIG.samplingThreshold;
   
-  // Adjust based on memory pressure - more aggressive reduction
+  // Adjust based on memory pressure
   if (memoryPressure === 'high') {
-    baseTargetPoints = 300;  // Further reduced for high memory pressure
-    threshold = 800;
+    baseTargetPoints = 500;
+    threshold = 1000;
   } else if (memoryPressure === 'medium') {
-    baseTargetPoints = 500;  // Reduced from 750
-    threshold = 1200;
+    baseTargetPoints = 750;
+    threshold = 1500;
   }
   
   // Determine target points based on data size and viewport
