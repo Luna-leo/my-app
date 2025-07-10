@@ -209,7 +209,7 @@ export function createTooltipPlugin(
           border: 1px solid #333;
           border-radius: 4px;
           pointer-events: none;
-          z-index: 1002;
+          z-index: 999;
           font-size: 12px;
           line-height: 1.5;
           white-space: nowrap;

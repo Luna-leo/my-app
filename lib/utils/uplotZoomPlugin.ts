@@ -112,7 +112,10 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
           })
         })
 
-        // Pan handler
+        // Pan handler variables - declare outside to make them accessible in destroy
+        let onMouseMove: ((e: MouseEvent) => void) | null = null
+        let onMouseUp: ((e: MouseEvent) => void) | null = null
+        
         if (enablePan) {
           let isDragging = false
           let startX = 0
@@ -143,7 +146,7 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
             }
           })
 
-          const onMouseMove = (e: MouseEvent) => {
+          onMouseMove = (e: MouseEvent) => {
             if (!isDragging) return
 
             e.preventDefault()
@@ -188,7 +191,7 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
             })
           }
 
-          const onMouseUp = (e: MouseEvent) => {
+          onMouseUp = (e: MouseEvent) => {
             if (e.button === panButton && isDragging) {
               isDragging = false
               over.style.cursor = ''
@@ -197,19 +200,19 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
 
           window.addEventListener('mousemove', onMouseMove)
           window.addEventListener('mouseup', onMouseUp)
-
-          // Cleanup on destroy
-          const originalDestroy = u.destroy
-          u.destroy = () => {
-            window.removeEventListener('mousemove', onMouseMove)
-            window.removeEventListener('mouseup', onMouseUp)
-            originalDestroy.call(u)
-          }
         }
         
         // Add reset method to uPlot instance
-        const uExtended = u as uPlot & { resetZoom: () => void }
+        const uExtended = u as uPlot & { 
+          resetZoom: () => void; 
+          _debugInfo?: {
+            hasInteracted: () => boolean;
+            initialScales: () => Record<string, { min: number; max: number }>;
+            forceReset: () => void;
+          }
+        }
         uExtended.resetZoom = () => {
+          console.log('[uplotZoomPlugin] resetZoom called')
           if (Object.keys(initialScales).length === 0) {
             console.warn('[uplotZoomPlugin] No initial scales stored, cannot reset zoom')
             return
@@ -218,6 +221,7 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
           u.batch(() => {
             Object.keys(initialScales).forEach(key => {
               if (u.scales[key]) {
+                console.log(`[uplotZoomPlugin] Resetting scale ${key} to:`, initialScales[key])
                 u.setScale(key, initialScales[key])
               }
             })
@@ -225,10 +229,25 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
             // Reset interaction flag and notify
             hasInteracted = false
             if (onZoomChange) {
-              // Reset zoom
+              console.log('[uplotZoomPlugin] Notifying zoom change: false')
               onZoomChange(false)
             }
           })
+        }
+        
+        // For debugging - expose chart instance globally
+        uExtended._debugInfo = {
+          hasInteracted: () => hasInteracted,
+          initialScales: () => initialScales,
+          forceReset: () => {
+            console.log('[uplotZoomPlugin] Force reset called from debug')
+            uExtended.resetZoom()
+          }
+        }
+        
+        // Expose to window for debugging
+        if (typeof window !== 'undefined') {
+          (window as Window & { __uplotChart?: typeof uExtended }).__uplotChart = uExtended
         }
         
         // Keyboard shortcuts
@@ -241,22 +260,72 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
         
         // Double-click to reset zoom
         const handleDblClick = (e: MouseEvent) => {
-          if (hasInteracted) {
-            e.preventDefault()
-            uExtended.resetZoom()
+          console.log('[uplotZoomPlugin] Double-click detected, hasInteracted:', hasInteracted)
+          e.preventDefault()
+          e.stopPropagation() // Prevent event from being captured by other handlers
+          
+          // Always allow double-click to reset, regardless of hasInteracted state
+          // This ensures the user can always reset even if state tracking fails
+          if (Object.keys(initialScales).length > 0) {
+            console.log('[uplotZoomPlugin] Forcing reset zoom via double-click')
+            u.batch(() => {
+              Object.keys(initialScales).forEach(key => {
+                if (u.scales[key]) {
+                  u.setScale(key, initialScales[key])
+                }
+              })
+              
+              // Reset interaction flag and notify
+              hasInteracted = false
+              if (onZoomChange) {
+                onZoomChange(false)
+              }
+            })
           }
         }
         
+        // Add event listeners with capture phase for higher priority
         over.addEventListener('keydown', handleKeyDown)
-        over.addEventListener('dblclick', handleDblClick)
+        over.addEventListener('dblclick', handleDblClick, true) // Use capture phase
         over.tabIndex = 0 // Make focusable
         
-        // Cleanup event listeners
-        const originalDestroyKb = u.destroy
+        // Add click event listener for debugging
+        over.addEventListener('click', (e: MouseEvent) => {
+          console.log('[uplotZoomPlugin] Click detected, detail:', e.detail, 'hasInteracted:', hasInteracted)
+        })
+        
+        // Ensure the element can receive focus
+        over.style.outline = 'none' // Remove default focus outline
+        
+        // Focus on mouse enter to ensure keyboard events work
+        const handleMouseEnter = () => {
+          if (document.activeElement !== over) {
+            over.focus()
+          }
+        }
+        over.addEventListener('mouseenter', handleMouseEnter)
+        
+        
+        // Consolidated cleanup on destroy
+        const originalDestroy = u.destroy
         u.destroy = () => {
-          over.removeEventListener('keydown', handleKeyDown)
-          over.removeEventListener('dblclick', handleDblClick)
-          originalDestroyKb.call(u)
+          // Remove zoom/keyboard event listeners
+          if (over) {
+            over.removeEventListener('keydown', handleKeyDown)
+            over.removeEventListener('dblclick', handleDblClick, true) // Remove from capture phase
+            over.removeEventListener('mouseenter', handleMouseEnter)
+          }
+          
+          // Remove pan event listeners
+          if (onMouseMove) {
+            window.removeEventListener('mousemove', onMouseMove)
+          }
+          if (onMouseUp) {
+            window.removeEventListener('mouseup', onMouseUp)
+          }
+          
+          // Call original destroy
+          originalDestroy.call(u)
         }
       }
     }

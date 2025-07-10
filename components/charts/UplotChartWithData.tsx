@@ -226,9 +226,13 @@ function UplotChartWithDataComponent({
   
   // Handle reset zoom
   const handleResetZoom = useCallback(() => {
+    console.log('[UplotChartWithData] handleResetZoom called')
     const chart = chartRef.current as uPlot & { resetZoom?: () => void }
     if (chart && chart.resetZoom) {
+      console.log('[UplotChartWithData] Calling chart.resetZoom()')
       chart.resetZoom()
+    } else {
+      console.warn('[UplotChartWithData] No resetZoom method found on chart')
     }
   }, [])
   
@@ -330,7 +334,7 @@ function UplotChartWithDataComponent({
             options={uplotOptions}
             onCreate={handleChartCreate}
             onDestroy={handleChartDestroy}
-            className="[&_.u-legend]:absolute [&_.u-legend]:top-1 [&_.u-legend]:right-1 [&_.u-legend]:z-[1000]"
+            className="[&_.u-legend]:absolute [&_.u-legend]:top-1 [&_.u-legend]:right-1 [&_.u-legend]:z-[1000] [&_.u-over]:pointer-events-auto"
           />
         )}
       </div>

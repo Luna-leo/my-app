@@ -79,6 +79,11 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
   const handleMouseDown = (e: MouseEvent) => {
     if (!enabled || !u) return;
 
+    // Don't interfere with double-click events
+    if (e.detail === 2) {
+      return; // Let double-click bubble through
+    }
+
     // Check if click is within plot area
     const { left, top } = u.over.getBoundingClientRect();
     const plotLeft = u.bbox.left;
