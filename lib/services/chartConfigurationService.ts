@@ -73,10 +73,17 @@ export class ChartConfigurationService {
       workspaceId = workspace.id;
     }
 
-    return await db.chartConfigurations
+    const charts = await db.chartConfigurations
       .where('workspaceId')
       .equals(workspaceId!)
       .toArray();
+    
+    // Sort by createdAt to maintain consistent order
+    return charts.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateA - dateB;
+    });
   }
 
   async deleteChartConfiguration(id: string): Promise<void> {
@@ -91,6 +98,7 @@ export class ChartConfigurationService {
 
     const workspace = await db.workspaces.get(workspaceId!);
     const charts = await this.loadChartConfigurations(workspaceId);
+    // Charts are already sorted by createdAt in loadChartConfigurations
 
     const exportData = {
       version: '1.0',
@@ -120,7 +128,8 @@ export class ChartConfigurationService {
 
     await db.workspaces.add(workspace);
 
-    const charts: ChartConfiguration[] = data.charts.map((chart: ChartConfiguration) => ({
+    // Preserve the order from the imported data
+    const charts: ChartConfiguration[] = data.charts.map((chart: ChartConfiguration, index: number) => ({
       ...chart,
       id: uuidv4(),
       workspaceId: newWorkspaceId,
@@ -128,6 +137,7 @@ export class ChartConfigurationService {
       updatedAt: new Date()
     }));
 
+    // Add charts one by one to ensure order is preserved
     await db.chartConfigurations.bulkAdd(charts);
 
     return { workspace, charts };
