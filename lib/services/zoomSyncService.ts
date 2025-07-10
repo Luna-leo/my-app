@@ -104,7 +104,7 @@ class ZoomSyncService {
         }
         
         // Check if chart has been destroyed (uPlot sets root to null when destroyed)
-        if ((chart as any).root === null) {
+        if ('root' in chart && chart.root === null) {
           console.warn(`[ZoomSyncService] Chart ${id} has been destroyed, removing from registry`)
           this.charts.delete(id)
           return
@@ -141,9 +141,9 @@ class ZoomSyncService {
               })
               
               // Force a redraw by calling setData with the existing data
-              if ((chart as any).data) {
+              if ('data' in chart && chart.data) {
                 console.log(`[ZoomSyncService] Forcing redraw by calling setData`)
-                chart.setData((chart as any).data, false)
+                chart.setData(chart.data as uPlot.AlignedData, false)
               }
             } catch (error) {
               console.error(`[ZoomSyncService] Error during scale update:`, error)

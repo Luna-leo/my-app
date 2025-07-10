@@ -316,7 +316,7 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
             console.log('[uplotZoomPlugin] Current scales:', {
               x: { min: u.scales.x.min, max: u.scales.x.max },
               ...Object.keys(u.scales).filter(k => k !== 'x').reduce((acc, k) => {
-                acc[k] = { min: u.scales[k].min, max: u.scales[k].max }
+                acc[k] = { min: u.scales[k].min ?? null, max: u.scales[k].max ?? null }
                 return acc
               }, {} as Record<string, { min: number | null, max: number | null }>)
             })
@@ -462,7 +462,6 @@ export function createDoubleClickResetPlugin(opts: {
 } = {}): uPlot.Plugin {
   const initialScales: Record<string, { min: number; max: number }> = {}
   const debug = opts.debug ?? false
-  const chartId = opts.chartId
   const onReset = opts.onReset
   
   return {

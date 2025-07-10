@@ -334,7 +334,7 @@ function UplotChartWithDataComponent({
       setError(UPLOT_ERROR_MESSAGES.INIT_FAILED)
       return null
     }
-  }, [plotData, dimensions, config, dataViewport, additionalPlugins, enableSelectionZoom, handleZoomToSelection])
+  }, [plotData, dimensions, config, additionalPlugins, enableSelectionZoom, handleZoomToSelection])
   
   // Handle chart creation
   const handleChartCreate = useCallback((chart: uPlot) => {
