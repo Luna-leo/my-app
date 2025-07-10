@@ -141,10 +141,12 @@ export function buildUplotOptions({
       focus: {
         prox: 16,
       },
-      sync: {
-        key: 'chart-sync',
-        setSeries: true,
-      },
+      // Remove sync to prevent automatic cursor/scale synchronization
+      // We'll handle sync manually through ZoomSyncService
+      // sync: {
+      //   key: 'chart-sync',
+      //   setSeries: true,
+      // },
       // Enable cursor drag for better interaction
       drag: {
         x: true,

@@ -19,6 +19,9 @@ import { ChartContainer } from './ChartContainer'
 import { UplotChart } from './UplotChart'
 import uPlot from 'uplot'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
+import { createSelectionPlugin, SelectionRange } from '@/lib/utils/uplotSelectionPlugin'
+import { createDoubleClickResetPlugin } from '@/lib/utils/uplotZoomPlugin'
+import { zoomSyncService } from '@/lib/services/zoomSyncService'
 
 interface UplotChartWithDataProps {
   config: ChartConfiguration
@@ -35,6 +38,8 @@ interface UplotChartWithDataProps {
   }
   samplingConfig?: SamplingConfig
   additionalPlugins?: uPlot.Plugin[]
+  onChartCreate?: (chart: uPlot) => void
+  enableSelectionZoom?: boolean
 }
 
 function UplotChartWithDataComponent({
@@ -46,11 +51,14 @@ function UplotChartWithDataComponent({
   onDelete,
   padding,
   samplingConfig,
-  additionalPlugins = []
+  additionalPlugins = [],
+  onChartCreate,
+  enableSelectionZoom = true
 }: UplotChartWithDataProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<uPlot | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const chartIdRef = useRef<string>(`chart-${Math.random().toString(36).substr(2, 9)}`)
   
   // Convert aspect ratio preset to number if needed
   const numericAspectRatio = typeof aspectRatio === 'string' 
@@ -78,6 +86,92 @@ function UplotChartWithDataComponent({
     dataViewport,
     loadingState
   })
+  
+  // Handle zoom to selection
+  const handleZoomToSelection = useCallback((range: SelectionRange) => {
+    console.log(`[UplotChartWithData] handleZoomToSelection called for ${chartIdRef.current}`, range)
+    if (!chartRef.current) return
+    
+    const chart = chartRef.current
+    
+    // For time series, convert milliseconds to seconds
+    const xMin = config.xAxisParameter === 'timestamp' ? range.xMin / 1000 : range.xMin
+    const xMax = config.xAxisParameter === 'timestamp' ? range.xMax / 1000 : range.xMax
+    
+    // Add padding
+    const xPadding = (xMax - xMin) * 0.1
+    const yPadding = (range.yMax - range.yMin) * 0.1
+    
+    console.log(`[UplotChartWithData] Setting scales - X: ${xMin - xPadding} to ${xMax + xPadding}`)
+    
+    // Use batch to apply all scale changes at once
+    console.log(`[UplotChartWithData] Before setScale - X scale:`, {
+      min: chart.scales.x.min,
+      max: chart.scales.x.max
+    })
+    
+    chart.batch(() => {
+      // Set X scale
+      chart.setScale('x', { 
+        min: xMin - xPadding, 
+        max: xMax + xPadding 
+      })
+      
+      // Set Y scale for all y scales
+      Object.keys(chart.scales).forEach(scale => {
+        if (scale !== 'x') {
+          chart.setScale(scale, { 
+            min: range.yMin - yPadding, 
+            max: range.yMax + yPadding 
+          })
+        }
+      })
+    })
+    
+    // Check if scale was actually updated
+    console.log(`[UplotChartWithData] After setScale - X scale:`, {
+      min: chart.scales.x.min,
+      max: chart.scales.x.max,
+      expected: {
+        min: xMin - xPadding,
+        max: xMax + xPadding
+      }
+    })
+    
+    // Notify sync service about zoom change after a small delay to ensure scales are updated
+    setTimeout(() => {
+      if (!zoomSyncService.isCurrentlyUpdating()) {
+        const currentScales = chart.scales
+        console.log(`[UplotChartWithData] Notifying zoom change for ${chartIdRef.current}`)
+        console.log(`[UplotChartWithData] Current scales:`, {
+          x: { min: currentScales.x.min, max: currentScales.x.max }
+        })
+        console.log(`[UplotChartWithData] Scale values after zoom:`, {
+          xMin: currentScales.x.min,
+          xMax: currentScales.x.max,
+          xMinType: typeof currentScales.x.min,
+          xMaxType: typeof currentScales.x.max
+        })
+        
+        // Get the first Y scale (if exists)
+        const yScaleKeys = Object.keys(currentScales).filter(k => k !== 'x')
+        const firstYScale = yScaleKeys.length > 0 ? currentScales[yScaleKeys[0]] : undefined
+        
+        // Ensure we're passing the correct values
+        const xMinValue = currentScales.x.min!
+        const xMaxValue = currentScales.x.max!
+        
+        console.log(`[UplotChartWithData] Sending to sync service: xMin=${xMinValue}, xMax=${xMaxValue}`)
+        
+        zoomSyncService.handleZoomChange(chartIdRef.current, {
+          xMin: xMinValue,
+          xMax: xMaxValue,
+          yMin: firstYScale?.min,
+          yMax: firstYScale?.max
+        })
+      }
+    }, 10) // Increase delay slightly to ensure scale update is complete
+  }, [config.xAxisParameter])
   
   // Transform data to uPlot format
   const uplotData = useMemo(() => {
@@ -155,11 +249,10 @@ function UplotChartWithDataComponent({
         chartType: config.chartType,
         isTimeAxis: config.xAxisParameter === 'timestamp',
         showLegend: false,
-        xRange: dataViewport ? [
-          config.xAxisParameter === 'timestamp' ? dataViewport.xMin / 1000 : dataViewport.xMin,
-          config.xAxisParameter === 'timestamp' ? dataViewport.xMax / 1000 : dataViewport.xMax
-        ] : undefined,
-        yRange: dataViewport ? [dataViewport.yMin, dataViewport.yMax] : undefined,
+        // Don't set fixed ranges - this prevents setScale from working
+        // xRange and yRange should only be used for initial view
+        xRange: undefined,
+        yRange: undefined,
       })
       
       // Add tooltip plugin with chart data
@@ -172,6 +265,42 @@ function UplotChartWithDataComponent({
         unit: series.parameterInfo.unit || ''
       }))
       options.plugins.push(createTooltipPlugin(chartData))
+      
+      // Add selection zoom plugin if enabled
+      if (enableSelectionZoom) {
+        console.log('[UplotChartWithData] Adding selection zoom plugin')
+        const selectionPlugin = createSelectionPlugin({
+          onSelect: (range) => {
+            console.log('[UplotChartWithData] Selection onSelect called:', range)
+            // Convert timestamps if needed
+            if (config.xAxisParameter === 'timestamp') {
+              range = {
+                ...range,
+                xMin: range.xMin * 1000,
+                xMax: range.xMax * 1000,
+              }
+            }
+            console.log('[UplotChartWithData] Calling handleZoomToSelection')
+            handleZoomToSelection(range)
+          },
+          selectionColor: '#4285F4',
+          selectionOpacity: 0.2,
+          minSelectionSize: 10,
+          enabled: true,
+        })
+        options.plugins.push(selectionPlugin)
+        
+        // Add double-click reset plugin with sync support
+        const doubleClickResetPlugin = createDoubleClickResetPlugin({ 
+          debug: true,
+          chartId: chartIdRef.current,
+          onReset: () => {
+            // Notify sync service about reset
+            zoomSyncService.handleReset(chartIdRef.current)
+          }
+        })
+        options.plugins.push(doubleClickResetPlugin)
+      }
       
       // Add any additional plugins
       if (additionalPlugins.length > 0) {
@@ -194,24 +323,77 @@ function UplotChartWithDataComponent({
         }
       })
       
-      console.log('[UplotChartWithData] Built options:', options)
+      console.log('[UplotChartWithData] Built options:', {
+        ...options,
+        plugins: options.plugins?.map((p, i) => `Plugin ${i}: ${p.hooks ? Object.keys(p.hooks).join(', ') : 'no hooks'}`)
+      })
+      console.log('[UplotChartWithData] Actual plugins array length:', options.plugins?.length || 0)
       return options
     } catch (err) {
       console.error('[UplotChartWithData] Error building options:', err)
       setError(UPLOT_ERROR_MESSAGES.INIT_FAILED)
       return null
     }
-  }, [plotData, dimensions, config, dataViewport, additionalPlugins])
+  }, [plotData, dimensions, config, dataViewport, additionalPlugins, enableSelectionZoom, handleZoomToSelection])
   
   // Handle chart creation
   const handleChartCreate = useCallback((chart: uPlot) => {
     chartRef.current = chart
     console.log(`[Chart ${config.title}] uPlot chart created`)
-  }, [config.title])
+    
+    // Add resetZoom method if not already present (from the double-click plugin)
+    const chartWithReset = chart as uPlot & { resetZoom?: () => void }
+    if (!chartWithReset.resetZoom) {
+      console.log(`[Chart ${config.title}] Adding resetZoom method to chart`)
+      const initialScales: Record<string, { min: number; max: number }> = {}
+      Object.keys(chart.scales).forEach(key => {
+        const scale = chart.scales[key]
+        if (scale.min != null && scale.max != null) {
+          initialScales[key] = {
+            min: scale.min,
+            max: scale.max
+          }
+        }
+      })
+      
+      chartWithReset.resetZoom = () => {
+        chart.batch(() => {
+          Object.keys(initialScales).forEach(key => {
+            if (chart.scales[key]) {
+              chart.setScale(key, initialScales[key])
+            }
+          })
+        })
+      }
+    }
+    
+    // Register with zoom sync service
+    const isTimeSeries = config.xAxisParameter === 'timestamp'
+    zoomSyncService.registerChart(chartIdRef.current, chartWithReset, isTimeSeries)
+    
+    // Set initial view if dataViewport is available
+    if (dataViewport) {
+      console.log(`[Chart ${config.title}] Setting initial viewport from dataViewport`)
+      const xMin = config.xAxisParameter === 'timestamp' ? dataViewport.xMin / 1000 : dataViewport.xMin
+      const xMax = config.xAxisParameter === 'timestamp' ? dataViewport.xMax / 1000 : dataViewport.xMax
+      
+      chart.batch(() => {
+        chart.setScale('x', { min: xMin, max: xMax })
+        chart.setScale('y', { min: dataViewport.yMin, max: dataViewport.yMax })
+      })
+    }
+    
+    if (onChartCreate) {
+      onChartCreate(chart)
+    }
+  }, [config.title, config.xAxisParameter, onChartCreate, dataViewport])
   
   
   // Handle chart destruction
   const handleChartDestroy = useCallback(() => {
+    // Unregister from zoom sync service
+    zoomSyncService.unregisterChart(chartIdRef.current)
+    
     chartRef.current = null
     console.log(`[Chart ${config.title}] uPlot chart destroyed`)
   }, [config.title])

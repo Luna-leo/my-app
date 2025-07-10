@@ -32,6 +32,12 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
     enabled = true,
     chartInstanceId
   } = options;
+  
+  console.log('[SelectionPlugin] Creating plugin with options:', {
+    enabled,
+    chartInstanceId,
+    hasOnSelect: !!onSelect
+  });
 
   let isSelecting = false;
   let startX = 0;
@@ -79,12 +85,20 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
     endY = 0;
   };
 
+  let selectionTimeout: NodeJS.Timeout | null = null;
+
   const handleMouseDown = (e: MouseEvent) => {
     if (!enabled || !u) return;
 
     // Don't interfere with double-click events
     if (e.detail === 2) {
-      return; // Let double-click bubble through
+      console.log('[SelectionPlugin] Double-click detected, skipping selection');
+      // Clear any pending selection timeout
+      if (selectionTimeout) {
+        clearTimeout(selectionTimeout);
+        selectionTimeout = null;
+      }
+      return; // Let double-click bubble through without preventDefault
     }
 
     // Check if click is within plot area
@@ -99,23 +113,42 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
 
     if (relX >= plotLeft && relX <= plotLeft + plotWidth &&
         relY >= plotTop && relY <= plotTop + plotHeight) {
-      // Set this chart as active when starting selection
-      if (chartInstanceId) {
-        activeChartTracker.setActiveChart(chartInstanceId);
+      
+      // Clear any existing timeout
+      if (selectionTimeout) {
+        clearTimeout(selectionTimeout);
       }
       
-      isSelecting = true;
-      startX = relX;
-      startY = relY;
-      endX = relX;
-      endY = relY;
+      // Store initial coordinates
+      const initialX = relX;
+      const initialY = relY;
+      
+      // Add a small delay to ensure we don't interfere with double-click detection
+      // This gives the browser time to register a potential double-click
+      selectionTimeout = setTimeout(() => {
+        // Only start selection if we haven't received a double-click in the meantime
+        if (!isSelecting && enabled) {
+          console.log('[SelectionPlugin] Starting selection');
+          // Set this chart as active when starting selection
+          if (chartInstanceId) {
+            console.log('[SelectionPlugin] Setting active chart:', chartInstanceId);
+            activeChartTracker.setActiveChart(chartInstanceId);
+          }
+          
+          isSelecting = true;
+          startX = initialX;
+          startY = initialY;
+          endX = initialX;
+          endY = initialY;
 
-      if (onSelectionStart) {
-        onSelectionStart();
-      }
+          if (onSelectionStart) {
+            onSelectionStart();
+          }
 
-      updateSelectionElement();
-      e.preventDefault();
+          updateSelectionElement();
+        }
+        selectionTimeout = null;
+      }, 200); // 200ms delay to allow double-click detection
     }
   };
 
@@ -147,15 +180,21 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
   const handleMouseUp = (e: MouseEvent) => {
     if (!isSelecting || !u) return;
     
+    console.log('[SelectionPlugin] Mouse up - isSelecting:', isSelecting);
+    
     // Only process if this chart is active
     if (chartInstanceId && !activeChartTracker.isActiveChart(chartInstanceId)) {
+      console.log('[SelectionPlugin] Chart not active, skipping');
       return;
     }
 
     const width = Math.abs(endX - startX);
     const height = Math.abs(endY - startY);
+    
+    console.log('[SelectionPlugin] Selection size:', { width, height, minSelectionSize });
 
     if (width > minSelectionSize && height > minSelectionSize) {
+      console.log('[SelectionPlugin] Valid selection detected');
       // Convert pixel coordinates to data coordinates
       const left = Math.min(startX, endX);
       const right = Math.max(startX, endX);
@@ -178,8 +217,13 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
         yMax
       };
 
+      console.log('[SelectionPlugin] Selection range:', range);
+
       if (onSelect) {
+        console.log('[SelectionPlugin] Calling onSelect callback');
         onSelect(range);
+      } else {
+        console.log('[SelectionPlugin] No onSelect callback provided');
       }
     }
 
@@ -216,7 +260,8 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
           u.over.appendChild(selectionEl);
 
           // Add event listeners
-          u.over.addEventListener('mousedown', handleMouseDown);
+          // Use regular phase (not capture) to allow zoom plugin's capture phase to fire first
+          u.over.addEventListener('mousedown', handleMouseDown, false);
           document.addEventListener('mousemove', handleMouseMove);
           document.addEventListener('mouseup', handleMouseUp);
           document.addEventListener('keydown', handleKeyDown);
@@ -237,8 +282,14 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
       ],
       destroy: [
         () => {
+          // Clear any pending timeout
+          if (selectionTimeout) {
+            clearTimeout(selectionTimeout);
+            selectionTimeout = null;
+          }
+          
           if (u && u.over) {
-            u.over.removeEventListener('mousedown', handleMouseDown);
+            u.over.removeEventListener('mousedown', handleMouseDown, false);
           }
           document.removeEventListener('mousemove', handleMouseMove);
           document.removeEventListener('mouseup', handleMouseUp);

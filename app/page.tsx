@@ -18,6 +18,7 @@ import {
 import { chartConfigService } from '@/lib/services/chartConfigurationService'
 import { ChartConfiguration as DBChartConfiguration } from '@/lib/db/schema'
 import { AppHeader } from '@/components/layout/AppHeader'
+import { ZoomSyncModeSelector } from '@/components/layout/ZoomSyncModeSelector'
 import { LoadingState } from '@/components/common/LoadingState'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ChartGrid } from '@/components/charts/ChartGrid'
@@ -351,6 +352,9 @@ export default function Home() {
                   dataPointsInfo={dataPointsInfo}
                   isUpdatingSampling={isUpdatingSampling}
                 />
+                <div className="mt-2 flex justify-end">
+                  <ZoomSyncModeSelector />
+                </div>
               </div>
               <ChartGrid
                 charts={charts}

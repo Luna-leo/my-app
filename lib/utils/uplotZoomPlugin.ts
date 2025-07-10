@@ -7,6 +7,7 @@ export interface WheelZoomPluginOptions {
   enablePan?: boolean
   panButton?: number // 0: left, 1: middle, 2: right
   onZoomChange?: (isZoomed: boolean) => void
+  debug?: boolean // Enable debug logging
 }
 
 export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.Plugin {
@@ -16,6 +17,7 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
   const enablePan = opts.enablePan ?? true
   const panButton = opts.panButton ?? 1 // Middle mouse button by default
   const onZoomChange = opts.onZoomChange
+  const debug = opts.debug ?? true // Enable debug by default for now
 
   let xMin: number, xMax: number
   let xRange: number
@@ -40,8 +42,35 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
 
   return {
     hooks: {
+      init: (u: uPlot) => {
+        // Register double-click handler as early as possible in init hook
+        const over = u.over
+        
+        console.log('[uplotZoomPlugin] 🚀 INIT HOOK CALLED - Plugin is being initialized!')
+        console.log('[uplotZoomPlugin] Chart element in init:', over)
+        
+        if (debug) {
+          console.log('[uplotZoomPlugin] Early init - registering double-click handler')
+        }
+        
+        // Double-click handler - register FIRST before any other handlers
+        const earlyDblClickHandler = (e: MouseEvent) => {
+          console.log('[uplotZoomPlugin] EARLY Double-click captured!', e)
+          // Let the main handler process it, but log that we caught it
+        }
+        
+        over.addEventListener('dblclick', earlyDblClickHandler, true)
+      },
       ready: (u: uPlot) => {
         const over = u.over
+        
+        console.log('[uplotZoomPlugin] 🎯 READY HOOK CALLED - Plugin is ready!')
+        
+        if (debug) {
+          console.log('[uplotZoomPlugin] Plugin ready, initializing...')
+          console.log('[uplotZoomPlugin] Chart element:', over)
+          console.log('[uplotZoomPlugin] Chart scales:', u.scales)
+        }
 
         // Store initial scales if not already stored
         if (Object.keys(initialScales).length === 0) {
@@ -54,6 +83,9 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
               }
             }
           })
+          if (debug) {
+            console.log('[uplotZoomPlugin] Stored initial scales:', initialScales)
+          }
         }
 
         // Store initial scale ranges for zoom calculations
@@ -260,17 +292,39 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
         
         // Double-click to reset zoom
         const handleDblClick = (e: MouseEvent) => {
-          console.log('[uplotZoomPlugin] Double-click detected, hasInteracted:', hasInteracted)
+          if (debug || true) { // Always log double-click for now
+            console.log('[uplotZoomPlugin] Double-click detected, hasInteracted:', hasInteracted)
+            console.log('[uplotZoomPlugin] Double-click event details:', {
+              target: e.target,
+              currentTarget: e.currentTarget,
+              eventPhase: e.eventPhase,
+              bubbles: e.bubbles,
+              cancelable: e.cancelable,
+              defaultPrevented: e.defaultPrevented
+            })
+          }
+          
           e.preventDefault()
           e.stopPropagation() // Prevent event from being captured by other handlers
+          e.stopImmediatePropagation() // Stop other handlers on the same element
           
           // Always allow double-click to reset, regardless of hasInteracted state
           // This ensures the user can always reset even if state tracking fails
           if (Object.keys(initialScales).length > 0) {
             console.log('[uplotZoomPlugin] Forcing reset zoom via double-click')
+            console.log('[uplotZoomPlugin] Initial scales:', initialScales)
+            console.log('[uplotZoomPlugin] Current scales:', {
+              x: { min: u.scales.x.min, max: u.scales.x.max },
+              ...Object.keys(u.scales).filter(k => k !== 'x').reduce((acc, k) => {
+                acc[k] = { min: u.scales[k].min, max: u.scales[k].max }
+                return acc
+              }, {} as Record<string, { min: number | null, max: number | null }>)
+            })
+            
             u.batch(() => {
               Object.keys(initialScales).forEach(key => {
                 if (u.scales[key]) {
+                  console.log(`[uplotZoomPlugin] Resetting scale ${key} to:`, initialScales[key])
                   u.setScale(key, initialScales[key])
                 }
               })
@@ -278,9 +332,14 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
               // Reset interaction flag and notify
               hasInteracted = false
               if (onZoomChange) {
+                console.log('[uplotZoomPlugin] Notifying zoom change: false')
                 onZoomChange(false)
               }
             })
+            
+            console.log('[uplotZoomPlugin] Zoom reset complete')
+          } else {
+            console.warn('[uplotZoomPlugin] No initial scales stored, cannot reset')
           }
         }
         
@@ -289,10 +348,43 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
         over.addEventListener('dblclick', handleDblClick, true) // Use capture phase
         over.tabIndex = 0 // Make focusable
         
+        // Log that we've added the double-click handler
+        console.log('[uplotZoomPlugin] ✅ Double-click handler registered on element:', over)
+        console.log('[uplotZoomPlugin] ✅ Element info:', {
+          tagName: over.tagName,
+          className: over.className,
+          hasEventListeners: true,
+          capturePhase: true
+        })
+        
+        // Test if dblclick events work at all
+        const testDblClick = () => {
+          console.log('[uplotZoomPlugin] Testing double-click event registration...')
+          const testHandler = (e: MouseEvent) => {
+            console.log('[uplotZoomPlugin] TEST: Double-click event fired!', e)
+          }
+          over.addEventListener('dblclick', testHandler)
+          setTimeout(() => {
+            over.removeEventListener('dblclick', testHandler)
+          }, 30000) // Remove test handler after 30 seconds
+        }
+        if (debug) {
+          testDblClick()
+        }
+        
         // Add click event listener for debugging
         over.addEventListener('click', (e: MouseEvent) => {
-          console.log('[uplotZoomPlugin] Click detected, detail:', e.detail, 'hasInteracted:', hasInteracted)
-        })
+          if (debug) {
+            console.log('[uplotZoomPlugin] Click detected, detail:', e.detail, 'hasInteracted:', hasInteracted)
+          }
+        }, true) // Also use capture phase for debugging
+        
+        // Add mousedown listener for debugging
+        over.addEventListener('mousedown', (e: MouseEvent) => {
+          if (debug) {
+            console.log('[uplotZoomPlugin] Mousedown detected, detail:', e.detail, 'button:', e.button)
+          }
+        }, true) // Capture phase to see it before selection plugin
         
         // Ensure the element can receive focus
         over.style.outline = 'none' // Remove default focus outline
@@ -356,6 +448,102 @@ export function createResetZoomPlugin(): uPlot.Plugin {
               u.setScale(key, initialScales[key])
             })
           })
+        }
+      }
+    }
+  }
+}
+
+// Double-click reset plugin with sync support
+export function createDoubleClickResetPlugin(opts: { 
+  debug?: boolean,
+  chartId?: string,
+  onReset?: () => void 
+} = {}): uPlot.Plugin {
+  const initialScales: Record<string, { min: number; max: number }> = {}
+  const debug = opts.debug ?? false
+  const chartId = opts.chartId
+  const onReset = opts.onReset
+  
+  return {
+    hooks: {
+      ready: (u: uPlot) => {
+        const over = u.over
+        
+        if (debug) {
+          console.log('[DoubleClickReset] Plugin ready, registering handlers')
+        }
+        
+        // Store initial scales
+        Object.keys(u.scales).forEach(key => {
+          const scale = u.scales[key]
+          if (scale.min != null && scale.max != null) {
+            initialScales[key] = {
+              min: scale.min,
+              max: scale.max
+            }
+          }
+        })
+        
+        if (debug) {
+          console.log('[DoubleClickReset] Stored initial scales:', initialScales)
+        }
+        
+        // Add resetZoom method to uPlot instance
+        const uExtended = u as uPlot & { resetZoom: () => void }
+        uExtended.resetZoom = () => {
+          if (debug) {
+            console.log('[DoubleClickReset] resetZoom called')
+          }
+          if (Object.keys(initialScales).length === 0) {
+            console.warn('[DoubleClickReset] No initial scales stored, cannot reset')
+            return
+          }
+          
+          u.batch(() => {
+            Object.keys(initialScales).forEach(key => {
+              if (u.scales[key]) {
+                if (debug) {
+                  console.log(`[DoubleClickReset] Resetting scale ${key} to:`, initialScales[key])
+                }
+                u.setScale(key, initialScales[key])
+              }
+            })
+          })
+        }
+        
+        // Double-click handler
+        const handleDblClick = (e: MouseEvent) => {
+          if (debug) {
+            console.log('[DoubleClickReset] Double-click detected!')
+          }
+          e.preventDefault()
+          e.stopPropagation()
+          e.stopImmediatePropagation()
+          
+          // Always reset on double-click
+          uExtended.resetZoom()
+          
+          // Notify about reset for sync
+          if (onReset) {
+            onReset()
+          }
+        }
+        
+        // Register handler with capture phase for higher priority
+        over.addEventListener('dblclick', handleDblClick, true)
+        
+        if (debug) {
+          console.log('[DoubleClickReset] Double-click handler registered on element:', over)
+        }
+        
+        // Cleanup on destroy
+        const originalDestroy = u.destroy
+        u.destroy = () => {
+          if (over) {
+            over.removeEventListener('dblclick', handleDblClick, true)
+          }
+          originalDestroy.call(u)
         }
       }
     }
