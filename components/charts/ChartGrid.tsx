@@ -70,7 +70,7 @@ export function ChartGrid({
   const dynamicAspectRatio = useDynamicGridAspectRatio({
     layoutOption: layoutOption || null,
     containerRef: containerRef as RefObject<HTMLElement>,
-    headerHeight: 280, // Fixed height: AppHeader + DataSelectionBar + margins
+    headerHeight: 180, // Fixed height: AppHeader(56px) + DataSelectionBar(68px) + container padding(32px) + buffer(24px)
     gap: 16,
     minChartHeight: getMinChartHeight(layoutOption?.rows || 1)
   })
