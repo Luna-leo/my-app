@@ -1,4 +1,5 @@
 import uPlot, { Plugin } from 'uplot';
+import { activeChartTracker } from './activeChartTracker';
 
 export interface SelectionRange {
   xMin: number;
@@ -16,6 +17,7 @@ export interface SelectionPluginOptions {
   selectionOpacity?: number;
   minSelectionSize?: number;
   enabled?: boolean;
+  chartInstanceId?: string;
 }
 
 export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plugin {
@@ -27,7 +29,8 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
     selectionColor = '#4285F4',
     selectionOpacity = 0.2,
     minSelectionSize = 10,
-    enabled = true
+    enabled = true,
+    chartInstanceId
   } = options;
 
   let isSelecting = false;
@@ -96,6 +99,11 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
 
     if (relX >= plotLeft && relX <= plotLeft + plotWidth &&
         relY >= plotTop && relY <= plotTop + plotHeight) {
+      // Set this chart as active when starting selection
+      if (chartInstanceId) {
+        activeChartTracker.setActiveChart(chartInstanceId);
+      }
+      
       isSelecting = true;
       startX = relX;
       startY = relY;
@@ -113,6 +121,11 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!isSelecting || !u) return;
+    
+    // Only process if this chart is active
+    if (chartInstanceId && !activeChartTracker.isActiveChart(chartInstanceId)) {
+      return;
+    }
 
     const { left, top } = u.over.getBoundingClientRect();
     const plotLeft = u.bbox.left;
@@ -133,6 +146,11 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
 
   const handleMouseUp = (e: MouseEvent) => {
     if (!isSelecting || !u) return;
+    
+    // Only process if this chart is active
+    if (chartInstanceId && !activeChartTracker.isActiveChart(chartInstanceId)) {
+      return;
+    }
 
     const width = Math.abs(endX - startX);
     const height = Math.abs(endY - startY);
@@ -170,6 +188,12 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
     }
 
     clearSelection();
+    
+    // Clear active chart when selection ends
+    if (chartInstanceId) {
+      activeChartTracker.clearActiveChart();
+    }
+    
     e.preventDefault();
   };
 
@@ -196,6 +220,19 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
           document.addEventListener('mousemove', handleMouseMove);
           document.addEventListener('mouseup', handleMouseUp);
           document.addEventListener('keydown', handleKeyDown);
+          
+          // Register listener for when this chart becomes inactive
+          if (chartInstanceId) {
+            activeChartTracker.registerInactiveListener(chartInstanceId, () => {
+              // Clear selection if this chart becomes inactive
+              if (isSelecting) {
+                clearSelection();
+                if (onSelectionClear) {
+                  onSelectionClear();
+                }
+              }
+            });
+          }
         }
       ],
       destroy: [
@@ -206,6 +243,11 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
           document.removeEventListener('mousemove', handleMouseMove);
           document.removeEventListener('mouseup', handleMouseUp);
           document.removeEventListener('keydown', handleKeyDown);
+
+          // Unregister inactive listener
+          if (chartInstanceId) {
+            activeChartTracker.unregisterInactiveListener(chartInstanceId);
+          }
 
           if (selectionEl && selectionEl.parentNode) {
             selectionEl.parentNode.removeChild(selectionEl);

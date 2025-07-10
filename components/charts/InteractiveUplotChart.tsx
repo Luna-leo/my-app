@@ -6,6 +6,7 @@ import { UplotChartWithData } from './UplotChartWithData'
 import { useChartSelection } from '@/hooks/useChartSelection'
 import { useChartViewport } from '@/hooks/useChartViewport'
 import { createSelectionPlugin, createZoomToSelectionPlugin, SelectionRange } from '@/lib/utils/uplotSelectionPlugin'
+import { generateChartInstanceId } from '@/lib/utils/activeChartTracker'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 import { SelectionControls } from './SelectionControls'
@@ -66,6 +67,9 @@ export function InteractiveUplotChart({
   onViewportChange,
 }: InteractiveUplotChartProps) {
   const chartRef = useRef<uPlot | null>(null)
+  
+  // Generate unique chart instance ID
+  const chartInstanceId = useMemo(() => generateChartInstanceId(), [])
   
   // Get chart data
   const { plotData, dataViewport } = useChartData(config, samplingConfig ?? true)
@@ -196,6 +200,7 @@ export function InteractiveUplotChart({
       selectionOpacity: selectionOptions.opacity,
       minSelectionSize: selectionOptions.minSize,
       enabled: selectionState.isSelectionMode,
+      chartInstanceId,
     }
     
     if (enableZoomToSelection) {
@@ -216,6 +221,7 @@ export function InteractiveUplotChart({
     handleZoomToSelection,
     selectionOptions,
     selectionState.isSelectionMode,
+    chartInstanceId,
   ])
   
   // Update chart viewport when viewport changes
