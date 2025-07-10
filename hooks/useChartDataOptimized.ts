@@ -19,10 +19,16 @@ export function useChartData(config: ChartConfiguration, enableSampling: boolean
   useEffect(() => {
     const loadData = async () => {
       try {
-        setLoadingState({ loading: true, progress: 10, error: null });
+        setLoadingState({ loading: true, progress: 0, error: null });
 
-        // Get data from the shared provider
-        const { plotData: data, dataViewport: viewport } = await getChartData(config, enableSampling);
+        // Get data from the shared provider with progress callback
+        const { plotData: data, dataViewport: viewport } = await getChartData(
+          config, 
+          enableSampling,
+          (progress) => {
+            setLoadingState(prev => ({ ...prev, progress }));
+          }
+        );
         
         if (!data || !viewport) {
           setLoadingState({ loading: false, progress: 100, error: ERROR_MESSAGES.NO_DATA });

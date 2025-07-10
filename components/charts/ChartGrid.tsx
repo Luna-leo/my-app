@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, RefObject } from 'react'
+import { useRef, RefObject, useState, useEffect } from 'react'
 import { getDataChartComponent } from '@/components/charts/ChartProvider'
 import { LazyChart } from '@/components/charts/LazyChart'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
@@ -32,6 +32,28 @@ export function ChartGrid({
 }: ChartGridProps) {
   const ChartComponent = getDataChartComponent()
   const containerRef = useRef<HTMLDivElement>(null)
+  
+  // State to track which charts should be rendered
+  const [renderedCharts, setRenderedCharts] = useState<Set<number>>(new Set())
+  
+  // Stagger the loading of the first 4 charts
+  useEffect(() => {
+    const delays = [0, 100, 200, 300] // Stagger by 100ms each
+    const timeouts: NodeJS.Timeout[] = []
+    
+    delays.forEach((delay, index) => {
+      if (index < charts.length) {
+        const timeout = setTimeout(() => {
+          setRenderedCharts(prev => new Set(prev).add(index))
+        }, delay)
+        timeouts.push(timeout)
+      }
+    })
+    
+    return () => {
+      timeouts.forEach(clearTimeout)
+    }
+  }, [charts.length])
   
   // Dynamic height calculations based on row count
   const getMinChartHeight = (rows: number) => {
@@ -105,8 +127,14 @@ export function ChartGrid({
   return (
     <div ref={containerRef} className={cn('grid gap-4', getGridClassName())}>
       {visibleCharts.map((chart, index) => {
-        // First 4 charts load immediately, rest use lazy loading
+        // First 4 charts use staggered loading, rest use lazy loading
         if (index < 4) {
+          // Only render if this chart's index has been added to renderedCharts
+          if (!renderedCharts.has(index)) {
+            // Return placeholder to maintain grid layout
+            return <div key={chart.id} className="w-full" style={{ aspectRatio }} />
+          }
+          
           return (
             <ChartComponent
               key={chart.id}

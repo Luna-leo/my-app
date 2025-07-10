@@ -25,8 +25,64 @@ interface ChartDataProviderState {
   isLoading: boolean;
 }
 
+// Request queue to limit concurrent requests
+class RequestQueue {
+  private queue: Array<{
+    id: string;
+    execute: () => Promise<any>;
+    resolve: (value: any) => void;
+    reject: (error: any) => void;
+  }> = [];
+  private activeRequests = 0;
+  private maxConcurrent: number;
+
+  constructor(maxConcurrent = 2) {
+    this.maxConcurrent = maxConcurrent;
+  }
+
+  async enqueue<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push({
+        id,
+        execute: fn,
+        resolve,
+        reject
+      });
+      this.processQueue();
+    });
+  }
+
+  private async processQueue() {
+    if (this.activeRequests >= this.maxConcurrent || this.queue.length === 0) {
+      return;
+    }
+
+    const request = this.queue.shift();
+    if (!request) return;
+
+    this.activeRequests++;
+    try {
+      const result = await request.execute();
+      request.resolve(result);
+    } catch (error) {
+      request.reject(error);
+    } finally {
+      this.activeRequests--;
+      this.processQueue();
+    }
+  }
+
+  getQueueLength() {
+    return this.queue.length;
+  }
+
+  getActiveCount() {
+    return this.activeRequests;
+  }
+}
+
 interface ChartDataContextType {
-  getChartData: (config: ChartConfiguration, enableSampling?: boolean | SamplingConfig) => Promise<{
+  getChartData: (config: ChartConfiguration, enableSampling?: boolean | SamplingConfig, onProgress?: (progress: number) => void) => Promise<{
     plotData: ChartPlotData | null;
     dataViewport: ChartViewport | null;
   }>;
@@ -57,6 +113,9 @@ function getConfigHash(config: ChartConfiguration, samplingOption: boolean | Sam
 function getSamplingCacheKey(metadataIds: number[], samplingConfig: SamplingConfig): string {
   return hashSamplingConfig(metadataIds, samplingConfig);
 }
+
+// Create a singleton request queue instance
+const requestQueue = new RequestQueue(2); // Allow max 2 concurrent requests
 
 export function ChartDataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ChartDataProviderState>({
@@ -196,7 +255,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     return parameterMap;
   };
 
-  const getChartData = async (config: ChartConfiguration, enableSampling: boolean | SamplingConfig = true) => {
+  const getChartData = async (config: ChartConfiguration, enableSampling: boolean | SamplingConfig = true, onProgress?: (progress: number) => void) => {
     const startTime = performance.now();
     const configHash = getConfigHash(config, enableSampling);
     
@@ -224,7 +283,14 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    try {
+    // Use request queue to limit concurrent data fetches
+    return requestQueue.enqueue(configHash, async () => {
+      console.log(`[ChartDataContext] Queue status - Active: ${requestQueue.getActiveCount()}, Queued: ${requestQueue.getQueueLength()}`);
+      
+      try {
+      // Report initial progress
+      onProgress?.(10);
+      
       // Fetch raw data (with caching)
       const fetchStartTime = performance.now();
       const rawData = await fetchRawData(config.selectedDataIds);
@@ -233,6 +299,9 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       if (rawData.timeSeries.length === 0) {
         return { plotData: null, dataViewport: null };
       }
+      
+      // Report progress after data fetch
+      onProgress?.(30);
 
       // Fetch parameters
       const parameterIds = [
@@ -241,6 +310,9 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       ];
       
       const parameterInfoMap = await fetchParameters(parameterIds);
+      
+      // Report progress after parameter fetch
+      onProgress?.(50);
 
       // Apply sampling if enabled and data is large
       let processedTimeSeries = rawData.timeSeries;
@@ -309,6 +381,9 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           wasSampled: false
         };
       }
+      
+      // Report progress after sampling
+      onProgress?.(70);
 
       // Transform data based on X-axis type
       let chartData: ChartPlotData;
@@ -418,6 +493,9 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       
       // Also persist to transform cache
       transformCache.set(configHash, cacheData);
+      
+      // Report final progress
+      onProgress?.(90);
 
       console.log(`[ChartDataContext] Total processing time for "${config.title}": ${performance.now() - startTime}ms`);
 
@@ -426,6 +504,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       console.error('Error in getChartData:', error);
       return { plotData: null, dataViewport: null };
     }
+    });
   };
 
   // Preload data for multiple charts with progressive loading
