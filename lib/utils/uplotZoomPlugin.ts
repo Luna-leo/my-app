@@ -239,13 +239,23 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
           }
         }
         
+        // Double-click to reset zoom
+        const handleDblClick = (e: MouseEvent) => {
+          if (hasInteracted) {
+            e.preventDefault()
+            uExtended.resetZoom()
+          }
+        }
+        
         over.addEventListener('keydown', handleKeyDown)
+        over.addEventListener('dblclick', handleDblClick)
         over.tabIndex = 0 // Make focusable
         
-        // Cleanup keyboard listener
+        // Cleanup event listeners
         const originalDestroyKb = u.destroy
         u.destroy = () => {
           over.removeEventListener('keydown', handleKeyDown)
+          over.removeEventListener('dblclick', handleDblClick)
           originalDestroyKb.call(u)
         }
       }

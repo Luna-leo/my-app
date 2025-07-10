@@ -317,7 +317,7 @@ function UplotChartWithDataComponent({
             <button
               onClick={handleResetZoom}
               className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300 rounded-md transition-all"
-              title="Reset zoom (R or Escape)"
+              title="Reset zoom (Double-click, R, or Escape)"
             >
               Reset Zoom
             </button>
