@@ -1,7 +1,6 @@
 import uPlot from 'uplot'
 import { format } from 'date-fns'
 import { colorService } from '@/lib/services/colorService'
-import { createWheelZoomPlugin } from './uplotZoomPlugin'
 
 
 // Generate colors for series
@@ -104,11 +103,6 @@ export interface BuildUplotOptionsParams {
   xRange?: [number, number]
   yRange?: [number, number]
   plugins?: uPlot.Plugin[]
-  enableZoom?: boolean
-  enablePan?: boolean
-  zoomFactor?: number
-  panButton?: number
-  onZoomChange?: (isZoomed: boolean) => void
 }
 
 export function buildUplotOptions({
@@ -124,27 +118,14 @@ export function buildUplotOptions({
   xRange,
   yRange,
   plugins,
-  enableZoom = true,
-  enablePan = true,
-  zoomFactor = 0.75,
-  panButton = 1,
-  onZoomChange,
 }: BuildUplotOptionsParams): uPlot.Options {
   const colors = generateSeriesColors(seriesNames.length)
 
   // Build plugins array
   const allPlugins: uPlot.Plugin[] = [...(plugins || [])]
   
-  // Add zoom/pan plugin if enabled
-  if (enableZoom || enablePan) {
-    // Add the wheel zoom plugin (includes reset functionality)
-    allPlugins.push(createWheelZoomPlugin({
-      factor: zoomFactor,
-      enablePan,
-      panButton,
-      onZoomChange,
-    }))
-  }
+  // Wheel zoom has been removed as per user requirement
+  // Only selection-based zoom is now supported
 
   const options: uPlot.Options = {
     width,

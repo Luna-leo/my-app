@@ -46,12 +46,6 @@ interface InteractiveUplotChartProps {
     yMax: number
   }
   onViewportChange?: (viewport: { xMin: number; xMax: number; yMin: number; yMax: number }) => void
-  
-  // Zoom and pan options
-  enableZoom?: boolean
-  enablePan?: boolean
-  zoomFactor?: number
-  panButton?: number
 }
 
 export function InteractiveUplotChart({
@@ -70,10 +64,6 @@ export function InteractiveUplotChart({
   enableViewportControl = true,
   initialViewport,
   onViewportChange,
-  enableZoom = true,
-  enablePan = true,
-  zoomFactor = 0.75,
-  panButton = 1,
 }: InteractiveUplotChartProps) {
   const chartRef = useRef<uPlot | null>(null)
   
@@ -147,29 +137,27 @@ export function InteractiveUplotChart({
   
   // Handle zoom to selection
   const handleZoomToSelection = useCallback((range: SelectionRange) => {
-    if (!enableViewportControl || !chartRef.current) return
+    if (!chartRef.current) return
     
-    // Animate viewport to selection
-    viewportActions.zoomToSelection(range)
+    const chart = chartRef.current
     
-    // Apply to chart
-    if (chartRef.current) {
-      const chart = chartRef.current
-      
-      // For time series, convert to seconds
-      const xMin = config.xAxisParameter === 'timestamp' ? range.xMin / 1000 : range.xMin
-      const xMax = config.xAxisParameter === 'timestamp' ? range.xMax / 1000 : range.xMax
-      
-      // Add padding
-      const xPadding = (xMax - xMin) * 0.1
-      const yPadding = (range.yMax - range.yMin) * 0.1
-      
+    // For time series, convert to seconds
+    const xMin = config.xAxisParameter === 'timestamp' ? range.xMin / 1000 : range.xMin
+    const xMax = config.xAxisParameter === 'timestamp' ? range.xMax / 1000 : range.xMax
+    
+    // Add padding
+    const xPadding = (xMax - xMin) * 0.1
+    const yPadding = (range.yMax - range.yMin) * 0.1
+    
+    // Use batch to apply all scale changes at once
+    chart.batch(() => {
+      // Set X scale
       chart.setScale('x', { 
         min: xMin - xPadding, 
         max: xMax + xPadding 
       })
       
-      // Set y scale for all y scales
+      // Set Y scale for all y scales
       Object.keys(chart.scales).forEach(scale => {
         if (scale !== 'x') {
           chart.setScale(scale, { 
@@ -178,11 +166,22 @@ export function InteractiveUplotChart({
           })
         }
       })
+    })
+    
+    // Update viewport state if viewport control is enabled
+    if (enableViewportControl) {
+      const newViewport = {
+        xMin: config.xAxisParameter === 'timestamp' ? (xMin - xPadding) * 1000 : xMin - xPadding,
+        xMax: config.xAxisParameter === 'timestamp' ? (xMax + xPadding) * 1000 : xMax + xPadding,
+        yMin: range.yMin - yPadding,
+        yMax: range.yMax + yPadding
+      }
+      viewportActions.setViewport(newViewport)
     }
     
     // Clear selection after zoom
     selectionActions.clearSelection()
-  }, [enableViewportControl, viewportActions, config.xAxisParameter, selectionActions])
+  }, [config.xAxisParameter, selectionActions, enableViewportControl, viewportActions])
   
   // Create selection plugin
   const selectionPlugin = useMemo(() => {
@@ -278,10 +277,6 @@ export function InteractiveUplotChart({
         padding={padding}
         samplingConfig={samplingConfig}
         additionalPlugins={selectionPlugin ? [selectionPlugin] : []}
-        enableZoom={enableZoom}
-        enablePan={enablePan}
-        zoomFactor={zoomFactor}
-        panButton={panButton}
       />
     </div>
   )

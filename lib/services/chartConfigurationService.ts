@@ -129,7 +129,7 @@ export class ChartConfigurationService {
     await db.workspaces.add(workspace);
 
     // Preserve the order from the imported data
-    const charts: ChartConfiguration[] = data.charts.map((chart: ChartConfiguration, index: number) => ({
+    const charts: ChartConfiguration[] = data.charts.map((chart: ChartConfiguration) => ({
       ...chart,
       id: uuidv4(),
       workspaceId: newWorkspaceId,

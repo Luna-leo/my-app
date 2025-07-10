@@ -35,11 +35,6 @@ interface UplotChartWithDataProps {
   }
   samplingConfig?: SamplingConfig
   additionalPlugins?: uPlot.Plugin[]
-  // Zoom and pan options
-  enableZoom?: boolean
-  enablePan?: boolean
-  zoomFactor?: number
-  panButton?: number // 0: left, 1: middle, 2: right
 }
 
 function UplotChartWithDataComponent({
@@ -51,16 +46,11 @@ function UplotChartWithDataComponent({
   onDelete,
   padding,
   samplingConfig,
-  additionalPlugins = [],
-  enableZoom = true,
-  enablePan = true,
-  zoomFactor = 0.75,
-  panButton = 1
+  additionalPlugins = []
 }: UplotChartWithDataProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<uPlot | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [isZoomed, setIsZoomed] = useState(false)
   
   // Convert aspect ratio preset to number if needed
   const numericAspectRatio = typeof aspectRatio === 'string' 
@@ -170,11 +160,6 @@ function UplotChartWithDataComponent({
           config.xAxisParameter === 'timestamp' ? dataViewport.xMax / 1000 : dataViewport.xMax
         ] : undefined,
         yRange: dataViewport ? [dataViewport.yMin, dataViewport.yMax] : undefined,
-        enableZoom,
-        enablePan,
-        zoomFactor,
-        panButton,
-        onZoomChange: setIsZoomed,
       })
       
       // Add tooltip plugin with chart data
@@ -216,7 +201,7 @@ function UplotChartWithDataComponent({
       setError(UPLOT_ERROR_MESSAGES.INIT_FAILED)
       return null
     }
-  }, [plotData, dimensions, config, dataViewport, additionalPlugins, enableZoom, enablePan, zoomFactor, panButton])
+  }, [plotData, dimensions, config, dataViewport, additionalPlugins])
   
   // Handle chart creation
   const handleChartCreate = useCallback((chart: uPlot) => {
@@ -224,17 +209,6 @@ function UplotChartWithDataComponent({
     console.log(`[Chart ${config.title}] uPlot chart created`)
   }, [config.title])
   
-  // Handle reset zoom
-  const handleResetZoom = useCallback(() => {
-    console.log('[UplotChartWithData] handleResetZoom called')
-    const chart = chartRef.current as uPlot & { resetZoom?: () => void }
-    if (chart && chart.resetZoom) {
-      console.log('[UplotChartWithData] Calling chart.resetZoom()')
-      chart.resetZoom()
-    } else {
-      console.warn('[UplotChartWithData] No resetZoom method found on chart')
-    }
-  }, [])
   
   // Handle chart destruction
   const handleChartDestroy = useCallback(() => {
@@ -315,18 +289,6 @@ function UplotChartWithDataComponent({
           </div>
         )}
         
-        {/* Reset Zoom Button */}
-        {isZoomed && (enableZoom || enablePan) && (
-          <div className="absolute top-1 right-1 z-[1001]">
-            <button
-              onClick={handleResetZoom}
-              className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300 rounded-md transition-all"
-              title="Reset zoom (Double-click, R, or Escape)"
-            >
-              Reset Zoom
-            </button>
-          </div>
-        )}
         
         {uplotData && uplotOptions && (
           <UplotChart
