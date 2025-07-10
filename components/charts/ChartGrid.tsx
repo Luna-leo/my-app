@@ -32,6 +32,8 @@ export function ChartGrid({
 }: ChartGridProps) {
   const ChartComponent = getDataChartComponent()
   const containerRef = useRef<HTMLDivElement>(null)
+  const [gridHeight, setGridHeight] = useState<string>('100%')
+  const [itemHeight, setItemHeight] = useState<string>('auto')
   
   // State to track which charts should be rendered
   const [renderedCharts, setRenderedCharts] = useState<Set<number>>(new Set())
@@ -55,6 +57,37 @@ export function ChartGrid({
     }
   }, [charts.length])
   
+  // Calculate grid height to ensure it fits in the container
+  useEffect(() => {
+    if (!containerRef.current || !layoutOption) {
+      setGridHeight('100%')
+      return
+    }
+    
+    const calculateGridHeight = () => {
+      const container = containerRef.current
+      if (!container || !container.parentElement) return
+      
+      const parentHeight = container.parentElement.clientHeight
+      const gridGap = 16 // gap-4
+      const totalGaps = (layoutOption.rows - 1) * gridGap
+      const rowHeight = (parentHeight - totalGaps) / layoutOption.rows
+      const totalHeight = rowHeight * layoutOption.rows + totalGaps
+      
+      setGridHeight(`${totalHeight}px`)
+      setItemHeight(`${rowHeight}px`)
+    }
+    
+    calculateGridHeight()
+    
+    const resizeObserver = new ResizeObserver(calculateGridHeight)
+    if (containerRef.current.parentElement) {
+      resizeObserver.observe(containerRef.current.parentElement)
+    }
+    
+    return () => resizeObserver.disconnect()
+  }, [layoutOption])
+  
   // Dynamic height calculations based on row count
   const getMinChartHeight = (rows: number) => {
     switch(rows) {
@@ -70,9 +103,9 @@ export function ChartGrid({
   const dynamicAspectRatio = useDynamicGridAspectRatio({
     layoutOption: layoutOption || null,
     containerRef: containerRef as RefObject<HTMLElement>,
-    headerHeight: 180, // Fixed height: AppHeader(56px) + DataSelectionBar(68px) + container padding(32px) + buffer(24px)
     gap: 16,
-    minChartHeight: getMinChartHeight(layoutOption?.rows || 1)
+    minChartHeight: getMinChartHeight(layoutOption?.rows || 1),
+    cardPadding: 52 // Card vertical padding: py-3(24px) + header(12px) + content(12px) + inner div(4px)
   })
 
   // Create a mapping for all possible grid layouts to ensure Tailwind includes them
@@ -125,41 +158,47 @@ export function ChartGrid({
   const aspectRatio = layoutOption ? dynamicAspectRatio : 1.5
 
   return (
-    <div ref={containerRef} className={cn('grid gap-4', getGridClassName())}>
+    <div 
+      ref={containerRef} 
+      className={cn('grid gap-4', getGridClassName())}
+      style={{ height: gridHeight }}
+    >
       {visibleCharts.map((chart, index) => {
         // First 4 charts use staggered loading, rest use lazy loading
         if (index < 4) {
           // Only render if this chart's index has been added to renderedCharts
           if (!renderedCharts.has(index)) {
             // Return placeholder to maintain grid layout
-            return <div key={chart.id} className="w-full" style={{ aspectRatio }} />
+            return <div key={chart.id} className="w-full" style={{ height: itemHeight, aspectRatio: layoutOption ? undefined : aspectRatio }} />
           }
           
           return (
-            <ChartComponent
-              key={chart.id}
-              config={chart}
-              aspectRatio={aspectRatio}
-              className="w-full"
-              onEdit={() => onEdit(chart.id)}
-              onDuplicate={() => onDuplicate(chart.id)}
-              onDelete={() => onDelete(chart.id)}
-              samplingConfig={samplingConfig}
-            />
+            <div key={chart.id} style={{ height: itemHeight }} className="w-full">
+              <ChartComponent
+                config={chart}
+                aspectRatio={aspectRatio}
+                className="w-full h-full"
+                onEdit={() => onEdit(chart.id)}
+                onDuplicate={() => onDuplicate(chart.id)}
+                onDelete={() => onDelete(chart.id)}
+                samplingConfig={samplingConfig}
+              />
+            </div>
           )
         } else {
           return (
-            <LazyChart
-              key={chart.id}
-              config={chart}
-              aspectRatio={aspectRatio}
-              className="w-full"
-              onEdit={() => onEdit(chart.id)}
-              onDuplicate={() => onDuplicate(chart.id)}
-              onDelete={() => onDelete(chart.id)}
-              rootMargin="200px"
-              samplingConfig={samplingConfig}
-            />
+            <div key={chart.id} style={{ height: itemHeight }} className="w-full">
+              <LazyChart
+                config={chart}
+                aspectRatio={aspectRatio}
+                className="w-full h-full"
+                onEdit={() => onEdit(chart.id)}
+                onDuplicate={() => onDuplicate(chart.id)}
+                onDelete={() => onDelete(chart.id)}
+                rootMargin="200px"
+                samplingConfig={samplingConfig}
+              />
+            </div>
           )
         }
       })}

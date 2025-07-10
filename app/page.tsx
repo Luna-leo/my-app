@@ -316,8 +316,9 @@ export default function Home() {
 
   return (
     <>
-      <div className="container mx-auto p-8">
-        <AppHeader
+      <div className="h-screen flex flex-col">
+        <div className="container mx-auto p-8 pb-0 flex-shrink-0">
+          <AppHeader
           onImportClick={() => setImportDialogOpen(true)}
           onDataSelectionClick={() => setDataSelectionOpen(true)}
           onCreateChartClick={() => setCreateChartOpen(true)}
@@ -326,15 +327,18 @@ export default function Home() {
           isCreateChartDisabled={selectedDataIds.length === 0}
           isExportDisabled={charts.length === 0}
         />
+        </div>
         
         {loading ? (
-          <LoadingState
-            message="Loading charts..."
-          />
+          <div className="container mx-auto p-8 flex-1">
+            <LoadingState
+              message="Loading charts..."
+            />
+          </div>
         ) : charts.length > 0 ? (
           mounted && (
             <>
-              <div className="mb-4">
+              <div className="container mx-auto px-8 flex-shrink-0">
                 <DataSelectionBar
                   selectedDataIds={selectedDataIds}
                   selectedDataLabels={selectedDataLabels}
@@ -352,7 +356,8 @@ export default function Home() {
                   isUpdatingSampling={isUpdatingSampling}
                 />
               </div>
-              <ChartGrid
+              <div className="container mx-auto px-8 pb-8 flex-1 overflow-hidden">
+                <ChartGrid
                 charts={charts}
                 onEdit={handleEditChart}
                 onDuplicate={handleDuplicateChart}
@@ -362,12 +367,14 @@ export default function Home() {
                 currentPage={currentPage}
                 samplingConfig={samplingConfig}
               />
+              </div>
             </>
           )
         ) : (
-          <EmptyState />
+          <div className="container mx-auto p-8 flex-1">
+            <EmptyState />
+          </div>
         )}
-
       </div>
 
       <CsvImportDialog

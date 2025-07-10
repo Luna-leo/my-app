@@ -4,19 +4,17 @@ import { LayoutOption } from '@/components/layout/LayoutSelector'
 interface UseDynamicGridAspectRatioOptions {
   layoutOption: LayoutOption | null
   containerRef: RefObject<HTMLElement | null>
-  headerHeight?: number
   gap?: number
   minChartHeight?: number
-  padding?: number
+  cardPadding?: number // Total vertical padding inside each card
 }
 
 export function useDynamicGridAspectRatio({
   layoutOption,
   containerRef,
-  headerHeight = 200, // Approximate header + controls height
   gap = 16, // Default Tailwind gap-4
   minChartHeight = 300,
-  padding = 32 // Default Tailwind p-8
+  cardPadding = 52 // Card internal vertical padding (py-3 + header + content + inner div)
 }: UseDynamicGridAspectRatioOptions) {
   const [aspectRatio, setAspectRatio] = useState<number>(1.5) // Default aspect ratio
 
@@ -27,19 +25,28 @@ export function useDynamicGridAspectRatio({
     }
 
     const calculateAspectRatio = () => {
-      const viewportHeight = window.innerHeight
-      const containerWidth = containerRef.current?.clientWidth || 0
-
-      // Calculate available height for charts
-      const totalVerticalGaps = (layoutOption.rows - 1) * gap
-      const availableHeight = viewportHeight - headerHeight - totalVerticalGaps - (padding * 2)
+      // Get parent container dimensions
+      const container = containerRef.current
+      if (!container) return
       
-      // Calculate chart dimensions
-      const chartHeight = Math.max(availableHeight / layoutOption.rows, minChartHeight)
-      const totalHorizontalGaps = (layoutOption.cols - 1) * gap
-      const chartWidth = (containerWidth - totalHorizontalGaps) / layoutOption.cols
+      const containerHeight = container.clientHeight
+      const containerWidth = container.clientWidth
+      
+      if (!containerHeight || !containerWidth) return
 
-      // Calculate dynamic aspect ratio
+      // Calculate available space for cards
+      const totalVerticalGaps = (layoutOption.rows - 1) * gap
+      const totalHorizontalGaps = (layoutOption.cols - 1) * gap
+      
+      // Calculate card dimensions
+      const cardHeight = (containerHeight - totalVerticalGaps) / layoutOption.rows
+      const cardWidth = (containerWidth - totalHorizontalGaps) / layoutOption.cols
+      
+      // Calculate actual chart dimensions (card minus padding)
+      const chartHeight = Math.max(cardHeight - cardPadding, minChartHeight)
+      const chartWidth = cardWidth
+
+      // Calculate dynamic aspect ratio based on actual chart area
       const dynamicRatio = chartWidth / chartHeight
       
       // Clamp aspect ratio to reasonable bounds
@@ -71,7 +78,7 @@ export function useDynamicGridAspectRatio({
       window.removeEventListener('resize', handleResize)
       resizeObserver.disconnect()
     }
-  }, [layoutOption, containerRef, headerHeight, gap, minChartHeight, padding])
+  }, [layoutOption, containerRef, gap, minChartHeight, cardPadding])
 
   return aspectRatio
 }

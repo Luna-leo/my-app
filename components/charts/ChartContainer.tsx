@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,8 +34,8 @@ export function ChartContainer({
   children,
 }: ChartContainerProps) {
   return (
-    <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-2">
+    <Card className={cn("h-full flex flex-col", className)}>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-2 flex-shrink-0">
         <div className="space-y-0">
           <CardTitle className="text-xs font-medium">{title}</CardTitle>
           <CardDescription className="text-xs leading-none">
@@ -76,8 +77,8 @@ export function ChartContainer({
           </DropdownMenu>
         )}
       </CardHeader>
-      <CardContent className="pt-2 pb-1 px-2">
-        <div className="relative pl-3 pr-1 pb-1">
+      <CardContent className="pt-2 pb-1 px-2 flex-1 flex flex-col min-h-0">
+        <div className="relative pl-3 pr-1 pb-1 flex-1">
           {children}
         </div>
       </CardContent>

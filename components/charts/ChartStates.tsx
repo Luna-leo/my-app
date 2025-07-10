@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { AlertCircle, TrendingUp } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ChartLoadingStateProps {
   title: string;
@@ -12,7 +13,7 @@ interface ChartLoadingStateProps {
 
 export function ChartLoadingState({ title, progress, className }: ChartLoadingStateProps) {
   return (
-    <Card className={className}>
+    <Card className={cn("h-full", className)}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription className="animate-pulse">Loading chart data...</CardDescription>

@@ -6,6 +6,7 @@ import { useChartDimensions, AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/us
 import { shallowEqual } from '@/lib/utils/hashUtils'
 import { useChartData } from '@/hooks/useChartDataOptimized'
 import { colorService } from '@/lib/services/colorService'
+import { cn } from '@/lib/utils'
 import {
   buildUplotOptions,
   transformToUplotData,
@@ -450,7 +451,7 @@ function UplotChartWithDataComponent({
       chartType={config.chartType}
       seriesCount={plotData.series.length}
       pointCount={totalPoints}
-      className={className}
+      className={cn("h-full", className)}
       onEdit={onEdit}
       onDuplicate={onDuplicate}
       onDelete={onDelete}

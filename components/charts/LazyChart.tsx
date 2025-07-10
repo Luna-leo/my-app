@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { getDataChartComponent } from './ChartProvider'
 import { ChartLoadingState } from './ChartStates'
+import { cn } from '@/lib/utils'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
@@ -61,12 +62,12 @@ export function LazyChart({
   const ChartComponent = getDataChartComponent()
 
   return (
-    <div ref={containerRef} className={className}>
+    <div ref={containerRef} className={cn("h-full", className)}>
       {hasBeenVisible ? (
         <ChartComponent
           config={config}
           aspectRatio={aspectRatio}
-          className={className}
+          className="h-full"
           onEdit={onEdit}
           onDuplicate={onDuplicate}
           onDelete={onDelete}
@@ -76,7 +77,7 @@ export function LazyChart({
         <ChartLoadingState
           title={config.title}
           progress={0}
-          className={className}
+          className="h-full"
         />
       )}
     </div>
