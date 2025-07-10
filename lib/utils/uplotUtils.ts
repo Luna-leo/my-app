@@ -35,12 +35,19 @@ export function buildAxisOptions(
     labelGap: 5,
     size: 50,
     gap: 5,
-    stroke: 'rgba(0,0,0,0.1)',
+    stroke: 'rgba(0,0,0,0.4)',
     grid: {
       show: true,
-      stroke: 'rgba(0,0,0,0.05)',
+      stroke: 'rgba(0,0,0,0.15)',
       width: 1,
     },
+    ticks: {
+      stroke: 'rgba(0,0,0,0.7)',
+      width: 1,
+      size: 4,
+    },
+    font: '12px system-ui, -apple-system, sans-serif',
+    labelFont: '14px system-ui, -apple-system, sans-serif',
   }
 
   if (isTime && type === 'x') {

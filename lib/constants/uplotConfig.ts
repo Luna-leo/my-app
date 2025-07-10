@@ -23,8 +23,8 @@ export const UPLOT_DEFAULTS = {
   },
   
   // Colors
-  GRID_COLOR: 'rgba(0,0,0,0.05)',
-  AXIS_COLOR: 'rgba(0,0,0,0.1)',
+  GRID_COLOR: 'rgba(0,0,0,0.15)',
+  AXIS_COLOR: 'rgba(0,0,0,0.4)',
   
   // Legend
   LEGEND: {
