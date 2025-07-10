@@ -155,10 +155,10 @@ export function buildUplotOptions({
       //   key: 'chart-sync',
       //   setSeries: true,
       // },
-      // Enable cursor drag for better interaction
+      // Disable cursor drag to prevent conflicts with selection plugin
       drag: {
-        x: true,
-        y: true,
+        x: false,
+        y: false,
       },
     },
     series: buildSeriesOptions(seriesNames, colors, chartType),

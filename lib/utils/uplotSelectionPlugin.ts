@@ -18,6 +18,7 @@ export interface SelectionPluginOptions {
   minSelectionSize?: number;
   enabled?: boolean;
   chartInstanceId?: string;
+  debug?: boolean;
 }
 
 export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plugin {
@@ -30,7 +31,8 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
     selectionOpacity = 0.2,
     minSelectionSize = 10,
     enabled = true,
-    chartInstanceId
+    chartInstanceId,
+    debug = false
   } = options;
   
   console.log('[SelectionPlugin] Creating plugin with options:', {
@@ -72,6 +74,15 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
     selectionEl.style.width = `${width}px`;
     selectionEl.style.height = `${height}px`;
     selectionEl.style.display = width > minSelectionSize && height > minSelectionSize ? 'block' : 'none';
+    
+    // Debug: Log selection element position
+    if (debug && width > minSelectionSize && height > minSelectionSize) {
+      console.log('[SelectionPlugin] Selection element updated:', {
+        left, top, width, height,
+        display: selectionEl.style.display,
+        minSelectionSize
+      });
+    }
   };
 
   const clearSelection = () => {
@@ -110,6 +121,18 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
 
     const relX = e.clientX - left;
     const relY = e.clientY - top;
+    
+    // Debug: Log coordinate information
+    if (debug) {
+      console.log('[SelectionPlugin] Mouse down coordinates:', {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        relX,
+        relY,
+        plotBounds: { plotLeft, plotTop, plotWidth, plotHeight },
+        uOverBounds: { left, top }
+      });
+    }
 
     if (relX >= plotLeft && relX <= plotLeft + plotWidth &&
         relY >= plotTop && relY <= plotTop + plotHeight) {
@@ -148,7 +171,7 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
           updateSelectionElement();
         }
         selectionTimeout = null;
-      }, 200); // 200ms delay to allow double-click detection
+      }, 50); // Reduced delay to 50ms for better responsiveness
     }
   };
 
@@ -200,6 +223,15 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
       const right = Math.max(startX, endX);
       const top = Math.min(startY, endY);
       const bottom = Math.max(startY, endY);
+      
+      // Debug: Log pixel coordinates before conversion
+      if (debug) {
+        console.log('[SelectionPlugin] Pixel coordinates:', {
+          left, right, top, bottom,
+          startX, startY, endX, endY,
+          width, height
+        });
+      }
 
       // Get data coordinates
       const xMin = u.posToVal(left, 'x');
@@ -209,6 +241,19 @@ export function createSelectionPlugin(options: SelectionPluginOptions = {}): Plu
       // Use the first y-scale by default
       const yMax = u.posToVal(top, u.series[1]?.scale || 'y');
       const yMin = u.posToVal(bottom, u.series[1]?.scale || 'y');
+      
+      // Debug: Log data coordinates after conversion
+      if (debug) {
+        console.log('[SelectionPlugin] Data coordinates:', {
+          xMin, xMax, yMin, yMax,
+          xRange: xMax - xMin,
+          yRange: yMax - yMin
+        });
+        console.log('[SelectionPlugin] Current scales:', {
+          x: u.scales.x,
+          y: u.scales[u.series[1]?.scale || 'y']
+        });
+      }
 
       const range: SelectionRange = {
         xMin,

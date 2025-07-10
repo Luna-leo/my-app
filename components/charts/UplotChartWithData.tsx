@@ -287,6 +287,7 @@ function UplotChartWithDataComponent({
           selectionOpacity: 0.2,
           minSelectionSize: 10,
           enabled: true,
+          debug: true, // Enable debug logging for coordinate tracking
         })
         options.plugins.push(selectionPlugin)
         
