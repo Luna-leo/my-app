@@ -111,7 +111,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
       const csvRows: string[] = []
     
     // Header row 1: Parameter IDs
-    csvRows.push(['#', ...columns].join(','))
+    csvRows.push(['Timestamp', ...columns].join(','))
     
     // Header row 2: Parameter names
     const paramNames = columns.map(col => parameters[col]?.parameterName || '-')
@@ -122,12 +122,13 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
     csvRows.push(['', ...units].join(','))
     
     // Data rows
-    exportData.forEach((row, index) => {
+    exportData.forEach((row) => {
+      const timestamp = new Date(row.timestamp).toLocaleString('ja-JP')
       const values = columns.map(col => {
         const value = row.data[col]
         return value !== undefined && value !== null ? String(value) : ''
       })
-      csvRows.push([index + 1, ...values].join(','))
+      csvRows.push([timestamp, ...values].join(','))
     })
     
     // Create blob and download with BOM for proper encoding
@@ -183,7 +184,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
               <Table className="min-w-max">
                 <TableHeader className="sticky top-0 z-20 bg-white">
                   <TableRow>
-                    <TableHead rowSpan={3} className="sticky left-0 z-30 bg-white w-[50px]">#</TableHead>
+                    <TableHead rowSpan={3} className="sticky left-0 z-30 bg-white min-w-[180px]">Timestamp</TableHead>
                     {columns.map(col => (
                       <TableHead key={col} className="text-center min-w-[100px] bg-white">
                         <div className="text-xs font-normal">{col}</div>
@@ -210,9 +211,11 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.map((row, index) => (
+                  {data.map((row) => (
                     <TableRow key={row.id}>
-                      <TableCell className="font-medium sticky left-0 z-10 bg-white">{index + 1}</TableCell>
+                      <TableCell className="font-medium sticky left-0 z-10 bg-white text-left">
+                        {new Date(row.timestamp).toLocaleString('ja-JP')}
+                      </TableCell>
                       {columns.map(col => (
                         <TableCell key={col} className="text-right min-w-[100px]">
                           {row.data[col] !== undefined ? String(row.data[col]) : '-'}
