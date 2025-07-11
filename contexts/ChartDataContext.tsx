@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog';
 import { ChartPlotData, ChartViewport, SamplingInfo } from '@/lib/types/chart';
-import { TimeSeriesData, ParameterInfo } from '@/lib/db/schema';
+import { TimeSeriesData, ParameterInfo, Metadata } from '@/lib/db/schema';
 import { db } from '@/lib/db';
 import {
   transformDataForChart,
@@ -165,8 +165,53 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
   // Fetch and cache raw data for given metadata IDs
   const fetchRawData = async (metadataIds: number[]) => {
 
-    // Fetch time series data in parallel with caching
+    // First, fetch metadata to get time range information
+    const metadataPromises = metadataIds.map(async (metadataId) => {
+      const cached = metadataCache.get(metadataId);
+      if (cached) {
+        return { metadataId, metadata: cached };
+      }
+      
+      const metadata = await db.metadata.get(metadataId);
+      if (metadata) {
+        metadataCache.set(metadataId, metadata);
+      }
+      return { metadataId, metadata };
+    });
+
+    const metadataResults = await Promise.all(metadataPromises);
+    const metadataMap = new Map();
+    const metadataByIdMap = new Map<number, Metadata | undefined>();
+    
+    metadataResults.forEach(({ metadataId, metadata }) => {
+      metadataByIdMap.set(metadataId, metadata);
+      if (metadata) {
+        metadataMap.set(metadataId, {
+          label: metadata.label,
+          plant: metadata.plant,
+          machineNo: metadata.machineNo,
+          startTime: metadata.startTime,
+          endTime: metadata.endTime,
+        });
+      }
+    });
+
+    // Then fetch time series data with time range filtering
     const timeSeriesPromises = metadataIds.map(async (metadataId) => {
+      const metadata = metadataByIdMap.get(metadataId);
+      
+      // If time range is specified, skip cache (for now)
+      if (metadata?.startTime || metadata?.endTime) {
+        console.log(`[ChartDataContext] Fetching filtered data for metadataId ${metadataId}:`, {
+          startTime: metadata.startTime,
+          endTime: metadata.endTime
+        });
+        const data = await db.getTimeSeriesData(metadataId, metadata.startTime, metadata.endTime);
+        console.log(`[ChartDataContext] Filtered data count: ${data.length}`);
+        return { metadataId, data };
+      }
+      
+      // For data without time range, use cache as before
       const cachedData = timeSeriesCache.get(metadataId);
       if (cachedData) {
         return { metadataId, data: cachedData };
@@ -188,32 +233,6 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     // Also create merged data for backward compatibility
     const timeSeriesArrays = timeSeriesResults.map(r => r.data);
     const mergedTimeSeries = mergeTimeSeriesData(timeSeriesArrays);
-
-    // Fetch metadata in parallel
-    const metadataPromises = metadataIds.map(async (metadataId) => {
-      const cached = metadataCache.get(metadataId);
-      if (cached) {
-        return { metadataId, metadata: cached };
-      }
-      
-      const metadata = await db.metadata.get(metadataId);
-      if (metadata) {
-        metadataCache.set(metadataId, metadata);
-      }
-      return { metadataId, metadata };
-    });
-
-    const metadataResults = await Promise.all(metadataPromises);
-    const metadataMap = new Map();
-    metadataResults.forEach(({ metadataId, metadata }) => {
-      if (metadata) {
-        metadataMap.set(metadataId, {
-          label: metadata.label,
-          plant: metadata.plant,
-          machineNo: metadata.machineNo,
-        });
-      }
-    });
 
     const rawData = {
       timeSeries: mergedTimeSeries,
