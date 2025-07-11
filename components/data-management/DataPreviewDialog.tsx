@@ -70,7 +70,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+      <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Data Preview</DialogTitle>
           <DialogDescription>
@@ -80,7 +80,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-8 w-8 animate-spin" />
@@ -94,7 +94,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
               No data available
             </div>
           ) : (
-            <div className="h-full overflow-auto">
+            <div className="h-full overflow-auto relative">
               <Table className="min-w-max">
                 <TableHeader>
                   <TableRow>
