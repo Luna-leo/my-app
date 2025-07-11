@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Upload } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Upload, Loader2 } from 'lucide-react'
 import { FileDropzone } from '../csv-import/FileDropzone'
 import { MetadataForm, MetadataFormData } from '../csv-import/MetadataForm'
 import { ImportProgress } from '../csv-import/ImportProgress'
@@ -27,11 +27,53 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
   const [metadataErrors, setMetadataErrors] = useState<Partial<Record<keyof MetadataFormData, string>>>({})
   const [importProgress, setImportProgress] = useState<ImportProgressType | null>(null)
   const [importError, setImportError] = useState<string>('')
+  const [detectedDataRange, setDetectedDataRange] = useState<{ startTime: Date; endTime: Date } | null>(null)
+  const [detectingRange, setDetectingRange] = useState(false)
 
   const handleFilesSelected = (files: File[]) => {
     setSelectedFiles(files)
     if (files.length > 0) {
       setStep('metadata')
+    }
+  }
+
+  const detectDataRange = async () => {
+    console.log('detectDataRange called')
+    if (selectedFiles.length === 0) return
+    
+    setDetectingRange(true)
+    setDetectedDataRange(null)
+    setImportError('')
+    
+    try {
+      const dataSource: DataSource = {
+        type: metadata.dataSource,
+        encoding: metadata.dataSource === 'CASS' ? 'shift-jis' : 'utf-8'
+      }
+      
+      const importer = new CsvImporter()
+      const range = await importer.detectDataRange(selectedFiles, dataSource)
+      
+      if (range) {
+        setDetectedDataRange(range)
+        const formatDateTime = (date: Date) => {
+          const pad = (n: number) => n.toString().padStart(2, '0')
+          return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+        }
+        
+        setMetadata(prev => ({
+          ...prev,
+          dataStartTime: formatDateTime(range.startTime),
+          dataEndTime: formatDateTime(range.endTime)
+        }))
+      } else {
+        setImportError('データ期間を検出できませんでした。手動で期間を入力してください。')
+      }
+    } catch (error) {
+      console.error('Failed to detect data range:', error)
+      setImportError('データ期間の検出中にエラーが発生しました。')
+    } finally {
+      setDetectingRange(false)
     }
   }
 
@@ -76,6 +118,8 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
           event: metadata.event,
           startTime: metadata.startTime ? new Date(metadata.startTime) : undefined,
           endTime: metadata.endTime ? new Date(metadata.endTime) : undefined,
+          dataStartTime: metadata.dataStartTime ? new Date(metadata.dataStartTime) : undefined,
+          dataEndTime: metadata.dataEndTime ? new Date(metadata.dataEndTime) : undefined,
           dataSource: metadata.dataSource
         },
         dataSource
@@ -103,10 +147,12 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
     setMetadataErrors({})
     setImportProgress(null)
     setImportError('')
+    setDetectedDataRange(null)
+    setDetectingRange(false)
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {step === 'files' && (
         <FileDropzone
           onFilesSelected={handleFilesSelected}
@@ -115,21 +161,30 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
       )}
 
       {step === 'metadata' && (
-        <>
-          {selectedFiles.length > 0 && (
-            <Alert className="mb-4">
-              <Upload className="h-4 w-4" />
-              <AlertDescription>
-                {selectedFiles.length} CSV file{selectedFiles.length > 1 ? 's' : ''} selected
-              </AlertDescription>
-            </Alert>
-          )}
-          <MetadataForm
-            value={metadata}
-            onChange={setMetadata}
-            errors={metadataErrors}
-          />
-          <div className="flex justify-between mt-6">
+        <div className="flex flex-col h-full">
+          <div className="flex-1 overflow-y-auto px-1">
+            {selectedFiles.length > 0 && (
+              <Alert className="mb-4">
+                <Upload className="h-4 w-4" />
+                <AlertDescription>
+                  {selectedFiles.length} CSV file{selectedFiles.length > 1 ? 's' : ''} selected
+                </AlertDescription>
+              </Alert>
+            )}
+            {importError && (
+              <Alert className="mb-4" variant="destructive">
+                <AlertDescription>{importError}</AlertDescription>
+              </Alert>
+            )}
+            <MetadataForm
+              value={metadata}
+              onChange={setMetadata}
+              errors={metadataErrors}
+              onDetectDataRange={detectDataRange}
+              detectingRange={detectingRange}
+            />
+          </div>
+          <div className="flex justify-between p-4 border-t bg-background">
             <Button
               onClick={() => setStep('files')}
               variant="outline"
@@ -142,7 +197,7 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
               <ChevronRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
-        </>
+        </div>
       )}
 
       {step === 'importing' && (

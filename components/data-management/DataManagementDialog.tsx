@@ -81,7 +81,7 @@ export function DataManagementDialog({
               />
             </TabsContent>
 
-            <TabsContent value="import" className="h-full mt-4">
+            <TabsContent value="import" className="h-full mt-4 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden">
               <CsvImportContent
                 onImportComplete={handleImportComplete}
               />

@@ -11,6 +11,8 @@ export interface Metadata {
   event?: string;
   startTime?: Date;
   endTime?: Date;
+  dataStartTime?: Date;
+  dataEndTime?: Date;
   dataSource: DataSource['type'];
   importedAt: Date;
 }

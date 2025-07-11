@@ -2,6 +2,7 @@ import Papa from 'papaparse';
 import * as iconv from 'iconv-lite';
 import { db } from './index';
 import { CsvHeader, DataSource, Metadata, ParameterInfo } from './schema';
+import { parseTimestamp } from '../utils/date-parser';
 
 export interface CsvParseResult {
   headers: CsvHeader[];
@@ -17,6 +18,7 @@ export interface ImportProgress {
 
 export class CsvImporter {
   private onProgress?: (progress: ImportProgress) => void;
+  public detectedDataRange?: { startTime: Date; endTime: Date };
 
   constructor(onProgress?: (progress: ImportProgress) => void) {
     this.onProgress = onProgress;
@@ -26,6 +28,92 @@ export class CsvImporter {
     if (this.onProgress) {
       this.onProgress(progress);
     }
+  }
+
+  async detectDataRange(
+    files: File[],
+    dataSource: DataSource
+  ): Promise<{ startTime: Date; endTime: Date } | undefined> {
+    let minTimestamp: Date | null = null;
+    let maxTimestamp: Date | null = null;
+
+    for (const file of files) {
+      try {
+        // Parse only a sample of the file for performance
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const decoded = iconv.decode(buffer, dataSource.encoding);
+        
+        const lines = decoded.split('\n').filter(line => line.trim());
+        
+        console.log(`Processing file: ${file.name}, lines: ${lines.length}`);
+        
+        // Skip header lines (first 3 rows)
+        if (lines.length <= 3) continue;
+        
+        // Check first few data rows for start time
+        const firstDataRows = lines.slice(3, Math.min(13, lines.length));
+        console.log(`First data rows sample:`, firstDataRows.slice(0, 3));
+        
+        for (const line of firstDataRows) {
+          // Use PapaParse to properly parse CSV line
+          const parseResult = Papa.parse(line, { 
+            delimiter: ',',
+            quoteChar: '"',
+            escapeChar: '"',
+            skipEmptyLines: true
+          });
+          
+          if (parseResult.data && parseResult.data.length > 0 && parseResult.data[0].length > 0) {
+            const columns = parseResult.data[0] as string[];
+            const timestampStr = columns[0]?.trim();
+            console.log(`Trying to parse timestamp: "${timestampStr}"`);
+            const timestamp = parseTimestamp(timestampStr);
+            if (timestamp) {
+              console.log(`Parsed timestamp: ${timestamp}`);
+              if (!minTimestamp || timestamp < minTimestamp) {
+                minTimestamp = timestamp;
+              }
+              break; // Found a valid timestamp, no need to check more
+            }
+          }
+        }
+        
+        // Check last few data rows for end time
+        const lastDataRows = lines.slice(Math.max(lines.length - 10, 3));
+        for (let i = lastDataRows.length - 1; i >= 0; i--) {
+          const line = lastDataRows[i];
+          // Use PapaParse to properly parse CSV line
+          const parseResult = Papa.parse(line, { 
+            delimiter: ',',
+            quoteChar: '"',
+            escapeChar: '"',
+            skipEmptyLines: true
+          });
+          
+          if (parseResult.data && parseResult.data.length > 0 && parseResult.data[0].length > 0) {
+            const columns = parseResult.data[0] as string[];
+            const timestampStr = columns[0]?.trim();
+            const timestamp = parseTimestamp(timestampStr);
+            if (timestamp) {
+              if (!maxTimestamp || timestamp > maxTimestamp) {
+                maxTimestamp = timestamp;
+              }
+              break; // Found a valid timestamp, no need to check more
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error parsing file ${file.name}:`, error);
+        // Continue with next file
+      }
+    }
+
+    console.log(`Detected range: min=${minTimestamp}, max=${maxTimestamp}`);
+    
+    return minTimestamp && maxTimestamp 
+      ? { startTime: minTimestamp, endTime: maxTimestamp } 
+      : undefined;
   }
 
   async importFiles(
@@ -63,6 +151,9 @@ export class CsvImporter {
     });
 
     const combinedData = await this.combineData(parsedFiles, metadata);
+    
+    // Store detected data range
+    this.detectedDataRange = combinedData.dataRange;
 
     // Save to IndexedDB
     this.updateProgress({
@@ -139,9 +230,15 @@ export class CsvImporter {
   private async combineData(
     parsedFiles: CsvParseResult[],
     metadata: Omit<Metadata, 'id' | 'importedAt'>
-  ): Promise<{ parameters: Map<string, ParameterInfo>, timeSeriesData: Map<string, Record<string, number | null>> }> {
+  ): Promise<{ 
+    parameters: Map<string, ParameterInfo>, 
+    timeSeriesData: Map<string, Record<string, number | null>>,
+    dataRange?: { startTime: Date, endTime: Date }
+  }> {
     const parametersMap = new Map<string, ParameterInfo>();
     const timeSeriesMap = new Map<string, Record<string, number | null>>();
+    let minTimestamp: Date | null = null;
+    let maxTimestamp: Date | null = null;
 
     // Process each file
     for (const parsed of parsedFiles) {
@@ -179,17 +276,33 @@ export class CsvImporter {
         }
 
         timeSeriesMap.set(String(timestamp), dataPoint);
+        
+        // Track data range
+        const timestampDate = parseTimestamp(String(timestamp));
+        if (timestampDate) {
+          if (!minTimestamp || timestampDate < minTimestamp) {
+            minTimestamp = timestampDate;
+          }
+          if (!maxTimestamp || timestampDate > maxTimestamp) {
+            maxTimestamp = timestampDate;
+          }
+        }
       }
     }
 
     return {
       parameters: parametersMap,
-      timeSeriesData: timeSeriesMap
+      timeSeriesData: timeSeriesMap,
+      dataRange: minTimestamp && maxTimestamp ? { startTime: minTimestamp, endTime: maxTimestamp } : undefined
     };
   }
 
   private async saveToDatabase(
-    combinedData: { parameters: Map<string, ParameterInfo>, timeSeriesData: Map<string, Record<string, number | null>> },
+    combinedData: { 
+      parameters: Map<string, ParameterInfo>, 
+      timeSeriesData: Map<string, Record<string, number | null>>,
+      dataRange?: { startTime: Date, endTime: Date }
+    },
     metadata: Omit<Metadata, 'id' | 'importedAt'>
   ): Promise<void> {
     await db.transaction('rw', db.metadata, db.parameters, db.timeSeries, async () => {
@@ -203,12 +316,29 @@ export class CsvImporter {
       const parametersArray = Array.from(combinedData.parameters.values());
       await db.parameters.bulkAdd(parametersArray);
 
-      // Save time series data
-      const timeSeriesArray = Array.from(combinedData.timeSeriesData.entries()).map(([timestamp, data]) => ({
-        metadataId,
-        timestamp: new Date(timestamp),
-        data
-      }));
+      // Save time series data with optional filtering
+      let timeSeriesArray = Array.from(combinedData.timeSeriesData.entries())
+        .map(([timestamp, data]) => {
+          const parsedDate = parseTimestamp(timestamp);
+          return parsedDate ? {
+            metadataId,
+            timestamp: parsedDate,
+            data
+          } : null;
+        })
+        .filter(item => item !== null) as { metadataId: number; timestamp: Date; data: Record<string, number | null> }[];
+
+      // Apply data range filtering if specified
+      const dataStartTime = (metadata as { dataStartTime?: Date }).dataStartTime;
+      const dataEndTime = (metadata as { dataEndTime?: Date }).dataEndTime;
+      
+      if (dataStartTime || dataEndTime) {
+        timeSeriesArray = timeSeriesArray.filter(item => {
+          if (dataStartTime && item.timestamp < dataStartTime) return false;
+          if (dataEndTime && item.timestamp > dataEndTime) return false;
+          return true;
+        });
+      }
 
       // Batch insert for better performance
       const batchSize = 1000;
