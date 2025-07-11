@@ -5,7 +5,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { db } from '@/lib/db'
 import { Metadata, TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Download } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 interface DataPreviewDialogProps {
   open: boolean
@@ -67,6 +68,51 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
 
   // Extract columns from the actual data
   const columns = data.length > 0 ? Object.keys(data[0].data) : []
+
+  const handleExportCsv = () => {
+    if (!metadata || data.length === 0) return
+
+    // Create CSV content with 3-row header
+    const csvRows: string[] = []
+    
+    // Header row 1: Parameter IDs
+    csvRows.push(['#', ...columns].join(','))
+    
+    // Header row 2: Parameter names
+    const paramNames = columns.map(col => parameters[col]?.parameterName || '-')
+    csvRows.push(['', ...paramNames].join(','))
+    
+    // Header row 3: Units
+    const units = columns.map(col => parameters[col]?.unit || '-')
+    csvRows.push(['', ...units].join(','))
+    
+    // Data rows
+    data.forEach((row, index) => {
+      const values = columns.map(col => {
+        const value = row.data[col]
+        return value !== undefined && value !== null ? String(value) : ''
+      })
+      csvRows.push([index + 1, ...values].join(','))
+    })
+    
+    // Create blob and download
+    const csvContent = csvRows.join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    
+    // Generate filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+    const filename = `${metadata.plant}_${metadata.machineNo}_${timestamp}.csv`
+    
+    // Trigger download
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -141,8 +187,19 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
           )}
         </div>
 
-        <div className="text-sm text-gray-500 pt-4 border-t">
-          Showing first {data.length} rows of data
+        <div className="flex justify-between items-center pt-4 border-t">
+          <span className="text-sm text-gray-500">
+            Showing first {data.length} rows of data
+          </span>
+          <Button
+            onClick={handleExportCsv}
+            variant="outline"
+            size="sm"
+            disabled={data.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
