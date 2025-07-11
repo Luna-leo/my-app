@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { db } from '@/lib/db'
 import { Metadata } from '@/lib/db/schema'
 import { Loader2 } from 'lucide-react'
+import { calculateDataPeriodFromTimeSeries } from '@/lib/db/dataUtils'
 
 interface EditMetadataDialogProps {
   open: boolean
@@ -27,6 +28,10 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [calculatedDataPeriod, setCalculatedDataPeriod] = useState<{
+    dataStartTime?: Date;
+    dataEndTime?: Date;
+  } | null>(null)
 
   useEffect(() => {
     if (metadata) {
@@ -35,9 +40,20 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
         machineNo: metadata.machineNo || '',
         label: metadata.label || '',
         event: metadata.event || '',
-        startTime: metadata.startTime ? new Date(metadata.startTime).toISOString().slice(0, 16) : '',
-        endTime: metadata.endTime ? new Date(metadata.endTime).toISOString().slice(0, 16) : ''
+        startTime: metadata.startTime ? new Date(metadata.startTime).toISOString().slice(0, 19) : '',
+        endTime: metadata.endTime ? new Date(metadata.endTime).toISOString().slice(0, 19) : ''
       })
+      
+      // データ期間が未設定の場合、時系列データから計算
+      if (metadata.id && (!metadata.dataStartTime || !metadata.dataEndTime)) {
+        calculateDataPeriodFromTimeSeries(metadata.id).then(period => {
+          if (period) {
+            setCalculatedDataPeriod(period)
+          }
+        })
+      } else {
+        setCalculatedDataPeriod(null)
+      }
     }
   }, [metadata])
 
@@ -48,14 +64,22 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
       setSaving(true)
       setError(null)
 
-      await db.metadata.update(metadata.id!, {
+      const updateData: Partial<Metadata> = {
         plant: formData.plant,
         machineNo: formData.machineNo,
         label: formData.label || undefined,
         event: formData.event || undefined,
         startTime: formData.startTime ? new Date(formData.startTime) : undefined,
         endTime: formData.endTime ? new Date(formData.endTime) : undefined
-      })
+      }
+
+      // データ期間が未設定で計算値がある場合、それも保存
+      if (calculatedDataPeriod && !metadata.dataStartTime && !metadata.dataEndTime) {
+        updateData.dataStartTime = calculatedDataPeriod.dataStartTime
+        updateData.dataEndTime = calculatedDataPeriod.dataEndTime
+      }
+
+      await db.metadata.update(metadata.id!, updateData)
 
       onUpdate()
       onOpenChange(false)
@@ -68,9 +92,14 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
 
   if (!metadata) return null
 
+  const formatDate = (date?: Date) => {
+    if (!date) return 'N/A'
+    return new Date(date).toLocaleString('ja-JP')
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Edit Metadata</DialogTitle>
           <DialogDescription>
@@ -78,79 +107,118 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="plant" className="text-right">
-              Plant
-            </Label>
-            <Input
-              id="plant"
-              value={formData.plant}
-              onChange={(e) => setFormData({ ...formData, plant: e.target.value })}
-              className="col-span-3"
-              required
-            />
+        <div className="space-y-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="plant">
+                Plant
+              </Label>
+              <Input
+                id="plant"
+                value={formData.plant}
+                onChange={(e) => setFormData({ ...formData, plant: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="machineNo">
+                Machine No
+              </Label>
+              <Input
+                id="machineNo"
+                value={formData.machineNo}
+                onChange={(e) => setFormData({ ...formData, machineNo: e.target.value })}
+                required
+              />
+            </div>
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="machineNo" className="text-right">
-              Machine No
-            </Label>
-            <Input
-              id="machineNo"
-              value={formData.machineNo}
-              onChange={(e) => setFormData({ ...formData, machineNo: e.target.value })}
-              className="col-span-3"
-              required
-            />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="label" className="text-right">
-              Label
-            </Label>
+          <div className="space-y-2">
+            <div>
+              <Label htmlFor="label">
+                Label
+              </Label>
+              <p className="text-xs text-gray-500 mt-1">グラフの凡例に利用されます。</p>
+            </div>
             <Input
               id="label"
               value={formData.label}
               onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-              className="col-span-3"
               placeholder="Optional"
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="event" className="text-right">
+          <div className="space-y-2">
+            <Label htmlFor="event">
               Event
             </Label>
             <Input
               id="event"
               value={formData.event}
               onChange={(e) => setFormData({ ...formData, event: e.target.value })}
-              className="col-span-3"
               placeholder="Optional"
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="startTime" className="text-right">
-              Start Time
-            </Label>
-            <Input
-              id="startTime"
-              type="datetime-local"
-              value={formData.startTime}
-              onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-              className="col-span-3"
-            />
+          <div className="space-y-2">
+            <div>
+              <Label>
+                時間範囲
+              </Label>
+              <p className="text-xs text-gray-500 mt-1">グラフに利用するデータ期間（未入力の場合、保存されているすべてのデータ期間を利用）</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="startTime" className="text-sm">
+                  Start Time
+                </Label>
+                <Input
+                  id="startTime"
+                  type="datetime-local"
+                  step="1"
+                  value={formData.startTime}
+                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="endTime" className="text-sm">
+                  End Time
+                </Label>
+                <Input
+                  id="endTime"
+                  type="datetime-local"
+                  step="1"
+                  value={formData.endTime}
+                  onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                />
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="endTime" className="text-right">
-              End Time
-            </Label>
-            <Input
-              id="endTime"
-              type="datetime-local"
-              value={formData.endTime}
-              onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-              className="col-span-3"
-            />
-          </div>
+
+          {/* データ期間の表示（読み取り専用） */}
+          {(metadata.dataStartTime || metadata.dataEndTime || calculatedDataPeriod) && (
+            <div className="mt-4 pt-4 border-t space-y-4">
+              <p className="text-sm font-medium text-gray-700">
+                保存されているデータ期間（参考情報）
+                {calculatedDataPeriod && <span className="text-xs font-normal text-gray-500 ml-1">- 実データから計算</span>}
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm text-gray-600">
+                    開始時刻
+                  </Label>
+                  <div className="text-sm bg-gray-50 rounded px-3 py-2">
+                    {formatDate(metadata.dataStartTime || calculatedDataPeriod?.dataStartTime)}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm text-gray-600">
+                    終了時刻
+                  </Label>
+                  <div className="text-sm bg-gray-50 rounded px-3 py-2">
+                    {formatDate(metadata.dataEndTime || calculatedDataPeriod?.dataEndTime)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {error && (
