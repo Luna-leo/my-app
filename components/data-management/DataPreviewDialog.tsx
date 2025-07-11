@@ -182,46 +182,46 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
           ) : (
             <div className="h-full overflow-auto relative">
               <table className="min-w-max relative">
-                <thead className="sticky top-0 z-20 bg-white shadow-sm">
-                  <TableRow className="bg-white">
-                    <TableHead rowSpan={3} className="sticky left-0 z-30 bg-white min-w-[180px] border-b">Timestamp</TableHead>
+                <thead className="sticky top-0 z-20 after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-gray-200">
+                  <tr className="bg-white">
+                    <th rowSpan={3} className="sticky left-0 z-30 bg-white min-w-[180px] px-2 py-1 text-left font-medium">Timestamp</th>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center min-w-[100px] bg-white">
+                      <th key={col} className="bg-white text-right min-w-[100px] px-2 py-1">
                         <div className="text-xs font-normal">{col}</div>
-                      </TableHead>
+                      </th>
                     ))}
-                  </TableRow>
-                  <TableRow className="bg-white">
+                  </tr>
+                  <tr className="bg-white">
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center min-w-[100px] bg-white">
+                      <th key={col} className="bg-white text-right min-w-[100px] px-2 py-1">
                         <div className="text-xs font-normal">
                           {parameters[col]?.parameterName || '-'}
                         </div>
-                      </TableHead>
+                      </th>
                     ))}
-                  </TableRow>
-                  <TableRow className="bg-white border-b">
+                  </tr>
+                  <tr className="bg-white">
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center min-w-[100px] bg-white">
+                      <th key={col} className="bg-white text-right min-w-[100px] px-2 py-1">
                         <div className="text-xs font-normal">
                           {parameters[col]?.unit || '-'}
                         </div>
-                      </TableHead>
+                      </th>
                     ))}
-                  </TableRow>
+                  </tr>
                 </thead>
                 <tbody>
                   {data.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="font-medium sticky left-0 z-10 bg-white text-left">
+                    <tr key={row.id} className="border-b hover:bg-gray-50">
+                      <td className="font-medium sticky left-0 z-10 bg-white text-left min-w-[180px] px-2 py-2">
                         {new Date(row.timestamp).toLocaleString('ja-JP')}
-                      </TableCell>
+                      </td>
                       {columns.map(col => (
-                        <TableCell key={col} className="text-right min-w-[100px]">
+                        <td key={col} className="text-right min-w-[100px] px-2 py-2">
                           {row.data[col] !== undefined ? String(row.data[col]) : '-'}
-                        </TableCell>
+                        </td>
                       ))}
-                    </TableRow>
+                    </tr>
                   ))}
                 </tbody>
               </table>
