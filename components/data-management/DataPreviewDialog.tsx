@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableCell, TableHead, TableRow } from '@/components/ui/table'
 import { db } from '@/lib/db'
 import { Metadata, TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
 import { Loader2, Download } from 'lucide-react'
@@ -181,17 +181,17 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
             </div>
           ) : (
             <div className="h-full overflow-auto relative">
-              <Table className="min-w-max">
-                <TableHeader className="sticky top-0 z-20 bg-white">
-                  <TableRow>
-                    <TableHead rowSpan={3} className="sticky left-0 z-30 bg-white min-w-[180px]">Timestamp</TableHead>
+              <table className="min-w-max relative">
+                <thead className="sticky top-0 z-20 bg-white shadow-sm">
+                  <TableRow className="bg-white">
+                    <TableHead rowSpan={3} className="sticky left-0 z-30 bg-white min-w-[180px] border-b">Timestamp</TableHead>
                     {columns.map(col => (
                       <TableHead key={col} className="text-center min-w-[100px] bg-white">
                         <div className="text-xs font-normal">{col}</div>
                       </TableHead>
                     ))}
                   </TableRow>
-                  <TableRow>
+                  <TableRow className="bg-white">
                     {columns.map(col => (
                       <TableHead key={col} className="text-center min-w-[100px] bg-white">
                         <div className="text-xs font-normal">
@@ -200,7 +200,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                       </TableHead>
                     ))}
                   </TableRow>
-                  <TableRow>
+                  <TableRow className="bg-white border-b">
                     {columns.map(col => (
                       <TableHead key={col} className="text-center min-w-[100px] bg-white">
                         <div className="text-xs font-normal">
@@ -209,8 +209,8 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                       </TableHead>
                     ))}
                   </TableRow>
-                </TableHeader>
-                <TableBody>
+                </thead>
+                <tbody>
                   {data.map((row) => (
                     <TableRow key={row.id}>
                       <TableCell className="font-medium sticky left-0 z-10 bg-white text-left">
@@ -223,8 +223,8 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                       ))}
                     </TableRow>
                   ))}
-                </TableBody>
-              </Table>
+                </tbody>
+              </table>
             </div>
           )}
         </div>
