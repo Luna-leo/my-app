@@ -43,7 +43,7 @@ export function DataManagementDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] sm:h-[600px] h-[500px] flex flex-col p-0">
+      <DialogContent className="sm:max-w-[800px] h-[90vh] flex flex-col p-0">
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>Data Management</DialogTitle>
           <DialogDescription>
