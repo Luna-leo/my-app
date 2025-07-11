@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Upload, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Upload } from 'lucide-react'
 import { FileDropzone } from '../csv-import/FileDropzone'
 import { MetadataForm, MetadataFormData } from '../csv-import/MetadataForm'
 import { ImportProgress } from '../csv-import/ImportProgress'
@@ -27,7 +27,6 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
   const [metadataErrors, setMetadataErrors] = useState<Partial<Record<keyof MetadataFormData, string>>>({})
   const [importProgress, setImportProgress] = useState<ImportProgressType | null>(null)
   const [importError, setImportError] = useState<string>('')
-  const [detectedDataRange, setDetectedDataRange] = useState<{ startTime: Date; endTime: Date } | null>(null)
   const [detectingRange, setDetectingRange] = useState(false)
 
   const handleFilesSelected = (files: File[]) => {
@@ -41,7 +40,6 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
     if (selectedFiles.length === 0) return
     
     setDetectingRange(true)
-    setDetectedDataRange(null)
     setImportError('')
     
     try {
@@ -54,7 +52,6 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
       const range = await importer.detectDataRange(selectedFiles, dataSource)
       
       if (range) {
-        setDetectedDataRange(range)
         const formatDateTime = (date: Date) => {
           const pad = (n: number) => n.toString().padStart(2, '0')
           return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
@@ -146,7 +143,6 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
     setMetadataErrors({})
     setImportProgress(null)
     setImportError('')
-    setDetectedDataRange(null)
     setDetectingRange(false)
   }
 

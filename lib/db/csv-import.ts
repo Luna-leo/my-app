@@ -62,15 +62,18 @@ export class CsvImporter {
             skipEmptyLines: true
           });
           
-          if (parseResult.data && parseResult.data.length > 0 && parseResult.data[0].length > 0) {
-            const columns = parseResult.data[0] as string[];
-            const timestampStr = columns[0]?.trim();
-            const timestamp = parseTimestamp(timestampStr);
-            if (timestamp) {
-              if (!minTimestamp || timestamp < minTimestamp) {
-                minTimestamp = timestamp;
+          if (parseResult.data && parseResult.data.length > 0) {
+            const firstRow = parseResult.data[0];
+            if (Array.isArray(firstRow) && firstRow.length > 0) {
+              const columns = firstRow as string[];
+              const timestampStr = columns[0]?.trim();
+              const timestamp = parseTimestamp(timestampStr);
+              if (timestamp) {
+                if (!minTimestamp || timestamp < minTimestamp) {
+                  minTimestamp = timestamp;
+                }
+                break; // Found a valid timestamp, no need to check more
               }
-              break; // Found a valid timestamp, no need to check more
             }
           }
         }
@@ -87,25 +90,26 @@ export class CsvImporter {
             skipEmptyLines: true
           });
           
-          if (parseResult.data && parseResult.data.length > 0 && parseResult.data[0].length > 0) {
-            const columns = parseResult.data[0] as string[];
-            const timestampStr = columns[0]?.trim();
-            const timestamp = parseTimestamp(timestampStr);
-            if (timestamp) {
-              if (!maxTimestamp || timestamp > maxTimestamp) {
-                maxTimestamp = timestamp;
+          if (parseResult.data && parseResult.data.length > 0) {
+            const firstRow = parseResult.data[0];
+            if (Array.isArray(firstRow) && firstRow.length > 0) {
+              const columns = firstRow as string[];
+              const timestampStr = columns[0]?.trim();
+              const timestamp = parseTimestamp(timestampStr);
+              if (timestamp) {
+                if (!maxTimestamp || timestamp > maxTimestamp) {
+                  maxTimestamp = timestamp;
+                }
+                break; // Found a valid timestamp, no need to check more
               }
-              break; // Found a valid timestamp, no need to check more
             }
           }
         }
-      } catch (error) {
-        console.error(`Error parsing file ${file.name}:`, error);
+      } catch {
         // Continue with next file
       }
     }
 
-    
     return minTimestamp && maxTimestamp 
       ? { startTime: minTimestamp, endTime: maxTimestamp } 
       : undefined;
