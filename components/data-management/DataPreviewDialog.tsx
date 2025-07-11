@@ -105,9 +105,10 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
       csvRows.push([index + 1, ...values].join(','))
     })
     
-    // Create blob and download
+    // Create blob and download with BOM for proper encoding
     const csvContent = csvRows.join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const BOM = '\uFEFF'
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     
     // Generate filename
