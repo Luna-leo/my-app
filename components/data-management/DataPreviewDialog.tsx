@@ -99,16 +99,16 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead rowSpan={3} className="w-[50px] border-b-2">#</TableHead>
+                    <TableHead rowSpan={3} className="w-[50px]">#</TableHead>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center border-l">
+                      <TableHead key={col} className="text-center">
                         <div className="text-xs font-normal">{col}</div>
                       </TableHead>
                     ))}
                   </TableRow>
                   <TableRow>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center border-l">
+                      <TableHead key={col} className="text-center">
                         <div className="text-xs font-normal">
                           {parameters[col]?.parameterName || '-'}
                         </div>
@@ -117,7 +117,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                   </TableRow>
                   <TableRow>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center border-l border-b-2">
+                      <TableHead key={col} className="text-center">
                         <div className="text-xs font-normal">
                           {parameters[col]?.unit || '-'}
                         </div>
