@@ -28,7 +28,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
         setError(null)
         
         // Load first 100 rows of data for preview
-        const timeSeriesData = await db.timeSeriesData
+        const timeSeriesData = await db.timeSeries
           .where('metadataId')
           .equals(metadata.id!)
           .limit(100)

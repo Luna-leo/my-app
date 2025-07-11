@@ -73,7 +73,7 @@ export function DataSelectionContent({
 
     try {
       // Delete time series data
-      await db.timeSeriesData.where('metadataId').equals(deleteMetadata.id!).delete()
+      await db.timeSeries.where('metadataId').equals(deleteMetadata.id!).delete()
       // Delete metadata
       await db.metadata.delete(deleteMetadata.id!)
       
