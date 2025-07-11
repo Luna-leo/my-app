@@ -181,7 +181,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
           ) : (
             <div className="h-full overflow-auto relative">
               <table className="min-w-max relative">
-                <thead className="sticky top-0 z-20 after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-gray-200">
+                <thead className="sticky top-0 z-20 before:content-[''] before:absolute before:-top-4 before:left-0 before:right-0 before:h-4 before:bg-white after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-gray-200">
                   <tr className="bg-white">
                     <th rowSpan={3} className="sticky left-0 z-30 bg-white min-w-[180px] px-2 py-1 text-left font-medium">Timestamp</th>
                     {columns.map(col => (
