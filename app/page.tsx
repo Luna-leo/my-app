@@ -329,51 +329,51 @@ export default function Home() {
         />
         </div>
         
-        {loading ? (
-          <div className="container mx-auto p-8 flex-1">
-            <LoadingState
-              message="Loading charts..."
-            />
-          </div>
-        ) : charts.length > 0 ? (
-          mounted && (
-            <>
-              <div className="container mx-auto px-8 flex-shrink-0">
-                <DataSelectionBar
-                  selectedDataIds={selectedDataIds}
-                  selectedDataLabels={selectedDataLabels}
-                  selectedDataColors={selectedDataColors}
-                  totalCharts={charts.length}
-                  layoutOption={layoutOption}
-                  onLayoutChange={handleLayoutChange}
-                  paginationEnabled={paginationEnabled}
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={setCurrentPage}
-                  samplingConfig={samplingConfig}
-                  onSamplingConfigChange={handleSamplingConfigChange}
-                  dataPointsInfo={dataPointsInfo}
-                  isUpdatingSampling={isUpdatingSampling}
-                />
-              </div>
-              <div className="container mx-auto px-8 pb-8 flex-1 overflow-hidden">
-                <ChartGrid
-                charts={charts}
-                onEdit={handleEditChart}
-                onDuplicate={handleDuplicateChart}
-                onDelete={handleDeleteChart}
+        {mounted && (
+          <>
+            <div className="container mx-auto px-8 flex-shrink-0">
+              <DataSelectionBar
+                selectedDataIds={selectedDataIds}
+                selectedDataLabels={selectedDataLabels}
+                selectedDataColors={selectedDataColors}
+                totalCharts={charts.length}
                 layoutOption={layoutOption}
+                onLayoutChange={handleLayoutChange}
                 paginationEnabled={paginationEnabled}
                 currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
                 samplingConfig={samplingConfig}
+                onSamplingConfigChange={handleSamplingConfigChange}
+                dataPointsInfo={dataPointsInfo}
+                isUpdatingSampling={isUpdatingSampling}
               />
+            </div>
+            {loading ? (
+              <div className="container mx-auto p-8 flex-1">
+                <LoadingState
+                  message="Loading charts..."
+                />
               </div>
-            </>
-          )
-        ) : (
-          <div className="container mx-auto p-8 flex-1">
-            <EmptyState />
-          </div>
+            ) : charts.length > 0 ? (
+              <div className="container mx-auto px-8 pb-8 flex-1 overflow-hidden">
+                <ChartGrid
+                  charts={charts}
+                  onEdit={handleEditChart}
+                  onDuplicate={handleDuplicateChart}
+                  onDelete={handleDeleteChart}
+                  layoutOption={layoutOption}
+                  paginationEnabled={paginationEnabled}
+                  currentPage={currentPage}
+                  samplingConfig={samplingConfig}
+                />
+              </div>
+            ) : (
+              <div className="container mx-auto p-8 flex-1">
+                <EmptyState />
+              </div>
+            )}
+          </>
         )}
       </div>
 
