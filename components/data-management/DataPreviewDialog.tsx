@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { db } from '@/lib/db'
-import { Metadata, TimeSeriesData } from '@/lib/db/schema'
+import { Metadata, TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
 import { Loader2 } from 'lucide-react'
 
 interface DataPreviewDialogProps {
@@ -16,6 +16,7 @@ interface DataPreviewDialogProps {
 
 export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewDialogProps) {
   const [data, setData] = useState<TimeSeriesData[]>([])
+  const [parameters, setParameters] = useState<Record<string, ParameterInfo>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -35,6 +36,24 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
           .toArray()
         
         setData(timeSeriesData)
+        
+        // Load parameter information
+        if (timeSeriesData.length > 0) {
+          const parameterIds = Object.keys(timeSeriesData[0].data)
+          const parameterInfos = await db.parameters
+            .where('plant')
+            .equals(metadata.plant)
+            .and(p => p.machineNo === metadata.machineNo)
+            .toArray()
+          
+          const paramMap: Record<string, ParameterInfo> = {}
+          parameterInfos.forEach(p => {
+            if (parameterIds.includes(p.parameterId)) {
+              paramMap[p.parameterId] = p
+            }
+          })
+          setParameters(paramMap)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data')
       } finally {
@@ -80,9 +99,29 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[50px]">#</TableHead>
+                    <TableHead rowSpan={3} className="w-[50px] border-b-2">#</TableHead>
                     {columns.map(col => (
-                      <TableHead key={col}>{col}</TableHead>
+                      <TableHead key={col} className="text-center border-l">
+                        <div className="text-xs font-normal">{col}</div>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                  <TableRow>
+                    {columns.map(col => (
+                      <TableHead key={col} className="text-center border-l">
+                        <div className="text-xs font-normal">
+                          {parameters[col]?.parameterName || '-'}
+                        </div>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                  <TableRow>
+                    {columns.map(col => (
+                      <TableHead key={col} className="text-center border-l border-b-2">
+                        <div className="text-xs font-normal">
+                          {parameters[col]?.unit || '-'}
+                        </div>
+                      </TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
