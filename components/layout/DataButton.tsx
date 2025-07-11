@@ -7,7 +7,7 @@ interface DataButtonProps {
 
 export function DataButton({ onClick }: DataButtonProps) {
   return (
-    <Button onClick={onClick}>
+    <Button onClick={onClick} variant="outline">
       <Database className="mr-2 h-4 w-4" />
       Data
     </Button>
