@@ -6,9 +6,21 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { db } from '@/lib/db'
 import { Metadata } from '@/lib/db/schema'
-import { Search, Calendar, Factory, Cpu, CheckCircle } from 'lucide-react'
+import { Search, Calendar, Factory, Cpu, CheckCircle, Eye, Edit, Trash2 } from 'lucide-react'
+import { DataPreviewDialog } from './DataPreviewDialog'
+import { EditMetadataDialog } from './EditMetadataDialog'
 
 interface DataSelectionContentProps {
   selectedDataIds: number[]
@@ -28,6 +40,9 @@ export function DataSelectionContent({
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [previewMetadata, setPreviewMetadata] = useState<Metadata | null>(null)
+  const [editMetadata, setEditMetadata] = useState<Metadata | null>(null)
+  const [deleteMetadata, setDeleteMetadata] = useState<Metadata | null>(null)
 
   // Load metadata from IndexedDB
   useEffect(() => {
@@ -52,6 +67,36 @@ export function DataSelectionContent({
 
     loadMetadata()
   }, [importCompleted])
+
+  const handleDelete = async () => {
+    if (!deleteMetadata) return
+
+    try {
+      // Delete time series data
+      await db.timeSeriesData.where('metadataId').equals(deleteMetadata.id!).delete()
+      // Delete metadata
+      await db.metadata.delete(deleteMetadata.id!)
+      
+      // Reload data
+      const data = await db.metadata.toArray()
+      const sortedData = data.sort((a, b) => {
+        const dateA = a.importedAt ? new Date(a.importedAt).getTime() : 0
+        const dateB = b.importedAt ? new Date(b.importedAt).getTime() : 0
+        return dateA - dateB
+      })
+      setMetadata(sortedData)
+      setFilteredMetadata(sortedData)
+      
+      // Remove from selection if selected
+      if (selectedDataIds.includes(deleteMetadata.id!)) {
+        onSelectionChange(selectedDataIds.filter(id => id !== deleteMetadata.id!))
+      }
+      
+      setDeleteMetadata(null)
+    } catch (error) {
+      console.error('Failed to delete data:', error)
+    }
+  }
 
   // Scroll to bottom when import is completed
   useEffect(() => {
@@ -216,12 +261,91 @@ export function DataSelectionContent({
                     Source: {item.dataSource} | Imported: {formatDate(item.importedAt)}
                   </p>
                 </div>
+                <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    onClick={() => setPreviewMetadata(item)}
+                    title="Preview data"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    onClick={() => setEditMetadata(item)}
+                    title="Edit metadata"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => setDeleteMetadata(item)}
+                    title="Delete data"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
         )}
         </div>
       </div>
+      
+      <DataPreviewDialog
+        open={!!previewMetadata}
+        onOpenChange={(open) => !open && setPreviewMetadata(null)}
+        metadata={previewMetadata}
+      />
+      
+      <EditMetadataDialog
+        open={!!editMetadata}
+        onOpenChange={(open) => !open && setEditMetadata(null)}
+        metadata={editMetadata}
+        onUpdate={async () => {
+          // Reload data after update
+          const data = await db.metadata.toArray()
+          const sortedData = data.sort((a, b) => {
+            const dateA = a.importedAt ? new Date(a.importedAt).getTime() : 0
+            const dateB = b.importedAt ? new Date(b.importedAt).getTime() : 0
+            return dateA - dateB
+          })
+          setMetadata(sortedData)
+          setFilteredMetadata(sortedData)
+        }}
+      />
+      
+      <AlertDialog open={!!deleteMetadata} onOpenChange={(open) => !open && setDeleteMetadata(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Data</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this data? This will permanently delete all associated time series data.
+              {deleteMetadata && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                  <p className="font-medium">{deleteMetadata.plant} - {deleteMetadata.machineNo}</p>
+                  {deleteMetadata.label && <p className="text-sm text-gray-600">Label: {deleteMetadata.label}</p>}
+                  {deleteMetadata.event && <p className="text-sm text-gray-600">Event: {deleteMetadata.event}</p>}
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
