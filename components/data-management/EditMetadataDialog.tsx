@@ -33,6 +33,19 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
     dataEndTime?: Date;
   } | null>(null)
 
+  // Helper function to format Date to local datetime-local input format
+  const formatDateForInput = (date: Date | undefined): string => {
+    if (!date) return ''
+    const d = new Date(date)
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    const hours = String(d.getHours()).padStart(2, '0')
+    const minutes = String(d.getMinutes()).padStart(2, '0')
+    const seconds = String(d.getSeconds()).padStart(2, '0')
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+  }
+
   useEffect(() => {
     if (metadata) {
       setFormData({
@@ -40,8 +53,8 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
         machineNo: metadata.machineNo || '',
         label: metadata.label || '',
         event: metadata.event || '',
-        startTime: metadata.startTime ? new Date(metadata.startTime).toISOString().slice(0, 19) : '',
-        endTime: metadata.endTime ? new Date(metadata.endTime).toISOString().slice(0, 19) : ''
+        startTime: formatDateForInput(metadata.startTime),
+        endTime: formatDateForInput(metadata.endTime)
       })
       
       // データ期間が未設定の場合、時系列データから計算
