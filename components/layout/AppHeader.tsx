@@ -1,11 +1,12 @@
 import { Button } from '@/components/ui/button'
-import { LineChart, Download, FolderOpen, Settings } from 'lucide-react'
+import { LineChart, Download, FolderOpen, Settings, Plus, Save } from 'lucide-react'
 import { DataButton } from './DataButton'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 
 interface AppHeaderProps {
@@ -13,8 +14,12 @@ interface AppHeaderProps {
   onCreateChartClick: () => void
   onExportClick: () => void
   onImportWorkspaceClick: () => void
+  onSaveSessionClick: () => void
+  onLoadSessionClick: () => void
   isCreateChartDisabled: boolean
   isExportDisabled: boolean
+  workspaceName?: string
+  hasDataOrCharts?: boolean
 }
 
 export function AppHeader({
@@ -22,13 +27,33 @@ export function AppHeader({
   onCreateChartClick,
   onExportClick,
   onImportWorkspaceClick,
+  onSaveSessionClick,
+  onLoadSessionClick,
   isCreateChartDisabled,
-  isExportDisabled
+  isExportDisabled,
+  workspaceName,
+  hasDataOrCharts = false
 }: AppHeaderProps) {
   return (
     <div className="flex justify-between items-center mb-4">
-      <h1 className="text-4xl font-bold">Time Series Data Visualization</h1>
+      <div className="flex items-center gap-4">
+        <h1 className="text-4xl font-bold">Time Series Data Visualization</h1>
+        {workspaceName && (
+          <span className="text-sm text-muted-foreground">
+            {workspaceName}
+          </span>
+        )}
+      </div>
       <div className="flex gap-2">
+        {hasDataOrCharts && (
+          <Button 
+            variant="outline"
+            onClick={() => window.location.href = '/?clean=true'}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            New Session
+          </Button>
+        )}
         <DataButton onClick={onDataClick} />
         <Button 
           onClick={onCreateChartClick} 
@@ -46,16 +71,30 @@ export function AppHeader({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onSaveSessionClick}>
+              <Save className="mr-2 h-4 w-4" />
+              Save Session
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onLoadSessionClick}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Load Session
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem 
               onClick={onExportClick}
               disabled={isExportDisabled}
             >
               <Download className="mr-2 h-4 w-4" />
-              Export Workspace
+              Export to File
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onImportWorkspaceClick}>
               <FolderOpen className="mr-2 h-4 w-4" />
-              Import Workspace
+              Import from File
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => window.location.href = '/settings'}>
+              <Settings className="mr-2 h-4 w-4" />
+              Application Settings
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -17,8 +17,12 @@ export class ChartConfigurationService {
   }
 
   async initializeWorkspace(): Promise<Workspace> {
+    console.log('[initializeWorkspace] Starting workspace initialization');
+    
     // First try to find active workspace using filter instead of where clause
     const allWorkspaces = await db.workspaces.toArray();
+    console.log('[initializeWorkspace] All workspaces:', allWorkspaces);
+    
     const activeWorkspace = allWorkspaces.find(w => {
       // Handle legacy data where isActive might be stored as 1/0
       const isActive = w.isActive as boolean | number;
@@ -26,8 +30,10 @@ export class ChartConfigurationService {
     });
     
     if (activeWorkspace) {
+      console.log('[initializeWorkspace] Found active workspace:', activeWorkspace);
       // Ensure it's using boolean true
       if (activeWorkspace.isActive !== true) {
+        console.log('[initializeWorkspace] Converting isActive to boolean');
         await db.workspaces.update(activeWorkspace.id!, { isActive: true });
       }
       return activeWorkspace;
@@ -35,6 +41,7 @@ export class ChartConfigurationService {
 
     // Check if there are any workspaces at all
     if (allWorkspaces.length > 0) {
+      console.log('[initializeWorkspace] No active workspace found, activating first workspace');
       // Make the first workspace active
       const firstWorkspace = allWorkspaces[0];
       await db.workspaces.update(firstWorkspace.id!, { isActive: true });
@@ -42,6 +49,7 @@ export class ChartConfigurationService {
     }
 
     // Create a new default workspace
+    console.log('[initializeWorkspace] No workspaces found, creating default workspace');
     const defaultWorkspace: Workspace = {
       id: uuidv4(),
       name: 'Default Workspace',
@@ -53,6 +61,7 @@ export class ChartConfigurationService {
     };
 
     await db.workspaces.add(defaultWorkspace);
+    console.log('[initializeWorkspace] Created default workspace:', defaultWorkspace);
     return defaultWorkspace;
   }
 
@@ -204,6 +213,30 @@ export class ChartConfigurationService {
 
   async getAllWorkspaces(): Promise<Workspace[]> {
     return await db.workspaces.toArray();
+  }
+
+  async updateWorkspace(workspaceId: string, updates: Partial<Workspace>): Promise<void> {
+    await db.workspaces.update(workspaceId, {
+      ...updates,
+      updatedAt: new Date()
+    });
+  }
+
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    await db.transaction('rw', db.workspaces, db.chartConfigurations, async () => {
+      // Delete all charts in the workspace
+      const charts = await db.chartConfigurations
+        .where('workspaceId')
+        .equals(workspaceId)
+        .toArray();
+      
+      for (const chart of charts) {
+        await db.chartConfigurations.delete(chart.id!);
+      }
+      
+      // Delete the workspace
+      await db.workspaces.delete(workspaceId);
+    });
   }
 
   async updateWorkspaceSelectedDataKeys(workspaceId: string, selectedDataKeys: string[]): Promise<void> {

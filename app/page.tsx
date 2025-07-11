@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DataManagementDialog } from '@/components/data-management/DataManagementDialog'
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { useChartDataContext } from '@/contexts/ChartDataContext'
@@ -30,8 +31,13 @@ import { colorService } from '@/lib/services/colorService'
 import { db } from '@/lib/db'
 import { ensureMetadataHasDataKeys, getDatabaseInfo, cleanupDuplicateWorkspaces, fixWorkspaceIsActiveField } from '@/lib/utils/dbMigrationUtils'
 import DatabaseDebugPanel from '@/components/debug/DatabaseDebugPanel'
+import { StartupService } from '@/lib/services/startupService'
+import { WelcomeDialog } from '@/components/startup/WelcomeDialog'
+import { SaveSessionDialog } from '@/components/workspace/SaveSessionDialog'
+import { WorkspaceListDialog } from '@/components/workspace/WorkspaceListDialog'
 
-export default function Home() {
+function HomeContent() {
+  const searchParams = useSearchParams()
   const [dataManagementOpen, setDataManagementOpen] = useState(false)
   const [createChartOpen, setCreateChartOpen] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -47,6 +53,7 @@ export default function Home() {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [workspaceId, setWorkspaceId] = useState<string>('')
+  const [workspaceName, setWorkspaceName] = useState<string>('')
   const [loading, setLoading] = useState(true)
   // const [importProgress, setImportProgress] = useState<{ loaded: number; total: number } | null>(null)
   const [layoutOption, setLayoutOption] = useState<LayoutOption | null>(null)
@@ -56,26 +63,67 @@ export default function Home() {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false)
   const [selectedDataLabels, setSelectedDataLabels] = useState<Map<number, string>>(new Map())
   const [selectedDataColors, setSelectedDataColors] = useState<Map<number, string>>(new Map())
+  const [showWelcomeDialog, setShowWelcomeDialog] = useState(false)
+  const [showSaveSessionDialog, setShowSaveSessionDialog] = useState(false)
+  const [showWorkspaceListDialog, setShowWorkspaceListDialog] = useState(false)
+  const [currentWorkspace, setCurrentWorkspace] = useState<{ id: string; name: string; description?: string } | null>(null)
   const { preloadChartData, clearCache } = useChartDataContext()
   
-  const loadWorkspaceAndCharts = useCallback(async () => {
+  const loadWorkspaceAndCharts = useCallback(async (startupOptions?: { mode?: 'clean' | 'restore', workspaceId?: string }) => {
     try {
       setLoading(true)
+      console.log('[loadWorkspaceAndCharts] Starting with options:', startupOptions)
+      
       // Clear cache before loading new workspace
       clearCache()
       
-      const workspace = await chartConfigService.initializeWorkspace()
-      setWorkspaceId(workspace.id!)
+      let workspace
       
-      // Load selected data keys from workspace
-      if (workspace.selectedDataKeys && workspace.selectedDataKeys.length > 0) {
+      if (startupOptions?.mode === 'clean') {
+        console.log('[loadWorkspaceAndCharts] Clean start mode')
+        // Create a new workspace for clean start
+        workspace = await chartConfigService.createWorkspace(
+          `Session ${new Date().toLocaleString()}`,
+          'Clean start session'
+        )
+        await chartConfigService.switchWorkspace(workspace.id!)
+      } else if (startupOptions?.workspaceId) {
+        console.log('[loadWorkspaceAndCharts] Loading specific workspace:', startupOptions.workspaceId)
+        // Load specific workspace
+        const allWorkspaces = await chartConfigService.getAllWorkspaces()
+        workspace = allWorkspaces.find(w => w.id === startupOptions.workspaceId)
+        if (workspace) {
+          await chartConfigService.switchWorkspace(workspace.id!)
+        } else {
+          // Fallback to default if workspace not found
+          console.log('[loadWorkspaceAndCharts] Workspace not found, initializing default')
+          workspace = await chartConfigService.initializeWorkspace()
+        }
+      } else {
+        // Default restore mode
+        console.log('[loadWorkspaceAndCharts] Default restore mode')
+        workspace = await chartConfigService.initializeWorkspace()
+      }
+      
+      console.log('[loadWorkspaceAndCharts] Loaded workspace:', workspace)
+      
+      setWorkspaceId(workspace.id!)
+      setWorkspaceName(workspace.name || 'Unnamed Workspace')
+      setCurrentWorkspace({ 
+        id: workspace.id!, 
+        name: workspace.name || 'Unnamed Workspace',
+        description: workspace.description 
+      })
+      
+      // Load selected data keys from workspace (skip for clean start)
+      if (startupOptions?.mode !== 'clean' && workspace.selectedDataKeys && workspace.selectedDataKeys.length > 0) {
         setSelectedDataKeys(workspace.selectedDataKeys)
         
         // Convert data keys to IDs for backward compatibility
         const metadata = await db.getMetadataByDataKeys(workspace.selectedDataKeys)
         const ids = metadata.map(m => m.id!).filter(id => id !== undefined)
         setSelectedDataIds(ids)
-      } else {
+      } else if (startupOptions?.mode !== 'clean') {
         // Migrate from chart-based selection if needed
         const migratedKeys = await chartConfigService.migrateSelectedDataFromCharts(workspace.id!)
         setSelectedDataKeys(migratedKeys)
@@ -86,20 +134,29 @@ export default function Home() {
           const ids = metadata.map(m => m.id!).filter(id => id !== undefined)
           setSelectedDataIds(ids)
         }
+      } else {
+        // Clean start - clear selections
+        setSelectedDataKeys([])
+        setSelectedDataIds([])
       }
       
-      const savedCharts = await chartConfigService.loadChartConfigurations(workspace.id)
-      const convertedCharts = savedCharts.map(chart => ({
-        id: chart.id!,
-        title: chart.title,
-        chartType: chart.chartType,
-        xAxisParameter: chart.xAxisParameter,
-        yAxisParameters: chart.yAxisParameters
-      }))
-      setCharts(convertedCharts)
+      // Load charts (skip for clean start)
+      if (startupOptions?.mode !== 'clean') {
+        const savedCharts = await chartConfigService.loadChartConfigurations(workspace.id)
+        const convertedCharts = savedCharts.map(chart => ({
+          id: chart.id!,
+          title: chart.title,
+          chartType: chart.chartType,
+          xAxisParameter: chart.xAxisParameter,
+          yAxisParameters: chart.yAxisParameters
+        }))
+        setCharts(convertedCharts)
+        console.log(`[Initial Load] Found ${convertedCharts.length} charts in workspace`)
+      } else {
+        setCharts([])
+        console.log(`[Initial Load] Clean start - no charts loaded`)
+      }
       
-      // Don't preload any charts initially - let them load lazily
-      console.log(`[Initial Load] Found ${convertedCharts.length} charts in workspace`)
       setInitialLoadComplete(true)
     } catch (error) {
       console.error('Failed to load charts:', error)
@@ -109,8 +166,23 @@ export default function Home() {
   }, [clearCache])
   
   useEffect(() => {
+    console.log('[Page] useEffect triggered, searchParams:', searchParams?.toString())
     setMounted(true)
-    loadWorkspaceAndCharts()
+    
+    // Determine startup mode from URL parameters
+    const startupOptions = StartupService.getEffectiveMode(searchParams)
+    console.log('[Startup] Mode:', startupOptions)
+    
+    if (startupOptions.mode === 'interactive') {
+      // Show welcome dialog for interactive mode
+      setShowWelcomeDialog(true)
+    } else {
+      // Direct startup for other modes
+      loadWorkspaceAndCharts({
+        mode: startupOptions.mode === 'clean' ? 'clean' : 'restore',
+        workspaceId: startupOptions.workspaceId
+      })
+    }
     
     // Load saved layout preference
     const savedLayout = layoutService.loadLayout()
@@ -127,19 +199,28 @@ export default function Home() {
       const fixedWorkspaces = await fixWorkspaceIsActiveField()
       if (fixedWorkspaces > 0) {
         console.log('[Debug] Fixed workspace isActive fields')
-        await loadWorkspaceAndCharts()
+        const startupOptions = StartupService.getEffectiveMode(searchParams)
+        await loadWorkspaceAndCharts({
+          mode: startupOptions.mode === 'clean' ? 'clean' : 'restore',
+          workspaceId: startupOptions.workspaceId
+        })
         return
       }
       
+      // DISABLED: This was deleting all saved sessions!
       // Clean up duplicate workspaces
-      if (info.workspacesCount > 1) {
-        console.log('[Debug] Cleaning up duplicate workspaces...')
-        const deleted = await cleanupDuplicateWorkspaces()
-        if (deleted > 0) {
-          await loadWorkspaceAndCharts()
-          return
-        }
-      }
+      // if (info.workspacesCount > 1) {
+      //   console.log('[Debug] Cleaning up duplicate workspaces...')
+      //   const deleted = await cleanupDuplicateWorkspaces()
+      //   if (deleted > 0) {
+      //     const startupOptions = StartupService.getEffectiveMode(searchParams)
+      //     await loadWorkspaceAndCharts({
+      //       mode: startupOptions.mode === 'clean' ? 'clean' : 'restore',
+      //       workspaceId: startupOptions.workspaceId
+      //     })
+      //     return
+      //   }
+      // }
       
       if (info.metadataCount > 0 && info.metadataWithDataKey === 0) {
         console.log('[Debug] Fixing metadata without dataKey...')
@@ -148,12 +229,16 @@ export default function Home() {
         
         // Reload after fixing
         if (updated > 0) {
-          loadWorkspaceAndCharts()
+          const startupOptions = StartupService.getEffectiveMode(searchParams)
+          loadWorkspaceAndCharts({
+            mode: startupOptions.mode === 'clean' ? 'clean' : 'restore',
+            workspaceId: startupOptions.workspaceId
+          })
         }
       }
     }
     checkAndFixMetadata()
-  }, [loadWorkspaceAndCharts])
+  }, [loadWorkspaceAndCharts, searchParams])
 
   // Fetch labels and colors when selectedDataIds change
   useEffect(() => {
@@ -350,6 +435,52 @@ export default function Home() {
     }
   }, [samplingConfig.targetPoints, visibleCharts, preloadChartData, initialLoadComplete, selectedDataIds])
 
+  const handleWelcomeSelectWorkspace = async (workspaceId: string) => {
+    setShowWelcomeDialog(false)
+    await loadWorkspaceAndCharts({
+      mode: 'restore',
+      workspaceId
+    })
+  }
+
+  const handleWelcomeCreateNew = async () => {
+    setShowWelcomeDialog(false)
+    await loadWorkspaceAndCharts({
+      mode: 'clean'
+    })
+  }
+
+  const handleSaveSession = async (name: string, description: string) => {
+    if (!workspaceId) return
+    
+    try {
+      // Update workspace with name, description, AND current selected data keys
+      await chartConfigService.updateWorkspace(workspaceId, { 
+        name, 
+        description,
+        selectedDataKeys: selectedDataKeys 
+      })
+      setWorkspaceName(name)
+      setCurrentWorkspace({ 
+        id: workspaceId, 
+        name, 
+        description 
+      })
+      console.log('Session saved successfully with data keys:', selectedDataKeys)
+    } catch (error) {
+      console.error('Failed to save session:', error)
+    }
+  }
+
+  const handleLoadSession = async (selectedWorkspaceId: string) => {
+    if (selectedWorkspaceId === workspaceId) return
+    
+    await loadWorkspaceAndCharts({
+      mode: 'restore',
+      workspaceId: selectedWorkspaceId
+    })
+  }
+
   const handleImportWorkspace = async () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -366,6 +497,12 @@ export default function Home() {
         // Switch to the imported workspace
         await chartConfigService.switchWorkspace(workspace.id!)
         setWorkspaceId(workspace.id!)
+        setWorkspaceName(workspace.name || 'Imported Workspace')
+        setCurrentWorkspace({ 
+          id: workspace.id!, 
+          name: workspace.name || 'Imported Workspace',
+          description: workspace.description 
+        })
         
         // Convert and set the imported charts
         const convertedCharts = importedCharts.map(chart => ({
@@ -400,6 +537,27 @@ export default function Home() {
 
   return (
     <>
+      <WelcomeDialog
+        open={showWelcomeDialog}
+        onSelectWorkspace={handleWelcomeSelectWorkspace}
+        onCreateNew={handleWelcomeCreateNew}
+      />
+      
+      <SaveSessionDialog
+        open={showSaveSessionDialog}
+        onClose={() => setShowSaveSessionDialog(false)}
+        onSave={handleSaveSession}
+        currentName={currentWorkspace?.name}
+        currentDescription={currentWorkspace?.description}
+      />
+      
+      <WorkspaceListDialog
+        open={showWorkspaceListDialog}
+        onClose={() => setShowWorkspaceListDialog(false)}
+        onSelectWorkspace={handleLoadSession}
+        currentWorkspaceId={workspaceId}
+      />
+      
       <div className="h-screen flex flex-col">
         <div className="container mx-auto p-8 pb-0 flex-shrink-0">
           <AppHeader
@@ -407,8 +565,12 @@ export default function Home() {
           onCreateChartClick={() => setCreateChartOpen(true)}
           onExportClick={handleExportWorkspace}
           onImportWorkspaceClick={handleImportWorkspace}
+          onSaveSessionClick={() => setShowSaveSessionDialog(true)}
+          onLoadSessionClick={() => setShowWorkspaceListDialog(true)}
           isCreateChartDisabled={selectedDataIds.length === 0}
           isExportDisabled={charts.length === 0}
+          workspaceName={workspaceName}
+          hasDataOrCharts={selectedDataIds.length > 0 || charts.length > 0}
         />
         </div>
         
@@ -528,5 +690,13 @@ export default function Home() {
         {showDebugPanel ? 'Hide' : 'Show'} Debug
       </button>
     </>
+  )
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <HomeContent />
+    </Suspense>
   )
 }

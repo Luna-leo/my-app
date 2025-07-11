@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { db } from '@/lib/db';
 import { Workspace, Metadata } from '@/lib/db/schema';
 import { RefreshCw, Database, Save } from 'lucide-react';
+import { ClearStartupMode } from './ClearStartupMode';
 
 export default function DatabaseDebugPanel() {
   const [dbVersion, setDbVersion] = useState<number>(0);
@@ -118,9 +119,10 @@ export default function DatabaseDebugPanel() {
 
           {/* Tabs for different data views */}
           <Tabs defaultValue="workspaces" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="workspaces">Workspaces ({workspaces.length})</TabsTrigger>
               <TabsTrigger value="metadata">Metadata ({metadata.length})</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
 
             <TabsContent value="workspaces">
@@ -199,6 +201,18 @@ export default function DatabaseDebugPanel() {
                   )}
                 </div>
               </ScrollArea>
+            </TabsContent>
+            
+            <TabsContent value="settings">
+              <div className="p-4 space-y-4">
+                <div>
+                  <h4 className="font-semibold mb-2">Startup Mode Settings</h4>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Clear or reset the default startup mode if you're experiencing issues with session persistence.
+                  </p>
+                  <ClearStartupMode />
+                </div>
+              </div>
             </TabsContent>
           </Tabs>
 

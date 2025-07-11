@@ -52,38 +52,21 @@ export async function getDatabaseInfo() {
 
 /**
  * Clean up duplicate workspaces
+ * NOTE: This function is currently DISABLED because it was deleting all saved sessions
+ * It should only delete actual duplicates (same name, same creation time, etc.)
  */
 export async function cleanupDuplicateWorkspaces() {
   const workspaces = await db.workspaces.toArray()
-  console.log(`[cleanupDuplicateWorkspaces] Found ${workspaces.length} workspaces`)
+  console.log(`[cleanupDuplicateWorkspaces] WARNING: This function is currently destructive and should not be used`)
   
-  if (workspaces.length <= 1) {
-    // Ensure the single workspace is active
-    if (workspaces.length === 1 && workspaces[0].id && !workspaces[0].isActive) {
-      await db.workspaces.update(workspaces[0].id, { isActive: true })
-      console.log(`[cleanupDuplicateWorkspaces] Made single workspace active`)
-    }
-    return 0
-  }
+  // DISABLED: This was deleting all non-active workspaces, which is wrong
+  // Non-active workspaces are saved sessions, not duplicates!
+  return 0
   
-  // Keep only the active workspace or the first one
-  const activeWorkspace = workspaces.find(w => w.isActive) || workspaces[0]
-  const toDelete = workspaces.filter(w => w.id !== activeWorkspace.id)
-  
-  // Delete duplicate workspaces
-  for (const workspace of toDelete) {
-    if (workspace.id) {
-      await db.workspaces.delete(workspace.id)
-    }
-  }
-  
-  // Ensure the remaining workspace is active
-  if (activeWorkspace.id && !activeWorkspace.isActive) {
-    await db.workspaces.update(activeWorkspace.id, { isActive: true })
-  }
-  
-  console.log(`[cleanupDuplicateWorkspaces] Deleted ${toDelete.length} duplicate workspaces`)
-  return toDelete.length
+  // TODO: Implement proper duplicate detection based on:
+  // - Same name AND same creation time (within a few seconds)
+  // - Or workspaces with no charts and no data selection
+  // - But NEVER delete workspaces just because they're not active
 }
 
 /**
