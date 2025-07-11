@@ -21,7 +21,9 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
     plant: '',
     machineNo: '',
     label: '',
-    event: ''
+    event: '',
+    startTime: '',
+    endTime: ''
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -32,7 +34,9 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
         plant: metadata.plant || '',
         machineNo: metadata.machineNo || '',
         label: metadata.label || '',
-        event: metadata.event || ''
+        event: metadata.event || '',
+        startTime: metadata.startTime ? new Date(metadata.startTime).toISOString().slice(0, 16) : '',
+        endTime: metadata.endTime ? new Date(metadata.endTime).toISOString().slice(0, 16) : ''
       })
     }
   }, [metadata])
@@ -48,7 +52,9 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
         plant: formData.plant,
         machineNo: formData.machineNo,
         label: formData.label || undefined,
-        event: formData.event || undefined
+        event: formData.event || undefined,
+        startTime: formData.startTime ? new Date(formData.startTime) : undefined,
+        endTime: formData.endTime ? new Date(formData.endTime) : undefined
       })
 
       onUpdate()
@@ -119,6 +125,30 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
               onChange={(e) => setFormData({ ...formData, event: e.target.value })}
               className="col-span-3"
               placeholder="Optional"
+            />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="startTime" className="text-right">
+              Start Time
+            </Label>
+            <Input
+              id="startTime"
+              type="datetime-local"
+              value={formData.startTime}
+              onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+              className="col-span-3"
+            />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="endTime" className="text-right">
+              End Time
+            </Label>
+            <Input
+              id="endTime"
+              type="datetime-local"
+              value={formData.endTime}
+              onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+              className="col-span-3"
             />
           </div>
         </div>
