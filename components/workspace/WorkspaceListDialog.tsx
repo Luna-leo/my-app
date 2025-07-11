@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FolderOpen, Clock, Trash2 } from 'lucide-react'
+import { FolderOpen, Clock, Trash2, BarChart3, Database } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,7 @@ export function WorkspaceListDialog({
   currentWorkspaceId
 }: WorkspaceListDialogProps) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [workspaceStats, setWorkspaceStats] = useState<Record<string, { dataCount: number; chartCount: number }>>({})
   const [loading, setLoading] = useState(true)
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
     open: boolean
@@ -56,6 +57,25 @@ export function WorkspaceListDialog({
         return dateB - dateA
       })
       setWorkspaces(sorted)
+      
+      // Load stats for each workspace
+      const stats: Record<string, { dataCount: number; chartCount: number }> = {}
+      const nonEmptyWorkspaces: Workspace[] = []
+      
+      for (const workspace of sorted) {
+        if (workspace.id) {
+          const workspaceStats = await chartConfigService.getWorkspaceStats(workspace.id)
+          stats[workspace.id] = workspaceStats
+          
+          // Include workspace if it has data or charts, or if it's the current workspace
+          if (workspaceStats.dataCount > 0 || workspaceStats.chartCount > 0 || workspace.isActive) {
+            nonEmptyWorkspaces.push(workspace)
+          }
+        }
+      }
+      
+      setWorkspaceStats(stats)
+      setWorkspaces(nonEmptyWorkspaces)
     } catch (error) {
       console.error('Failed to load workspaces:', error)
     } finally {
@@ -154,9 +174,23 @@ export function WorkspaceListDialog({
                               {workspace.description}
                             </div>
                           )}
-                          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            Updated {formatDistanceToNow(new Date(workspace.updatedAt), { addSuffix: true })}
+                          <div className="text-xs text-muted-foreground mt-2 flex items-center gap-4">
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              Updated {formatDistanceToNow(new Date(workspace.updatedAt), { addSuffix: true })}
+                            </div>
+                            {workspace.id && workspaceStats[workspace.id] && (
+                              <>
+                                <div className="flex items-center gap-1">
+                                  <Database className="h-3 w-3" />
+                                  {workspaceStats[workspace.id].dataCount} data
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <BarChart3 className="h-3 w-3" />
+                                  {workspaceStats[workspace.id].chartCount} charts
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>

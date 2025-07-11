@@ -56,6 +56,7 @@ export async function getDatabaseInfo() {
  * It should only delete actual duplicates (same name, same creation time, etc.)
  */
 export async function cleanupDuplicateWorkspaces() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const workspaces = await db.workspaces.toArray()
   console.log(`[cleanupDuplicateWorkspaces] WARNING: This function is currently destructive and should not be used`)
   

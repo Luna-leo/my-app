@@ -208,7 +208,7 @@ export default function DatabaseDebugPanel() {
                 <div>
                   <h4 className="font-semibold mb-2">Startup Mode Settings</h4>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Clear or reset the default startup mode if you're experiencing issues with session persistence.
+                    Clear or reset the default startup mode if you&apos;re experiencing issues with session persistence.
                   </p>
                   <ClearStartupMode />
                 </div>

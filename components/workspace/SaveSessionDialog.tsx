@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Save } from 'lucide-react'
+import { Save, AlertCircle } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -21,6 +21,8 @@ interface SaveSessionDialogProps {
   onSave: (name: string, description: string) => void
   currentName?: string
   currentDescription?: string
+  hasData?: boolean
+  hasCharts?: boolean
 }
 
 export function SaveSessionDialog({
@@ -28,14 +30,16 @@ export function SaveSessionDialog({
   onClose,
   onSave,
   currentName = '',
-  currentDescription = ''
+  currentDescription = '',
+  hasData = false,
+  hasCharts = false
 }: SaveSessionDialogProps) {
   const [name, setName] = useState(currentName)
   const [description, setDescription] = useState(currentDescription)
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async () => {
-    if (!name.trim()) return
+    if (!name.trim() || (!hasData && !hasCharts)) return
     
     setIsSaving(true)
     try {
@@ -48,6 +52,8 @@ export function SaveSessionDialog({
     }
   }
 
+  const isEmpty = !hasData && !hasCharts
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
@@ -59,6 +65,15 @@ export function SaveSessionDialog({
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
+          {isEmpty && (
+            <div className="flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 rounded-md">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <p className="text-sm">
+                Cannot save an empty session. Add some data or create charts first.
+              </p>
+            </div>
+          )}
+          
           <div className="grid gap-2">
             <Label htmlFor="name">Session Name</Label>
             <Input
@@ -100,7 +115,7 @@ export function SaveSessionDialog({
           </Button>
           <Button 
             onClick={handleSave} 
-            disabled={!name.trim() || isSaving}
+            disabled={!name.trim() || isSaving || isEmpty}
           >
             {isSaving ? 'Saving...' : 'Save Session'}
           </Button>

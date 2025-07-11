@@ -29,7 +29,7 @@ import { useDataPointsInfo } from '@/hooks/useDataPointsInfo'
 import { metadataService } from '@/lib/services/metadataService'
 import { colorService } from '@/lib/services/colorService'
 import { db } from '@/lib/db'
-import { ensureMetadataHasDataKeys, getDatabaseInfo, cleanupDuplicateWorkspaces, fixWorkspaceIsActiveField } from '@/lib/utils/dbMigrationUtils'
+import { ensureMetadataHasDataKeys, getDatabaseInfo, fixWorkspaceIsActiveField } from '@/lib/utils/dbMigrationUtils'
 import DatabaseDebugPanel from '@/components/debug/DatabaseDebugPanel'
 import { StartupService } from '@/lib/services/startupService'
 import { WelcomeDialog } from '@/components/startup/WelcomeDialog'
@@ -40,7 +40,6 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const [dataManagementOpen, setDataManagementOpen] = useState(false)
   const [createChartOpen, setCreateChartOpen] = useState(false)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedDataKeys, setSelectedDataKeys] = useState<string[]>([])
   const [selectedDataIds, setSelectedDataIds] = useState<number[]>([]) // Keep for backward compatibility
   const [showDebugPanel, setShowDebugPanel] = useState(false)
@@ -81,6 +80,13 @@ function HomeContent() {
       
       if (startupOptions?.mode === 'clean') {
         console.log('[loadWorkspaceAndCharts] Clean start mode')
+        
+        // Clean up empty workspaces before creating a new one
+        const deletedCount = await chartConfigService.cleanupEmptyWorkspaces()
+        if (deletedCount > 0) {
+          console.log(`[loadWorkspaceAndCharts] Cleaned up ${deletedCount} empty workspaces`)
+        }
+        
         // Create a new workspace for clean start
         workspace = await chartConfigService.createWorkspace(
           `Session ${new Date().toLocaleString()}`,
@@ -549,6 +555,8 @@ function HomeContent() {
         onSave={handleSaveSession}
         currentName={currentWorkspace?.name}
         currentDescription={currentWorkspace?.description}
+        hasData={selectedDataKeys.length > 0}
+        hasCharts={charts.length > 0}
       />
       
       <WorkspaceListDialog

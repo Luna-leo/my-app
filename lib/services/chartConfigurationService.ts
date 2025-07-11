@@ -294,6 +294,55 @@ export class ChartConfigurationService {
     // Return empty array
     return [];
   }
+
+  async getWorkspaceStats(workspaceId: string): Promise<{ dataCount: number; chartCount: number }> {
+    try {
+      // Get workspace
+      const workspace = await db.workspaces.get(workspaceId);
+      if (!workspace) {
+        return { dataCount: 0, chartCount: 0 };
+      }
+
+      // Count selected data
+      const dataCount = workspace.selectedDataKeys?.length || 0;
+
+      // Count charts
+      const chartCount = await db.chartConfigurations
+        .where('workspaceId')
+        .equals(workspaceId)
+        .count();
+
+      return { dataCount, chartCount };
+    } catch (error) {
+      console.error('[getWorkspaceStats] Error:', error);
+      return { dataCount: 0, chartCount: 0 };
+    }
+  }
+
+  async cleanupEmptyWorkspaces(): Promise<number> {
+    try {
+      const allWorkspaces = await this.getAllWorkspaces();
+      let deletedCount = 0;
+
+      for (const workspace of allWorkspaces) {
+        if (!workspace.id || workspace.isActive) continue;
+
+        const stats = await this.getWorkspaceStats(workspace.id);
+        
+        // Delete workspace if it has no data and no charts
+        if (stats.dataCount === 0 && stats.chartCount === 0) {
+          await this.deleteWorkspace(workspace.id);
+          deletedCount++;
+          console.log(`[cleanupEmptyWorkspaces] Deleted empty workspace: ${workspace.name} (${workspace.id})`);
+        }
+      }
+
+      return deletedCount;
+    } catch (error) {
+      console.error('[cleanupEmptyWorkspaces] Error:', error);
+      return 0;
+    }
+  }
 }
 
 export const chartConfigService = ChartConfigurationService.getInstance();

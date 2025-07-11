@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, FolderOpen, Clock } from 'lucide-react'
+import { Plus, FolderOpen, Clock, BarChart3, Database } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,7 @@ interface WelcomeDialogProps {
 
 export function WelcomeDialog({ open, onSelectWorkspace, onCreateNew }: WelcomeDialogProps) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [workspaceStats, setWorkspaceStats] = useState<Record<string, { dataCount: number; chartCount: number }>>({})
   const [loading, setLoading] = useState(true)
   const [dontShowAgain, setDontShowAgain] = useState(false)
 
@@ -38,7 +39,27 @@ export function WelcomeDialog({ open, onSelectWorkspace, onCreateNew }: WelcomeD
           const dateB = new Date(b.updatedAt).getTime()
           return dateB - dateA
         })
-        setWorkspaces(sorted.slice(0, 5)) // Show only 5 most recent
+        const recentWorkspaces = sorted.slice(0, 5) // Show only 5 most recent
+        setWorkspaces(recentWorkspaces)
+        
+        // Load stats for each workspace and filter out empty ones
+        const stats: Record<string, { dataCount: number; chartCount: number }> = {}
+        const nonEmptyWorkspaces: Workspace[] = []
+        
+        for (const workspace of recentWorkspaces) {
+          if (workspace.id) {
+            const workspaceStats = await chartConfigService.getWorkspaceStats(workspace.id)
+            stats[workspace.id] = workspaceStats
+            
+            // Only include workspaces that have data or charts
+            if (workspaceStats.dataCount > 0 || workspaceStats.chartCount > 0) {
+              nonEmptyWorkspaces.push(workspace)
+            }
+          }
+        }
+        
+        setWorkspaceStats(stats)
+        setWorkspaces(nonEmptyWorkspaces)
       } catch (error) {
         console.error('Failed to load workspaces:', error)
       } finally {
@@ -69,7 +90,7 @@ export function WelcomeDialog({ open, onSelectWorkspace, onCreateNew }: WelcomeD
 
   return (
     <Dialog open={open}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px]" hideCloseButton>
         <DialogHeader>
           <DialogTitle>Welcome Back</DialogTitle>
           <DialogDescription>
@@ -126,13 +147,26 @@ export function WelcomeDialog({ open, onSelectWorkspace, onCreateNew }: WelcomeD
                   <FolderOpen className="mr-3 h-4 w-4 text-muted-foreground" />
                   <div className="flex-1 text-left">
                     <div className="font-medium">{workspace.name}</div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-2">
-                      <Clock className="h-3 w-3" />
-                      {formatDistanceToNow(new Date(workspace.updatedAt), { addSuffix: true })}
-                      {workspace.description && (
+                    {workspace.description && (
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {workspace.description}
+                      </div>
+                    )}
+                    <div className="text-xs text-muted-foreground mt-1 flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {formatDistanceToNow(new Date(workspace.updatedAt), { addSuffix: true })}
+                      </div>
+                      {workspace.id && workspaceStats[workspace.id] && (
                         <>
-                          <span>•</span>
-                          <span>{workspace.description}</span>
+                          <div className="flex items-center gap-1">
+                            <Database className="h-3 w-3" />
+                            {workspaceStats[workspace.id].dataCount}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <BarChart3 className="h-3 w-3" />
+                            {workspaceStats[workspace.id].chartCount}
+                          </div>
                         </>
                       )}
                     </div>
