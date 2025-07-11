@@ -47,7 +47,8 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
 
   if (!metadata) return null
 
-  const columns = metadata.parameterMappings ? Object.keys(metadata.parameterMappings) : []
+  // Extract columns from the actual data
+  const columns = data.length > 0 ? Object.keys(data[0].data) : []
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
