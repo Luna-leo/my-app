@@ -130,7 +130,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                     <TableRow key={row.id}>
                       <TableCell className="font-medium">{index + 1}</TableCell>
                       {columns.map(col => (
-                        <TableCell key={col}>
+                        <TableCell key={col} className="text-right">
                           {row.data[col] !== undefined ? String(row.data[col]) : '-'}
                         </TableCell>
                       ))}
