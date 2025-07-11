@@ -46,14 +46,12 @@ export class CsvImporter {
         
         const lines = decoded.split('\n').filter(line => line.trim());
         
-        console.log(`Processing file: ${file.name}, lines: ${lines.length}`);
         
         // Skip header lines (first 3 rows)
         if (lines.length <= 3) continue;
         
         // Check first few data rows for start time
         const firstDataRows = lines.slice(3, Math.min(13, lines.length));
-        console.log(`First data rows sample:`, firstDataRows.slice(0, 3));
         
         for (const line of firstDataRows) {
           // Use PapaParse to properly parse CSV line
@@ -67,10 +65,8 @@ export class CsvImporter {
           if (parseResult.data && parseResult.data.length > 0 && parseResult.data[0].length > 0) {
             const columns = parseResult.data[0] as string[];
             const timestampStr = columns[0]?.trim();
-            console.log(`Trying to parse timestamp: "${timestampStr}"`);
             const timestamp = parseTimestamp(timestampStr);
             if (timestamp) {
-              console.log(`Parsed timestamp: ${timestamp}`);
               if (!minTimestamp || timestamp < minTimestamp) {
                 minTimestamp = timestamp;
               }
@@ -109,7 +105,6 @@ export class CsvImporter {
       }
     }
 
-    console.log(`Detected range: min=${minTimestamp}, max=${maxTimestamp}`);
     
     return minTimestamp && maxTimestamp 
       ? { startTime: minTimestamp, endTime: maxTimestamp } 

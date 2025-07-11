@@ -38,7 +38,6 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
   }
 
   const detectDataRange = async () => {
-    console.log('detectDataRange called')
     if (selectedFiles.length === 0) return
     
     setDetectingRange(true)

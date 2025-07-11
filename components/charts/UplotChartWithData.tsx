@@ -288,13 +288,13 @@ function UplotChartWithDataComponent({
           selectionOpacity: 0.2,
           minSelectionSize: 10,
           enabled: true,
-          debug: true, // Enable debug logging for coordinate tracking
+          debug: false
         })
         options.plugins.push(selectionPlugin)
         
         // Add double-click reset plugin with sync support
         const doubleClickResetPlugin = createDoubleClickResetPlugin({ 
-          debug: true,
+          debug: false,
           chartId: chartIdRef.current,
           onReset: () => {
             // Notify sync service about reset

@@ -17,7 +17,7 @@ export function createWheelZoomPlugin(opts: WheelZoomPluginOptions = {}): uPlot.
   const enablePan = opts.enablePan ?? true
   const panButton = opts.panButton ?? 1 // Middle mouse button by default
   const onZoomChange = opts.onZoomChange
-  const debug = opts.debug ?? true // Enable debug by default for now
+  const debug = opts.debug ?? false
 
   let xMin: number, xMax: number
   let xRange: number

@@ -29,11 +29,6 @@ interface MetadataFormProps {
 }
 
 export function MetadataForm({ value, onChange, errors, onDetectDataRange, detectingRange }: MetadataFormProps) {
-  console.log('MetadataForm props:', { 
-    hasOnDetectDataRange: !!onDetectDataRange, 
-    detectingRange,
-    onDetectDataRangeType: typeof onDetectDataRange 
-  });
   const handleChange = (field: keyof MetadataFormData) => (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -44,17 +39,14 @@ export function MetadataForm({ value, onChange, errors, onDetectDataRange, detec
   };
 
   const handleDataSourceChange = (dataSource: DataSource['type']) => {
-    console.log('handleDataSourceChange called with:', dataSource);
     onChange({
       ...value,
       dataSource
     });
     // Trigger data range detection after data source change
     if (onDetectDataRange) {
-      console.log('Triggering detectDataRange after data source change');
       setTimeout(onDetectDataRange, 100);
     } else {
-      console.log('onDetectDataRange is not provided');
     }
   };
 

@@ -4,8 +4,6 @@ export function parseTimestamp(timestamp: string | number | null): Date | null {
   const timestampStr = String(timestamp).trim();
   if (!timestampStr) return null;
   
-  console.log(`[date-parser] Parsing: "${timestampStr}"`);
-  
   // Try multiple date formats
   const formats = [
     // ISO formats
