@@ -515,9 +515,9 @@ export const UplotChartWithData = memo(UplotChartWithDataComponent, (prevProps, 
       prevProps.config.chartType !== nextProps.config.chartType ||
       prevProps.config.xAxisParameter !== nextProps.config.xAxisParameter ||
       prevProps.config.yAxisParameters.length !== nextProps.config.yAxisParameters.length ||
-      prevProps.config.selectedDataIds.length !== nextProps.config.selectedDataIds.length ||
+      prevProps.selectedDataIds.length !== nextProps.selectedDataIds.length ||
       !prevProps.config.yAxisParameters.every((p, i) => p === nextProps.config.yAxisParameters[i]) ||
-      !prevProps.config.selectedDataIds.every((id, i) => id === nextProps.config.selectedDataIds[i])
+      !prevProps.selectedDataIds.every((id, i) => id === nextProps.selectedDataIds[i])
     );
     
     if (configChanged) return false;

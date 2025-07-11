@@ -118,7 +118,7 @@ export class CsvImporter {
 
   async importFiles(
     files: File[],
-    metadata: Omit<Metadata, 'id' | 'importedAt'>,
+    metadata: Omit<Metadata, 'id' | 'importedAt' | 'dataKey'>,
     dataSource: DataSource
   ): Promise<void> {
     this.updateProgress({
@@ -229,7 +229,7 @@ export class CsvImporter {
 
   private async combineData(
     parsedFiles: CsvParseResult[],
-    metadata: Omit<Metadata, 'id' | 'importedAt'>
+    metadata: Omit<Metadata, 'id' | 'importedAt' | 'dataKey'>
   ): Promise<{ 
     parameters: Map<string, ParameterInfo>, 
     timeSeriesData: Map<string, Record<string, number | null>>,

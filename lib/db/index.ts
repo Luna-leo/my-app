@@ -105,7 +105,8 @@ export class AppDatabase extends Dexie {
       for (const chart of allCharts) {
         if ('selectedDataIds' in chart) {
           // Create a copy without selectedDataIds
-          const { selectedDataIds, ...chartWithoutIds } = chart;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { selectedDataIds: _, ...chartWithoutIds } = chart;
           await tx.table('chartConfigurations').update(chart.id, chartWithoutIds);
           console.log('[DB Migration v5] Removed selectedDataIds from chart:', chart.id);
         }

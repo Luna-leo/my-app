@@ -12,6 +12,7 @@ import { useChartData } from '@/hooks/useChartDataOptimized'
 
 interface UplotChartWithSelectionProps {
   config: ChartConfiguration
+  selectedDataIds: number[]
   aspectRatio?: number | AspectRatioPreset
   className?: string
   onEdit?: () => void
@@ -36,6 +37,7 @@ interface UplotChartWithSelectionProps {
 
 export function UplotChartWithSelection({
   config,
+  selectedDataIds,
   aspectRatio,
   className = '',
   onEdit,
@@ -49,7 +51,7 @@ export function UplotChartWithSelection({
   selectionOptions = {},
 }: UplotChartWithSelectionProps) {
   // Get chart data for series names
-  const { plotData } = useChartData(config, samplingConfig ?? true)
+  const { plotData } = useChartData(config, samplingConfig ?? true, selectedDataIds)
   
   // Extract series names
   const seriesNames = useMemo(() => {
@@ -144,6 +146,7 @@ export function UplotChartWithSelection({
       {/* Chart */}
       <UplotChartWithData
         config={config}
+        selectedDataIds={selectedDataIds}
         aspectRatio={aspectRatio}
         className={className}
         onEdit={onEdit}

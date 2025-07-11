@@ -15,6 +15,7 @@ import uPlot from 'uplot'
 
 interface InteractiveUplotChartProps {
   config: ChartConfiguration
+  selectedDataIds: number[]
   aspectRatio?: number | AspectRatioPreset
   className?: string
   onEdit?: () => void
@@ -51,6 +52,7 @@ interface InteractiveUplotChartProps {
 
 export function InteractiveUplotChart({
   config,
+  selectedDataIds,
   aspectRatio,
   className = '',
   onEdit,
@@ -72,7 +74,7 @@ export function InteractiveUplotChart({
   const chartInstanceId = useMemo(() => generateChartInstanceId(), [])
   
   // Get chart data
-  const { plotData, dataViewport } = useChartData(config, samplingConfig ?? true)
+  const { plotData, dataViewport } = useChartData(config, samplingConfig ?? true, selectedDataIds)
   
   // Extract series names
   const seriesNames = useMemo(() => {
@@ -275,6 +277,7 @@ export function InteractiveUplotChart({
       {/* Chart */}
       <UplotChartWithData
         config={config}
+        selectedDataIds={selectedDataIds}
         aspectRatio={aspectRatio}
         className={className}
         onEdit={onEdit}

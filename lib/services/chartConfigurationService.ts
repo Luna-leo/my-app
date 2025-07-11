@@ -19,7 +19,11 @@ export class ChartConfigurationService {
   async initializeWorkspace(): Promise<Workspace> {
     // First try to find active workspace using filter instead of where clause
     const allWorkspaces = await db.workspaces.toArray();
-    const activeWorkspace = allWorkspaces.find(w => w.isActive === true || w.isActive === 1);
+    const activeWorkspace = allWorkspaces.find(w => {
+      // Handle legacy data where isActive might be stored as 1/0
+      const isActive = w.isActive as boolean | number;
+      return isActive === true || isActive === 1;
+    });
     
     if (activeWorkspace) {
       // Ensure it's using boolean true
@@ -176,7 +180,11 @@ export class ChartConfigurationService {
   async getActiveWorkspace(): Promise<Workspace | undefined> {
     // Use filter instead of where clause to avoid key type issues
     const allWorkspaces = await db.workspaces.toArray();
-    return allWorkspaces.find(w => w.isActive === true || w.isActive === 1);
+    return allWorkspaces.find(w => {
+      // Handle legacy data where isActive might be stored as 1/0
+      const isActive = w.isActive as boolean | number;
+      return isActive === true || isActive === 1;
+    });
   }
 
   async createWorkspace(name: string, description?: string): Promise<Workspace> {
@@ -247,6 +255,7 @@ export class ChartConfigurationService {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async migrateSelectedDataFromCharts(_workspaceId: string): Promise<string[]> {
     // Since charts no longer have selectedDataIds, migration is not needed
     // Return empty array

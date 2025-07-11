@@ -34,6 +34,7 @@ import DatabaseDebugPanel from '@/components/debug/DatabaseDebugPanel'
 export default function Home() {
   const [dataManagementOpen, setDataManagementOpen] = useState(false)
   const [createChartOpen, setCreateChartOpen] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedDataKeys, setSelectedDataKeys] = useState<string[]>([])
   const [selectedDataIds, setSelectedDataIds] = useState<number[]>([]) // Keep for backward compatibility
   const [showDebugPanel, setShowDebugPanel] = useState(false)
@@ -333,7 +334,11 @@ export default function Home() {
       
       try {
         // Use the same batch processing as initial load
-        await preloadChartData(visibleCharts, {
+        const chartsWithData = visibleCharts.map(chart => ({
+          ...chart,
+          selectedDataIds: selectedDataIds
+        }))
+        await preloadChartData(chartsWithData, {
           batchSize: 4,
           onProgress: (loaded, total) => {
             console.log(`Sampling progress: ${loaded}/${total}`)
@@ -343,7 +348,7 @@ export default function Home() {
         setIsUpdatingSampling(false)
       }
     }
-  }, [samplingConfig.targetPoints, visibleCharts, preloadChartData, initialLoadComplete])
+  }, [samplingConfig.targetPoints, visibleCharts, preloadChartData, initialLoadComplete, selectedDataIds])
 
   const handleImportWorkspace = async () => {
     const input = document.createElement('input')
@@ -368,8 +373,7 @@ export default function Home() {
           title: chart.title,
           chartType: chart.chartType,
           xAxisParameter: chart.xAxisParameter,
-          yAxisParameters: chart.yAxisParameters,
-          selectedDataIds: chart.selectedDataIds
+          yAxisParameters: chart.yAxisParameters
         }))
         setCharts(convertedCharts)
         
