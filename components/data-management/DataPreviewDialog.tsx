@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { TableCell, TableHead, TableRow } from '@/components/ui/table'
 import { db } from '@/lib/db'
 import { Metadata, TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
 import { Loader2, Download } from 'lucide-react'
