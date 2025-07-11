@@ -1,5 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { Metadata, ParameterInfo, TimeSeriesData, ChartConfiguration, Workspace } from './schema';
+import { generateDataKey } from '../utils/dataKeyUtils';
 
 export class AppDatabase extends Dexie {
   metadata!: Table<Metadata>;
@@ -24,6 +25,92 @@ export class AppDatabase extends Dexie {
       chartConfigurations: '++id, workspaceId, createdAt, updatedAt',
       workspaces: '++id, name, isActive, createdAt'
     });
+
+    this.version(3).stores({
+      metadata: '++id, dataKey, plant, machineNo, importedAt',
+      parameters: '++id, parameterId, [plant+machineNo], plant, machineNo',
+      timeSeries: '++id, metadataId, timestamp',
+      chartConfigurations: '++id, workspaceId, createdAt, updatedAt',
+      workspaces: '++id, name, isActive, createdAt, selectedDataKeys'
+    }).upgrade(async tx => {
+      // Migrate existing metadata to include dataKey
+      const allMetadata = await tx.table('metadata').toArray();
+      
+      for (const metadata of allMetadata) {
+        if (!metadata.dataKey) {
+          const dataKey = generateDataKey({
+            plant: metadata.plant,
+            machineNo: metadata.machineNo,
+            dataSource: metadata.dataSource,
+            dataStartTime: metadata.dataStartTime ? new Date(metadata.dataStartTime) : undefined,
+            dataEndTime: metadata.dataEndTime ? new Date(metadata.dataEndTime) : undefined
+          });
+          
+          await tx.table('metadata').update(metadata.id, { dataKey });
+        }
+      }
+      
+      // Migrate existing workspaces to include selectedDataKeys
+      const allWorkspaces = await tx.table('workspaces').toArray();
+      
+      for (const workspace of allWorkspaces) {
+        if (!workspace.selectedDataKeys) {
+          // Initialize with empty array for now
+          // The actual migration from chart configurations will be done in the service layer
+          await tx.table('workspaces').update(workspace.id, { selectedDataKeys: [] });
+        }
+      }
+    });
+
+    // Force migration for existing data
+    this.version(4).stores({
+      metadata: '++id, dataKey, plant, machineNo, importedAt',
+      parameters: '++id, parameterId, [plant+machineNo], plant, machineNo',
+      timeSeries: '++id, metadataId, timestamp',
+      chartConfigurations: '++id, workspaceId, createdAt, updatedAt',
+      workspaces: '++id, name, isActive, createdAt, selectedDataKeys'
+    }).upgrade(async tx => {
+      // Ensure all metadata has dataKey
+      const allMetadata = await tx.table('metadata').toArray();
+      console.log('[DB Migration v4] Checking metadata:', allMetadata.length);
+      
+      for (const metadata of allMetadata) {
+        if (!metadata.dataKey) {
+          const dataKey = generateDataKey({
+            plant: metadata.plant,
+            machineNo: metadata.machineNo,
+            dataSource: metadata.dataSource,
+            dataStartTime: metadata.dataStartTime ? new Date(metadata.dataStartTime) : undefined,
+            dataEndTime: metadata.dataEndTime ? new Date(metadata.dataEndTime) : undefined
+          });
+          
+          console.log('[DB Migration v4] Adding dataKey to metadata:', metadata.id, dataKey);
+          await tx.table('metadata').update(metadata.id, { dataKey });
+        }
+      }
+    });
+
+    // Remove selectedDataIds from charts
+    this.version(5).stores({
+      metadata: '++id, dataKey, plant, machineNo, importedAt',
+      parameters: '++id, parameterId, [plant+machineNo], plant, machineNo',
+      timeSeries: '++id, metadataId, timestamp',
+      chartConfigurations: '++id, workspaceId, createdAt, updatedAt',
+      workspaces: '++id, name, isActive, createdAt, selectedDataKeys'
+    }).upgrade(async tx => {
+      // Remove selectedDataIds from all chart configurations
+      const allCharts = await tx.table('chartConfigurations').toArray();
+      console.log('[DB Migration v5] Removing selectedDataIds from charts:', allCharts.length);
+      
+      for (const chart of allCharts) {
+        if ('selectedDataIds' in chart) {
+          // Create a copy without selectedDataIds
+          const { selectedDataIds, ...chartWithoutIds } = chart;
+          await tx.table('chartConfigurations').update(chart.id, chartWithoutIds);
+          console.log('[DB Migration v5] Removed selectedDataIds from chart:', chart.id);
+        }
+      }
+    });
   }
 
   async clearAllData() {
@@ -43,6 +130,20 @@ export class AppDatabase extends Dexie {
     return await this.parameters
       .where('[plant+machineNo]')
       .equals([plant, machineNo])
+      .toArray();
+  }
+
+  async getMetadataByDataKey(dataKey: string) {
+    return await this.metadata
+      .where('dataKey')
+      .equals(dataKey)
+      .first();
+  }
+
+  async getMetadataByDataKeys(dataKeys: string[]) {
+    return await this.metadata
+      .where('dataKey')
+      .anyOf(dataKeys)
       .toArray();
   }
 

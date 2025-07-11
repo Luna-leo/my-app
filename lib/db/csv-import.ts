@@ -3,6 +3,7 @@ import * as iconv from 'iconv-lite';
 import { db } from './index';
 import { CsvHeader, DataSource, Metadata, ParameterInfo } from './schema';
 import { parseTimestamp } from '../utils/date-parser';
+import { generateDataKey } from '../utils/dataKeyUtils';
 
 export interface CsvParseResult {
   headers: CsvHeader[];
@@ -302,12 +303,31 @@ export class CsvImporter {
       timeSeriesData: Map<string, Record<string, number | null>>,
       dataRange?: { startTime: Date, endTime: Date }
     },
-    metadata: Omit<Metadata, 'id' | 'importedAt'>
+    metadata: Omit<Metadata, 'id' | 'importedAt' | 'dataKey'>
   ): Promise<void> {
     await db.transaction('rw', db.metadata, db.parameters, db.timeSeries, async () => {
+      // Generate dataKey for the metadata
+      const dataKey = generateDataKey({
+        plant: metadata.plant,
+        machineNo: metadata.machineNo,
+        dataSource: metadata.dataSource,
+        dataStartTime: metadata.dataStartTime,
+        dataEndTime: metadata.dataEndTime
+      });
+
+      // Check if data with same key already exists
+      const existingMetadata = await db.metadata.where('dataKey').equals(dataKey).first();
+      
+      if (existingMetadata) {
+        // Optional: Handle duplicate data
+        // For now, we'll proceed with adding new data
+        console.warn(`Data with key ${dataKey} already exists. Adding as new entry.`);
+      }
+
       // Save metadata
       const metadataId = await db.metadata.add({
         ...metadata,
+        dataKey,
         importedAt: new Date()
       });
 

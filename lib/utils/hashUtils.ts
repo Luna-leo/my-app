@@ -86,7 +86,7 @@ export function createChartConfigHash(config: {
   const parts = [
     `x:${config.xAxisParameter}`,
     `y:${config.yAxisParameters.sort().join(',')}`,
-    `d:${config.selectedDataIds.sort().join(',')}`,
+    `d:${config.selectedDataIds ? config.selectedDataIds.sort().join(',') : ''}`,
     `t:${config.chartType}`
   ];
   

@@ -5,7 +5,12 @@ import { UPLOT_ERROR_MESSAGES as ERROR_MESSAGES } from '@/lib/constants/uplotCon
 import { useChartDataContext } from '@/contexts/ChartDataContext';
 import { SamplingConfig } from '@/lib/utils/chartDataSampling';
 
-export function useChartData(config: ChartConfiguration, enableSampling: boolean | SamplingConfig = true) {
+// Extended ChartConfiguration type for internal use
+interface ChartConfigurationWithData extends ChartConfiguration {
+  selectedDataIds: number[];
+}
+
+export function useChartData(config: ChartConfiguration, enableSampling: boolean | SamplingConfig = true, selectedDataIds: number[] = []) {
   const [plotData, setPlotData] = useState<ChartPlotData | null>(null);
   const [dataViewport, setDataViewport] = useState<ChartViewport | null>(null);
   const [loadingState, setLoadingState] = useState<ChartLoadingState>({
@@ -21,9 +26,15 @@ export function useChartData(config: ChartConfiguration, enableSampling: boolean
       try {
         setLoadingState({ loading: true, progress: 0, error: null });
 
+        // Add selectedDataIds to config
+        const configWithData: ChartConfigurationWithData = {
+          ...config,
+          selectedDataIds
+        };
+
         // Get data from the shared provider with progress callback
         const { plotData: data, dataViewport: viewport } = await getChartData(
-          config, 
+          configWithData, 
           enableSampling,
           (progress) => {
             setLoadingState(prev => ({ ...prev, progress }));
@@ -49,7 +60,7 @@ export function useChartData(config: ChartConfiguration, enableSampling: boolean
     };
 
     loadData();
-  }, [config, getChartData, enableSampling]);
+  }, [config, getChartData, enableSampling, selectedDataIds]);
 
   return { plotData, dataViewport, loadingState };
 }

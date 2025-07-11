@@ -10,6 +10,7 @@ import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 interface LazyChartProps {
   config: ChartConfiguration
+  selectedDataIds: number[]
   aspectRatio?: number | AspectRatioPreset
   className?: string
   onEdit?: () => void
@@ -22,6 +23,7 @@ interface LazyChartProps {
 
 export function LazyChart({
   config,
+  selectedDataIds,
   aspectRatio,
   className,
   onEdit,
@@ -66,6 +68,7 @@ export function LazyChart({
       {hasBeenVisible ? (
         <ChartComponent
           config={config}
+          selectedDataIds={selectedDataIds}
           aspectRatio={aspectRatio}
           className="h-full"
           onEdit={onEdit}
