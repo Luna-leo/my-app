@@ -3,8 +3,7 @@ import { LineChart, Download, FolderOpen } from 'lucide-react'
 import { DataButton } from './DataButton'
 
 interface AppHeaderProps {
-  onImportClick: () => void
-  onDataSelectionClick: () => void
+  onDataClick: () => void
   onCreateChartClick: () => void
   onExportClick: () => void
   onImportWorkspaceClick: () => void
@@ -13,8 +12,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({
-  onImportClick,
-  onDataSelectionClick,
+  onDataClick,
   onCreateChartClick,
   onExportClick,
   onImportWorkspaceClick,
@@ -25,10 +23,7 @@ export function AppHeader({
     <div className="flex justify-between items-center mb-4">
       <h1 className="text-4xl font-bold">Time Series Data Visualization</h1>
       <div className="flex gap-2">
-        <DataButton
-          onDataSelectionClick={onDataSelectionClick}
-          onImportClick={onImportClick}
-        />
+        <DataButton onClick={onDataClick} />
         <Button 
           onClick={onCreateChartClick} 
           variant="outline"

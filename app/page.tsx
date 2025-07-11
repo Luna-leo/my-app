@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { CsvImportDialog } from '@/components/csv-import/CsvImportDialog'
-import { DataSelectionDialog } from '@/components/data-selection/DataSelectionDialog'
+import { DataManagementDialog } from '@/components/data-management/DataManagementDialog'
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { useChartDataContext } from '@/contexts/ChartDataContext'
 import {
@@ -30,8 +29,7 @@ import { metadataService } from '@/lib/services/metadataService'
 import { colorService } from '@/lib/services/colorService'
 
 export default function Home() {
-  const [importDialogOpen, setImportDialogOpen] = useState(false)
-  const [dataSelectionOpen, setDataSelectionOpen] = useState(false)
+  const [dataManagementOpen, setDataManagementOpen] = useState(false)
   const [createChartOpen, setCreateChartOpen] = useState(false)
   const [selectedDataIds, setSelectedDataIds] = useState<number[]>([])
   const [charts, setCharts] = useState<(ChartConfiguration & { id: string })[]>([])
@@ -319,8 +317,7 @@ export default function Home() {
       <div className="h-screen flex flex-col">
         <div className="container mx-auto p-8 pb-0 flex-shrink-0">
           <AppHeader
-          onImportClick={() => setImportDialogOpen(true)}
-          onDataSelectionClick={() => setDataSelectionOpen(true)}
+          onDataClick={() => setDataManagementOpen(true)}
           onCreateChartClick={() => setCreateChartOpen(true)}
           onExportClick={handleExportWorkspace}
           onImportWorkspaceClick={handleImportWorkspace}
@@ -377,17 +374,12 @@ export default function Home() {
         )}
       </div>
 
-      <CsvImportDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-        onImportComplete={handleImportComplete}
-      />
-      
-      <DataSelectionDialog
-        open={dataSelectionOpen}
-        onOpenChange={setDataSelectionOpen}
+      <DataManagementDialog
+        open={dataManagementOpen}
+        onOpenChange={setDataManagementOpen}
         selectedDataIds={selectedDataIds}
         onSelectionChange={setSelectedDataIds}
+        onImportComplete={handleImportComplete}
       />
       
       <CreateChartDialog
