@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { db } from '@/lib/db'
 import { Metadata, TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
 import { Loader2 } from 'lucide-react'
@@ -95,20 +94,20 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
               No data available
             </div>
           ) : (
-            <ScrollArea className="h-full">
-              <Table>
+            <div className="h-full overflow-auto">
+              <Table className="min-w-max">
                 <TableHeader>
                   <TableRow>
-                    <TableHead rowSpan={3} className="w-[50px]">#</TableHead>
+                    <TableHead rowSpan={3} className="sticky left-0 z-10 bg-white w-[50px]">#</TableHead>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center">
+                      <TableHead key={col} className="text-center min-w-[100px]">
                         <div className="text-xs font-normal">{col}</div>
                       </TableHead>
                     ))}
                   </TableRow>
                   <TableRow>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center">
+                      <TableHead key={col} className="text-center min-w-[100px]">
                         <div className="text-xs font-normal">
                           {parameters[col]?.parameterName || '-'}
                         </div>
@@ -117,7 +116,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                   </TableRow>
                   <TableRow>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center">
+                      <TableHead key={col} className="text-center min-w-[100px]">
                         <div className="text-xs font-normal">
                           {parameters[col]?.unit || '-'}
                         </div>
@@ -128,9 +127,9 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                 <TableBody>
                   {data.map((row, index) => (
                     <TableRow key={row.id}>
-                      <TableCell className="font-medium">{index + 1}</TableCell>
+                      <TableCell className="font-medium sticky left-0 z-10 bg-white">{index + 1}</TableCell>
                       {columns.map(col => (
-                        <TableCell key={col} className="text-right">
+                        <TableCell key={col} className="text-right min-w-[100px]">
                           {row.data[col] !== undefined ? String(row.data[col]) : '-'}
                         </TableCell>
                       ))}
@@ -138,7 +137,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                   ))}
                 </TableBody>
               </Table>
-            </ScrollArea>
+            </div>
           )}
         </div>
 
