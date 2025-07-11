@@ -118,19 +118,24 @@ export function UploadContent() {
 
         setUploadProgress(Math.floor(((i + 0.5) / totalItems) * 100))
 
-        // Prepare upload payload
+        // Prepare upload payload (exclude ID fields)
         const payload = {
           metadata: {
             ...metadata,
+            id: undefined,  // Exclude ID
             startTime: metadata.startTime?.toISOString(),
             endTime: metadata.endTime?.toISOString(),
             dataStartTime: metadata.dataStartTime?.toISOString(),
             dataEndTime: metadata.dataEndTime?.toISOString(),
             importedAt: metadata.importedAt.toISOString()
           },
-          parameters,
+          parameters: parameters.map(p => ({
+            ...p,
+            id: undefined  // Exclude ID
+          })),
           timeSeriesData: timeSeriesData.map(item => ({
             ...item,
+            id: undefined,  // Exclude ID
             timestamp: item.timestamp.toISOString()
           }))
         }

@@ -123,9 +123,10 @@ export function DownloadContent() {
 
         // Save to IndexedDB
         await db.transaction('rw', db.metadata, db.parameters, db.timeSeries, async () => {
-          // Save metadata
+          // Save metadata (exclude ID to allow auto-increment)
           const metadataId = await db.metadata.add({
             ...data.metadata,
+            id: undefined,  // Exclude ID
             startTime: data.metadata.startTime ? new Date(data.metadata.startTime) : undefined,
             endTime: data.metadata.endTime ? new Date(data.metadata.endTime) : undefined,
             dataStartTime: data.metadata.dataStartTime ? new Date(data.metadata.dataStartTime) : undefined,
@@ -133,17 +134,24 @@ export function DownloadContent() {
             importedAt: new Date()
           })
 
-          // Save parameters
+          // Save parameters (exclude ID)
           for (const param of data.parameters) {
-            await db.parameters.add(param)
+            await db.parameters.add({
+              ...param,
+              id: undefined  // Exclude ID
+            })
           }
 
-          // Save time series data
-          const timeSeriesData = data.timeSeriesData.map((item: { timestamp: string; [key: string]: unknown }) => ({
-            ...item,
-            metadataId,
-            timestamp: new Date(item.timestamp)
-          }))
+          // Save time series data (convert to correct format)
+          const timeSeriesData = data.timeSeriesData.map((item: { timestamp: string; [key: string]: unknown }) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { timestamp, id, ...parameterValues } = item;
+            return {
+              metadataId,
+              timestamp: new Date(timestamp),
+              data: parameterValues  // Store parameter values in 'data' field
+            };
+          });
           await db.timeSeries.bulkAdd(timeSeriesData)
         })
 
