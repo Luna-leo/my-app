@@ -23,11 +23,17 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
   useEffect(() => {
     if (!open || !metadata) return
 
-    const loadData = async () => {
+    // Set loading state immediately for better UX
+    setLoading(true)
+    setError(null)
+    
+    // Clear previous data when switching between different metadata
+    setData([])
+    setParameters({})
+    
+    // Delay loading to avoid unnecessary DB access for quick open/close
+    const loadTimer = setTimeout(async () => {
       try {
-        setLoading(true)
-        setError(null)
-        
         // Load first 100 rows of data for preview
         const timeSeriesData = await db.timeSeries
           .where('metadataId')
@@ -59,9 +65,13 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
       } finally {
         setLoading(false)
       }
-    }
+    }, 300) // 300ms delay
 
-    loadData()
+    // Cleanup function to cancel loading if dialog is closed quickly
+    return () => {
+      clearTimeout(loadTimer)
+      setLoading(false)
+    }
   }, [open, metadata])
 
   if (!metadata) return null
