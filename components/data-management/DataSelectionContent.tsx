@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -27,6 +27,7 @@ export function DataSelectionContent({
   const [filteredMetadata, setFilteredMetadata] = useState<Metadata[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Load metadata from IndexedDB
   useEffect(() => {
@@ -34,8 +35,14 @@ export function DataSelectionContent({
       try {
         setLoading(true)
         const data = await db.metadata.toArray()
-        setMetadata(data)
-        setFilteredMetadata(data)
+        // Sort by importedAt date, oldest first (so newest appears at bottom)
+        const sortedData = data.sort((a, b) => {
+          const dateA = a.importedAt ? new Date(a.importedAt).getTime() : 0
+          const dateB = b.importedAt ? new Date(b.importedAt).getTime() : 0
+          return dateA - dateB
+        })
+        setMetadata(sortedData)
+        setFilteredMetadata(sortedData)
       } catch (error) {
         console.error('Failed to load metadata:', error)
       } finally {
@@ -45,6 +52,13 @@ export function DataSelectionContent({
 
     loadMetadata()
   }, [importCompleted])
+
+  // Scroll to bottom when import is completed
+  useEffect(() => {
+    if (importCompleted && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+    }
+  }, [importCompleted, filteredMetadata])
 
   // Filter metadata based on search term
   useEffect(() => {
@@ -131,7 +145,7 @@ export function DataSelectionContent({
 
       {/* Data list */}
       <div className="flex-1 overflow-hidden border rounded-md">
-        <div className="h-full overflow-y-auto p-4">
+        <div ref={scrollContainerRef} className="h-full overflow-y-auto p-4">
         {loading ? (
           <div className="text-center py-8 text-gray-500">
             Loading data sources...
