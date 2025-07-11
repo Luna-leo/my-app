@@ -159,12 +159,18 @@ export function DataSelectionContent({
             {filteredMetadata.map((item) => (
               <div 
                 key={item.id} 
-                className={`flex items-start space-x-3 p-3 rounded-lg border hover:bg-gray-50 ${
+                className={`flex items-start space-x-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer ${
                   importCompleted && item.importedAt && 
                   new Date(item.importedAt).getTime() > Date.now() - 5000
                     ? 'border-green-300 bg-green-50' 
                     : ''
                 }`}
+                onClick={() => {
+                  handleSelectionChange(item.id!, !selectedDataIds.includes(item.id!))
+                  if (importCompleted) {
+                    onImportCompletedReset()
+                  }
+                }}
               >
                 <Checkbox
                   id={`data-${item.id}`}
@@ -175,6 +181,7 @@ export function DataSelectionContent({
                       onImportCompletedReset()
                     }
                   }}
+                  onClick={(e) => e.stopPropagation()}
                   className="mt-1"
                 />
                 <div className="flex-1 space-y-1">
