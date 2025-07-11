@@ -7,6 +7,12 @@ import { db } from '@/lib/db'
 import { Metadata, TimeSeriesData, ParameterInfo } from '@/lib/db/schema'
 import { Loader2, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface DataPreviewDialogProps {
   open: boolean
@@ -19,6 +25,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
   const [parameters, setParameters] = useState<Record<string, ParameterInfo>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [exportLoading, setExportLoading] = useState(false)
 
   useEffect(() => {
     if (!open || !metadata) return
@@ -79,11 +86,29 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
   // Extract columns from the actual data
   const columns = data.length > 0 ? Object.keys(data[0].data) : []
 
-  const handleExportCsv = () => {
-    if (!metadata || data.length === 0) return
+  const handleExportCsv = async (exportAll: boolean = false) => {
+    if (!metadata) return
 
-    // Create CSV content with 3-row header
-    const csvRows: string[] = []
+    setExportLoading(true)
+    
+    try {
+      let exportData = data
+      
+      // Load all data if exportAll is true
+      if (exportAll) {
+        exportData = await db.timeSeries
+          .where('metadataId')
+          .equals(metadata.id!)
+          .toArray()
+      }
+      
+      if (exportData.length === 0) {
+        alert('No data to export')
+        return
+      }
+
+      // Create CSV content with 3-row header
+      const csvRows: string[] = []
     
     // Header row 1: Parameter IDs
     csvRows.push(['#', ...columns].join(','))
@@ -97,7 +122,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
     csvRows.push(['', ...units].join(','))
     
     // Data rows
-    data.forEach((row, index) => {
+    exportData.forEach((row, index) => {
       const values = columns.map(col => {
         const value = row.data[col]
         return value !== undefined && value !== null ? String(value) : ''
@@ -123,6 +148,9 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
+    } finally {
+      setExportLoading(false)
+    }
   }
 
   return (
@@ -153,18 +181,18 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
           ) : (
             <div className="h-full overflow-auto relative">
               <Table className="min-w-max">
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-20 bg-white">
                   <TableRow>
-                    <TableHead rowSpan={3} className="sticky left-0 z-10 bg-white w-[50px]">#</TableHead>
+                    <TableHead rowSpan={3} className="sticky left-0 z-30 bg-white w-[50px]">#</TableHead>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center min-w-[100px]">
+                      <TableHead key={col} className="text-center min-w-[100px] bg-white">
                         <div className="text-xs font-normal">{col}</div>
                       </TableHead>
                     ))}
                   </TableRow>
                   <TableRow>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center min-w-[100px]">
+                      <TableHead key={col} className="text-center min-w-[100px] bg-white">
                         <div className="text-xs font-normal">
                           {parameters[col]?.parameterName || '-'}
                         </div>
@@ -173,7 +201,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                   </TableRow>
                   <TableRow>
                     {columns.map(col => (
-                      <TableHead key={col} className="text-center min-w-[100px]">
+                      <TableHead key={col} className="text-center min-w-[100px] bg-white">
                         <div className="text-xs font-normal">
                           {parameters[col]?.unit || '-'}
                         </div>
@@ -202,15 +230,30 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
           <span className="text-sm text-gray-500">
             Showing first {data.length} rows of data
           </span>
-          <Button
-            onClick={handleExportCsv}
-            variant="outline"
-            size="sm"
-            disabled={data.length === 0}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export CSV
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={data.length === 0 || exportLoading}
+              >
+                {exportLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Export CSV
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => handleExportCsv(false)}>
+                Export displayed data ({data.length} rows)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportCsv(true)}>
+                Export all data
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </DialogContent>
     </Dialog>
