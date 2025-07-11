@@ -81,12 +81,17 @@ class RequestQueue {
   }
 }
 
+// Extended ChartConfiguration type for internal use
+interface ChartConfigurationWithData extends ChartConfiguration {
+  selectedDataIds: number[];
+}
+
 interface ChartDataContextType {
-  getChartData: (config: ChartConfiguration, enableSampling?: boolean | SamplingConfig, onProgress?: (progress: number) => void) => Promise<{
+  getChartData: (config: ChartConfigurationWithData, enableSampling?: boolean | SamplingConfig, onProgress?: (progress: number) => void) => Promise<{
     plotData: ChartPlotData | null;
     dataViewport: ChartViewport | null;
   }>;
-  preloadChartData: (configs: ChartConfiguration[], options?: {
+  preloadChartData: (configs: ChartConfigurationWithData[], options?: {
     batchSize?: number;
     onProgress?: (loaded: number, total: number) => void;
   }) => Promise<void>;
@@ -96,7 +101,7 @@ interface ChartDataContextType {
 const ChartDataContext = createContext<ChartDataContextType | undefined>(undefined);
 
 // Generate a stable hash for chart configuration
-function getConfigHash(config: ChartConfiguration, samplingOption: boolean | SamplingConfig = true): string {
+function getConfigHash(config: ChartConfigurationWithData, samplingOption: boolean | SamplingConfig = true): string {
   const samplingConfig = typeof samplingOption === 'boolean' 
     ? { enabled: samplingOption }
     : samplingOption;
@@ -164,6 +169,15 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
 
   // Fetch and cache raw data for given metadata IDs
   const fetchRawData = async (metadataIds: number[]) => {
+    // Handle empty data case
+    if (!metadataIds || metadataIds.length === 0) {
+      return {
+        timeSeries: [],
+        dataByMetadata: new Map(),
+        metadata: new Map(),
+        parameters: new Map()
+      };
+    }
 
     // First, fetch metadata to get time range information
     const metadataPromises = metadataIds.map(async (metadataId) => {
@@ -274,7 +288,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     return parameterMap;
   };
 
-  const getChartData = async (config: ChartConfiguration, enableSampling: boolean | SamplingConfig = true, onProgress?: (progress: number) => void) => {
+  const getChartData = async (config: ChartConfigurationWithData, enableSampling: boolean | SamplingConfig = true, onProgress?: (progress: number) => void) => {
     const startTime = performance.now();
     const configHash = getConfigHash(config, enableSampling);
     
@@ -527,7 +541,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
   };
 
   // Preload data for multiple charts with progressive loading
-  const preloadChartData = async (configs: ChartConfiguration[], options?: {
+  const preloadChartData = async (configs: ChartConfigurationWithData[], options?: {
     batchSize?: number;
     onProgress?: (loaded: number, total: number) => void;
   }) => {

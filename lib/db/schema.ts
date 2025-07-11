@@ -5,6 +5,7 @@ export interface DataSource {
 
 export interface Metadata {
   id?: number;
+  dataKey: string;
   plant: string;
   machineNo: string;
   label?: string;
@@ -46,7 +47,6 @@ export interface ChartConfiguration {
   chartType: 'line' | 'scatter';
   xAxisParameter: string;
   yAxisParameters: string[];
-  selectedDataIds: number[];
   displaySettings?: {
     colors?: string[];
     lineStyles?: string[];
@@ -63,6 +63,7 @@ export interface Workspace {
   name: string;
   description?: string;
   isActive: boolean;
+  selectedDataKeys: string[];
   createdAt: Date;
   updatedAt: Date;
 }

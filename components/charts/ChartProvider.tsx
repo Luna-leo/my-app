@@ -25,6 +25,7 @@ interface BasicChartProps {
 // Props for data-driven chart component
 export interface DataChartProps {
   config: ChartConfiguration
+  selectedDataIds: number[]
   aspectRatio?: number | AspectRatioPreset
   className?: string
   onEdit?: () => void

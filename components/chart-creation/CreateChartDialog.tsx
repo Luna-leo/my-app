@@ -18,7 +18,6 @@ export interface ChartConfiguration {
   chartType: 'line' | 'scatter';
   xAxisParameter: string;
   yAxisParameters: string[];
-  selectedDataIds: number[];
 }
 
 interface CreateChartDialogProps {
@@ -67,8 +66,8 @@ export function CreateChartDialog({
   // Load available parameters based on selected data
   useEffect(() => {
     const loadParameters = async () => {
-      // Use chartToEdit's selectedDataIds in edit mode, otherwise use the prop
-      const dataIds = editMode && chartToEdit ? chartToEdit.selectedDataIds : selectedDataIds;
+      // Always use the provided selectedDataIds
+      const dataIds = selectedDataIds;
       
       if (dataIds.length === 0) {
         setAvailableParameters([]);
@@ -137,8 +136,7 @@ export function CreateChartDialog({
         title: defaultTitle,
         chartType,
         xAxisParameter,
-        yAxisParameters,
-        selectedDataIds
+        yAxisParameters
       };
       onCreateChart(config);
     }
@@ -166,7 +164,7 @@ export function CreateChartDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {(editMode && chartToEdit ? chartToEdit.selectedDataIds : selectedDataIds).length === 0 ? (
+        {selectedDataIds.length === 0 ? (
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -295,7 +293,7 @@ export function CreateChartDialog({
           </Button>
           <Button 
             onClick={handleCreate}
-            disabled={!isValid || (editMode && chartToEdit ? chartToEdit.selectedDataIds : selectedDataIds).length === 0}
+            disabled={!isValid || selectedDataIds.length === 0}
           >
             {editMode ? 'Update Chart' : 'Create Chart'}
           </Button>

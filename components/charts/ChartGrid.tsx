@@ -11,6 +11,7 @@ import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 interface ChartGridProps {
   charts: (ChartConfiguration & { id: string })[]
+  selectedDataIds: number[]
   onEdit: (chartId: string) => void
   onDuplicate: (chartId: string) => void
   onDelete: (chartId: string) => void
@@ -22,6 +23,7 @@ interface ChartGridProps {
 
 export function ChartGrid({ 
   charts, 
+  selectedDataIds,
   onEdit, 
   onDuplicate, 
   onDelete, 
@@ -176,6 +178,7 @@ export function ChartGrid({
             <div key={chart.id} style={{ height: itemHeight }} className="w-full">
               <ChartComponent
                 config={chart}
+                selectedDataIds={selectedDataIds}
                 aspectRatio={aspectRatio}
                 className="w-full h-full"
                 onEdit={() => onEdit(chart.id)}
@@ -190,6 +193,7 @@ export function ChartGrid({
             <div key={chart.id} style={{ height: itemHeight }} className="w-full">
               <LazyChart
                 config={chart}
+                selectedDataIds={selectedDataIds}
                 aspectRatio={aspectRatio}
                 className="w-full h-full"
                 onEdit={() => onEdit(chart.id)}

@@ -27,11 +27,16 @@ import { SamplingConfig, DEFAULT_SAMPLING_CONFIG } from '@/lib/utils/chartDataSa
 import { useDataPointsInfo } from '@/hooks/useDataPointsInfo'
 import { metadataService } from '@/lib/services/metadataService'
 import { colorService } from '@/lib/services/colorService'
+import { db } from '@/lib/db'
+import { ensureMetadataHasDataKeys, getDatabaseInfo, cleanupDuplicateWorkspaces, fixWorkspaceIsActiveField } from '@/lib/utils/dbMigrationUtils'
+import DatabaseDebugPanel from '@/components/debug/DatabaseDebugPanel'
 
 export default function Home() {
   const [dataManagementOpen, setDataManagementOpen] = useState(false)
   const [createChartOpen, setCreateChartOpen] = useState(false)
-  const [selectedDataIds, setSelectedDataIds] = useState<number[]>([])
+  const [selectedDataKeys, setSelectedDataKeys] = useState<string[]>([])
+  const [selectedDataIds, setSelectedDataIds] = useState<number[]>([]) // Keep for backward compatibility
+  const [showDebugPanel, setShowDebugPanel] = useState(false)
   const [charts, setCharts] = useState<(ChartConfiguration & { id: string })[]>([])
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ open: boolean; chartId: string | null }>({
     open: false,
@@ -61,14 +66,34 @@ export default function Home() {
       const workspace = await chartConfigService.initializeWorkspace()
       setWorkspaceId(workspace.id!)
       
+      // Load selected data keys from workspace
+      if (workspace.selectedDataKeys && workspace.selectedDataKeys.length > 0) {
+        setSelectedDataKeys(workspace.selectedDataKeys)
+        
+        // Convert data keys to IDs for backward compatibility
+        const metadata = await db.getMetadataByDataKeys(workspace.selectedDataKeys)
+        const ids = metadata.map(m => m.id!).filter(id => id !== undefined)
+        setSelectedDataIds(ids)
+      } else {
+        // Migrate from chart-based selection if needed
+        const migratedKeys = await chartConfigService.migrateSelectedDataFromCharts(workspace.id!)
+        setSelectedDataKeys(migratedKeys)
+        
+        // Convert to IDs
+        if (migratedKeys.length > 0) {
+          const metadata = await db.getMetadataByDataKeys(migratedKeys)
+          const ids = metadata.map(m => m.id!).filter(id => id !== undefined)
+          setSelectedDataIds(ids)
+        }
+      }
+      
       const savedCharts = await chartConfigService.loadChartConfigurations(workspace.id)
       const convertedCharts = savedCharts.map(chart => ({
         id: chart.id!,
         title: chart.title,
         chartType: chart.chartType,
         xAxisParameter: chart.xAxisParameter,
-        yAxisParameters: chart.yAxisParameters,
-        selectedDataIds: chart.selectedDataIds
+        yAxisParameters: chart.yAxisParameters
       }))
       setCharts(convertedCharts)
       
@@ -91,6 +116,42 @@ export default function Home() {
     if (savedLayout) {
       setLayoutOption(savedLayout)
     }
+    
+    // Debug: Check metadata and fix if needed
+    const checkAndFixMetadata = async () => {
+      const info = await getDatabaseInfo()
+      console.log('[Debug] Database info:', info)
+      
+      // Fix workspace isActive field type
+      const fixedWorkspaces = await fixWorkspaceIsActiveField()
+      if (fixedWorkspaces > 0) {
+        console.log('[Debug] Fixed workspace isActive fields')
+        await loadWorkspaceAndCharts()
+        return
+      }
+      
+      // Clean up duplicate workspaces
+      if (info.workspacesCount > 1) {
+        console.log('[Debug] Cleaning up duplicate workspaces...')
+        const deleted = await cleanupDuplicateWorkspaces()
+        if (deleted > 0) {
+          await loadWorkspaceAndCharts()
+          return
+        }
+      }
+      
+      if (info.metadataCount > 0 && info.metadataWithDataKey === 0) {
+        console.log('[Debug] Fixing metadata without dataKey...')
+        const updated = await ensureMetadataHasDataKeys()
+        console.log('[Debug] Fixed metadata:', updated)
+        
+        // Reload after fixing
+        if (updated > 0) {
+          loadWorkspaceAndCharts()
+        }
+      }
+    }
+    checkAndFixMetadata()
   }, [loadWorkspaceAndCharts])
 
   // Fetch labels and colors when selectedDataIds change
@@ -108,6 +169,26 @@ export default function Home() {
     }
     fetchLabelsAndColors()
   }, [selectedDataIds])
+
+  // Handle selection change
+  const handleSelectionChange = useCallback(async (newIds: number[]) => {
+    setSelectedDataIds(newIds)
+    
+    // Convert IDs to data keys
+    if (newIds.length > 0) {
+      const metadata = await db.metadata.where('id').anyOf(newIds).toArray()
+      console.log('[handleSelectionChange] metadata:', metadata)
+      const dataKeys = metadata.map(m => m.dataKey).filter(key => key !== undefined)
+      console.log('[handleSelectionChange] dataKeys:', dataKeys)
+      setSelectedDataKeys(dataKeys)
+      
+      // Save to workspace
+      await chartConfigService.updateActiveWorkspaceSelectedDataKeys(dataKeys)
+    } else {
+      setSelectedDataKeys([])
+      await chartConfigService.updateActiveWorkspaceSelectedDataKeys([])
+    }
+  }, [])
 
   const handleImportComplete = () => {
     // Refresh data or update plot after import
@@ -217,11 +298,12 @@ export default function Home() {
   }, [charts, paginationEnabled, layoutOption, currentPage, chartsPerPage]);
 
   // Get data points info for visible charts
-  const dataPointsInfo = useDataPointsInfo(visibleCharts, samplingConfig);
+  const dataPointsInfo = useDataPointsInfo(visibleCharts, samplingConfig, selectedDataIds);
 
   const handleExportWorkspace = async () => {
     try {
       const jsonData = await chartConfigService.exportWorkspace(workspaceId)
+      console.log('[Export] Workspace data:', JSON.parse(jsonData))
       const blob = new Blob([jsonData], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -356,6 +438,7 @@ export default function Home() {
               <div className="container mx-auto px-8 pb-8 flex-1 overflow-hidden">
                 <ChartGrid
                   charts={charts}
+                  selectedDataIds={selectedDataIds}
                   onEdit={handleEditChart}
                   onDuplicate={handleDuplicateChart}
                   onDelete={handleDeleteChart}
@@ -378,7 +461,7 @@ export default function Home() {
         open={dataManagementOpen}
         onOpenChange={setDataManagementOpen}
         selectedDataIds={selectedDataIds}
-        onSelectionChange={setSelectedDataIds}
+        onSelectionChange={handleSelectionChange}
         onImportComplete={handleImportComplete}
       />
       
@@ -392,7 +475,7 @@ export default function Home() {
       <CreateChartDialog
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
-        selectedDataIds={editingChart?.selectedDataIds || []}
+        selectedDataIds={selectedDataIds}
         onCreateChart={() => {}}
         editMode={true}
         chartToEdit={editingChart || undefined}
@@ -416,6 +499,30 @@ export default function Home() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      
+      {/* Debug Panel - Only visible when enabled */}
+      {showDebugPanel && (
+        <div className="fixed bottom-4 right-4 max-w-2xl max-h-[80vh] overflow-auto z-50 bg-background border rounded-lg shadow-lg">
+          <div className="p-2 border-b flex justify-between items-center">
+            <span className="text-sm font-semibold">Database Debug Panel</span>
+            <button
+              onClick={() => setShowDebugPanel(false)}
+              className="text-sm px-2 py-1 hover:bg-gray-100 rounded"
+            >
+              Close
+            </button>
+          </div>
+          <DatabaseDebugPanel />
+        </div>
+      )}
+      
+      {/* Debug Toggle Button */}
+      <button
+        onClick={() => setShowDebugPanel(!showDebugPanel)}
+        className="fixed bottom-4 left-4 px-3 py-2 bg-gray-800 text-white text-xs rounded-md hover:bg-gray-700 z-50"
+      >
+        {showDebugPanel ? 'Hide' : 'Show'} Debug
+      </button>
     </>
   )
 }

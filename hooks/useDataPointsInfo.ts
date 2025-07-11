@@ -14,7 +14,8 @@ interface DataPointsInfo {
  */
 export function useDataPointsInfo(
   visibleCharts: (ChartConfiguration & { id: string })[],
-  samplingConfig: SamplingConfig
+  samplingConfig: SamplingConfig,
+  selectedDataIds: number[]
 ): DataPointsInfo {
   const [dataPointsInfo, setDataPointsInfo] = useState<DataPointsInfo>({
     original: 0,
@@ -46,7 +47,11 @@ export function useDataPointsInfo(
         // Process charts in parallel for better performance
         const promises = debouncedCharts.map(async (chart) => {
           try {
-            const { plotData } = await getChartData(chart, samplingConfig);
+            const chartWithData = {
+              ...chart,
+              selectedDataIds: selectedDataIds || []
+            };
+            const { plotData } = await getChartData(chartWithData, samplingConfig);
             
             if (plotData?.samplingInfo) {
               return {
@@ -101,7 +106,7 @@ export function useDataPointsInfo(
     return () => {
       isCancelled = true;
     };
-  }, [debouncedCharts, samplingConfig, getChartData]);
+  }, [debouncedCharts, samplingConfig, getChartData, selectedDataIds]);
 
   return dataPointsInfo;
 }

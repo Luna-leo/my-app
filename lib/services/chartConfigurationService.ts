@@ -17,17 +17,33 @@ export class ChartConfigurationService {
   }
 
   async initializeWorkspace(): Promise<Workspace> {
-    const activeWorkspace = await db.workspaces.where('isActive').equals(1).first();
+    // First try to find active workspace using filter instead of where clause
+    const allWorkspaces = await db.workspaces.toArray();
+    const activeWorkspace = allWorkspaces.find(w => w.isActive === true || w.isActive === 1);
     
     if (activeWorkspace) {
+      // Ensure it's using boolean true
+      if (activeWorkspace.isActive !== true) {
+        await db.workspaces.update(activeWorkspace.id!, { isActive: true });
+      }
       return activeWorkspace;
     }
 
+    // Check if there are any workspaces at all
+    if (allWorkspaces.length > 0) {
+      // Make the first workspace active
+      const firstWorkspace = allWorkspaces[0];
+      await db.workspaces.update(firstWorkspace.id!, { isActive: true });
+      return firstWorkspace;
+    }
+
+    // Create a new default workspace
     const defaultWorkspace: Workspace = {
       id: uuidv4(),
       name: 'Default Workspace',
       description: 'Default workspace for chart configurations',
       isActive: true,
+      selectedDataKeys: [],
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -122,6 +138,7 @@ export class ChartConfigurationService {
       ...data.workspace,
       id: newWorkspaceId,
       isActive: false,
+      selectedDataKeys: data.workspace.selectedDataKeys || [],
       createdAt: new Date(data.workspace.createdAt),
       updatedAt: new Date()
     };
@@ -145,13 +162,21 @@ export class ChartConfigurationService {
 
   async switchWorkspace(workspaceId: string): Promise<void> {
     await db.transaction('rw', db.workspaces, async () => {
-      await db.workspaces.where('isActive').equals(1).modify({ isActive: false });
+      // Get all workspaces and update them
+      const allWorkspaces = await db.workspaces.toArray();
+      for (const workspace of allWorkspaces) {
+        if (workspace.isActive && workspace.id !== workspaceId) {
+          await db.workspaces.update(workspace.id!, { isActive: false });
+        }
+      }
       await db.workspaces.update(workspaceId, { isActive: true });
     });
   }
 
   async getActiveWorkspace(): Promise<Workspace | undefined> {
-    return await db.workspaces.where('isActive').equals(1).first();
+    // Use filter instead of where clause to avoid key type issues
+    const allWorkspaces = await db.workspaces.toArray();
+    return allWorkspaces.find(w => w.isActive === true || w.isActive === 1);
   }
 
   async createWorkspace(name: string, description?: string): Promise<Workspace> {
@@ -160,6 +185,7 @@ export class ChartConfigurationService {
       name,
       description,
       isActive: false,
+      selectedDataKeys: [],
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -170,6 +196,61 @@ export class ChartConfigurationService {
 
   async getAllWorkspaces(): Promise<Workspace[]> {
     return await db.workspaces.toArray();
+  }
+
+  async updateWorkspaceSelectedDataKeys(workspaceId: string, selectedDataKeys: string[]): Promise<void> {
+    console.log('[updateWorkspaceSelectedDataKeys] Updating workspace:', workspaceId, 'with keys:', selectedDataKeys);
+    const result = await db.workspaces.update(workspaceId, { 
+      selectedDataKeys,
+      updatedAt: new Date()
+    });
+    console.log('[updateWorkspaceSelectedDataKeys] Update result:', result);
+    
+    // Verify the update
+    const updated = await db.workspaces.get(workspaceId);
+    console.log('[updateWorkspaceSelectedDataKeys] Verified workspace after update:', updated);
+  }
+
+  async updateActiveWorkspaceSelectedDataKeys(selectedDataKeys: string[]): Promise<void> {
+    let activeWorkspace = await this.getActiveWorkspace();
+    console.log('[updateActiveWorkspaceSelectedDataKeys] activeWorkspace:', activeWorkspace);
+    console.log('[updateActiveWorkspaceSelectedDataKeys] selectedDataKeys:', selectedDataKeys);
+    
+    // If no active workspace found, try to initialize one
+    if (!activeWorkspace) {
+      console.warn('[updateActiveWorkspaceSelectedDataKeys] No active workspace found, initializing...');
+      activeWorkspace = await this.initializeWorkspace();
+    }
+    
+    if (activeWorkspace && activeWorkspace.id) {
+      try {
+        await this.updateWorkspaceSelectedDataKeys(activeWorkspace.id, selectedDataKeys);
+        console.log('[updateActiveWorkspaceSelectedDataKeys] Successfully updated workspace with keys');
+      } catch (error) {
+        console.error('[updateActiveWorkspaceSelectedDataKeys] Error updating workspace:', error);
+        
+        // Retry once after a short delay
+        setTimeout(async () => {
+          try {
+            const retryWorkspace = await this.getActiveWorkspace();
+            if (retryWorkspace && retryWorkspace.id) {
+              await this.updateWorkspaceSelectedDataKeys(retryWorkspace.id, selectedDataKeys);
+              console.log('[updateActiveWorkspaceSelectedDataKeys] Successfully updated workspace on retry');
+            }
+          } catch (retryError) {
+            console.error('[updateActiveWorkspaceSelectedDataKeys] Retry failed:', retryError);
+          }
+        }, 100);
+      }
+    } else {
+      console.error('[updateActiveWorkspaceSelectedDataKeys] Failed to get or create active workspace');
+    }
+  }
+
+  async migrateSelectedDataFromCharts(_workspaceId: string): Promise<string[]> {
+    // Since charts no longer have selectedDataIds, migration is not needed
+    // Return empty array
+    return [];
   }
 }
 

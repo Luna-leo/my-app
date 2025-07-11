@@ -26,6 +26,7 @@ import { zoomSyncService } from '@/lib/services/zoomSyncService'
 
 interface UplotChartWithDataProps {
   config: ChartConfiguration
+  selectedDataIds: number[]
   aspectRatio?: number | AspectRatioPreset
   className?: string
   onEdit?: () => void
@@ -45,6 +46,7 @@ interface UplotChartWithDataProps {
 
 function UplotChartWithDataComponent({
   config,
+  selectedDataIds,
   aspectRatio = UPLOT_DEFAULTS.ASPECT_RATIO,
   className = '',
   onEdit,
@@ -79,7 +81,7 @@ function UplotChartWithDataComponent({
   })
   
   // Use sampling config from props
-  const { plotData, dataViewport, loadingState } = useChartData(config, samplingConfig ?? true)
+  const { plotData, dataViewport, loadingState } = useChartData(config, samplingConfig ?? true, selectedDataIds)
   
   console.log('[UplotChartWithData] Chart data hook result:', {
     config,
