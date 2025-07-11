@@ -1,6 +1,12 @@
 import { Button } from '@/components/ui/button'
-import { LineChart, Download, FolderOpen } from 'lucide-react'
+import { LineChart, Download, FolderOpen, Settings } from 'lucide-react'
 import { DataButton } from './DataButton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface AppHeaderProps {
   onDataClick: () => void
@@ -32,21 +38,27 @@ export function AppHeader({
           <LineChart className="mr-2 h-4 w-4" />
           Chart
         </Button>
-        <Button
-          onClick={onExportClick}
-          variant="outline"
-          disabled={isExportDisabled}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Export
-        </Button>
-        <Button
-          onClick={onImportWorkspaceClick}
-          variant="outline"
-        >
-          <FolderOpen className="mr-2 h-4 w-4" />
-          Import
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem 
+              onClick={onExportClick}
+              disabled={isExportDisabled}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export Workspace
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onImportWorkspaceClick}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Import Workspace
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   )
