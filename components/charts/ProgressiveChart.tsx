@@ -1,17 +1,16 @@
 'use client'
 
-import { useEffect, useRef, memo } from 'react'
+import { useRef, memo } from 'react'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
-import { useProgressiveChartData } from '@/hooks/useProgressiveChartData'
+import { useProgressiveChartData, DataResolution } from '@/hooks/useProgressiveChartData'
 import { UplotChart } from './UplotChart'
 import { ChartLoadingState } from './ChartStates'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Trash2, Copy, Edit, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createUplotOptions } from '@/lib/chartConfig'
-import { AspectRatioPreset } from '@/hooks/useChartDimensions'
-import { SamplingConfig } from '@/lib/utils/chartDataSampling'
+import { buildUplotOptions, transformToUplotData } from '@/lib/utils/uplotUtils'
+import { AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
 import { Badge } from '@/components/ui/badge'
 
 interface ProgressiveChartProps {
@@ -22,7 +21,6 @@ interface ProgressiveChartProps {
   onEdit?: () => void
   onDuplicate?: () => void
   onDelete?: () => void
-  samplingConfig?: SamplingConfig
   enableProgressive?: boolean
 }
 
@@ -34,7 +32,6 @@ function ProgressiveChartComponent({
   onEdit,
   onDuplicate,
   onDelete,
-  samplingConfig,
   enableProgressive = true
 }: ProgressiveChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -53,7 +50,31 @@ function ProgressiveChartComponent({
   });
 
   // Create uPlot options
-  const uplotOptions = plotData ? createUplotOptions(config, plotData, aspectRatio) : null;
+  let aspectRatioValue = 1.5;
+  if (typeof aspectRatio === 'string') {
+    const presetValue = ASPECT_RATIOS[aspectRatio as AspectRatioPreset];
+    aspectRatioValue = presetValue === 'auto' ? 1.5 : presetValue;
+  } else if (typeof aspectRatio === 'number') {
+    aspectRatioValue = aspectRatio;
+  }
+  
+  const uplotOptions = plotData && dataViewport ? buildUplotOptions({
+    width: 800, // Default width, will be adjusted by ResizeObserver
+    height: Math.round(800 / aspectRatioValue),
+    xLabel: plotData.xParameterInfo 
+      ? `${plotData.xParameterInfo.parameterName} [${plotData.xParameterInfo.unit || ''}]`
+      : 'Time',
+    yLabel: plotData.series.length > 0
+      ? `${plotData.series[0].parameterInfo.parameterName}${plotData.series[0].parameterInfo.unit ? ` [${plotData.series[0].parameterInfo.unit}]` : ''}`
+      : 'Value',
+    seriesNames: plotData.series.map(series => 
+      `${series.metadataLabel} - ${series.parameterInfo.parameterName}`
+    ),
+    chartType: config.chartType,
+    isTimeAxis: config.chartType === 'line',
+    xRange: [dataViewport.xMin, dataViewport.xMax],
+    yRange: [dataViewport.yMin, dataViewport.yMax]
+  }) : null;
 
   // Resolution badge color
   const getResolutionBadgeVariant = () => {
@@ -67,8 +88,8 @@ function ProgressiveChartComponent({
 
   // Manual resolution upgrade
   const handleUpgradeResolution = () => {
-    const resolutionOrder = ['preview', 'normal', 'high'] as const;
-    const currentIndex = resolutionOrder.indexOf(resolution as any);
+    const resolutionOrder: DataResolution[] = ['preview', 'normal', 'high'];
+    const currentIndex = resolutionOrder.indexOf(resolution);
     if (currentIndex < resolutionOrder.length - 1) {
       setResolution(resolutionOrder[currentIndex + 1]);
     }
@@ -135,13 +156,16 @@ function ProgressiveChartComponent({
         {plotData && uplotOptions && (
           <div className="relative h-full">
             <UplotChart
-              data={plotData}
+              data={transformToUplotData(
+                plotData.series[0]?.xValues || [],
+                plotData.series.map(s => s.yValues)
+              )}
               options={uplotOptions}
               className="h-full"
             />
-            {dataViewport && (
+            {plotData.samplingInfo && (
               <div className="absolute top-0 right-0 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded-bl">
-                {dataViewport.samplingInfo?.sampledCount?.toLocaleString()} / {dataViewport.samplingInfo?.originalCount?.toLocaleString()} points
+                {plotData.samplingInfo.sampledCount.toLocaleString()} / {plotData.samplingInfo.originalCount.toLocaleString()} points
               </div>
             )}
           </div>

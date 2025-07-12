@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, memo, useCallback } from 'react'
+import { useRef, memo } from 'react'
 import { FixedSizeGrid as Grid, GridChildComponentProps } from 'react-window'
 import { getDataChartComponent } from '@/components/charts/ChartProvider'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
@@ -105,18 +105,18 @@ export function VirtualizedChartGrid({
     columnCount
   }
 
-  // Handle scroll to specific chart
-  const scrollToChart = useCallback((chartIndex: number) => {
-    if (gridRef.current) {
-      const rowIndex = Math.floor(chartIndex / columnCount)
-      const columnIndex = chartIndex % columnCount
-      gridRef.current.scrollToItem({
-        columnIndex,
-        rowIndex,
-        align: 'center'
-      })
-    }
-  }, [columnCount])
+  // Handle scroll to specific chart (currently unused but may be needed for future features)
+  // const scrollToChart = useCallback((chartIndex: number) => {
+  //   if (gridRef.current) {
+  //     const rowIndex = Math.floor(chartIndex / columnCount)
+  //     const columnIndex = chartIndex % columnCount
+  //     gridRef.current.scrollToItem({
+  //       columnIndex,
+  //       rowIndex,
+  //       align: 'center'
+  //     })
+  //   }
+  // }, [columnCount])
 
   return (
     <Grid

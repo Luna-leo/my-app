@@ -6,14 +6,14 @@ export interface SimpleWorkerMessage {
   type: 'SAMPLE_DATA';
   data: {
     id: string;
-    rawData: any[];
+    rawData: unknown[];
     targetPoints: number;
   };
 }
 
 export interface SimpleWorkerResponse {
   type: 'DATA_PROCESSED' | 'ERROR';
-  data?: any;
+  data?: unknown;
   error?: string;
   id: string;
 }
@@ -21,8 +21,8 @@ export interface SimpleWorkerResponse {
 export class SimpleWorkerPool {
   private worker: Worker | null = null;
   private pendingRequests = new Map<string, {
-    resolve: (value: any) => void;
-    reject: (error: any) => void;
+    resolve: (value: unknown) => void;
+    reject: (error: unknown) => void;
   }>();
   
   constructor() {
@@ -50,7 +50,7 @@ export class SimpleWorkerPool {
       this.worker.addEventListener('error', (error) => {
         console.error('Worker error:', error);
         // Reject all pending requests
-        for (const [id, { reject }] of this.pendingRequests) {
+        for (const [, { reject }] of this.pendingRequests) {
           reject(error);
         }
         this.pendingRequests.clear();
@@ -68,12 +68,15 @@ export class SimpleWorkerPool {
     
     return new Promise((resolve, reject) => {
       const id = message.data.id;
-      this.pendingRequests.set(id, { resolve, reject });
+      this.pendingRequests.set(id, { 
+        resolve: (value: unknown) => resolve(value as T), 
+        reject 
+      });
       this.worker!.postMessage(message);
     });
   }
   
-  private fallbackProcessing(message: SimpleWorkerMessage): any {
+  private fallbackProcessing(message: SimpleWorkerMessage): unknown {
     switch (message.type) {
       case 'SAMPLE_DATA': {
         const { rawData, targetPoints } = message.data;

@@ -53,7 +53,7 @@ export function useProgressiveChartData(
   });
 
   const { getChartData } = useChartDataContext();
-  const upgradeTimeoutRef = useRef<NodeJS.Timeout>();
+  const upgradeTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const isMountedRef = useRef(true);
   const currentResolutionRef = useRef(initialResolution);
 

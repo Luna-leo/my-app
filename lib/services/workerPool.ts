@@ -13,8 +13,8 @@ interface WorkerInstance {
 
 interface PendingTask {
   message: WorkerMessage;
-  resolve: (value: any) => void;
-  reject: (error: any) => void;
+  resolve: (value: unknown) => void;
+  reject: (error: unknown) => void;
   onProgress?: (progress: number) => void;
 }
 
@@ -81,7 +81,7 @@ export class WorkerPool {
     return new Promise((resolve, reject) => {
       const task: PendingTask = {
         message,
-        resolve,
+        resolve: (value: unknown) => resolve(value as T),
         reject,
         onProgress
       };
