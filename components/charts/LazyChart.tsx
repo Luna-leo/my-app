@@ -7,6 +7,7 @@ import { ChartLoadingState } from './ChartStates'
 import { cn } from '@/lib/utils'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
+import { DataResolution } from '@/hooks/useProgressiveChartData'
 
 interface LazyChartProps {
   config: ChartConfiguration
@@ -19,6 +20,8 @@ interface LazyChartProps {
   threshold?: number
   rootMargin?: string
   samplingConfig?: SamplingConfig
+  globalResolution?: DataResolution
+  globalAutoUpgrade?: boolean
 }
 
 export function LazyChart({
@@ -31,7 +34,9 @@ export function LazyChart({
   onDelete,
   threshold = 0.1,
   rootMargin = '100px',
-  samplingConfig
+  samplingConfig,
+  globalResolution,
+  globalAutoUpgrade
 }: LazyChartProps) {
   const [hasBeenVisible, setHasBeenVisible] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -61,7 +66,7 @@ export function LazyChart({
     }
   }, [threshold, rootMargin, hasBeenVisible])
 
-  const ChartComponent = getDataChartComponent()
+  const ChartComponent = getDataChartComponent(!!globalResolution)
 
   return (
     <div ref={containerRef} className={cn("h-full", className)}>
@@ -75,6 +80,8 @@ export function LazyChart({
           onDuplicate={onDuplicate}
           onDelete={onDelete}
           samplingConfig={samplingConfig}
+          globalResolution={globalResolution}
+          globalAutoUpgrade={globalAutoUpgrade}
         />
       ) : (
         <ChartLoadingState

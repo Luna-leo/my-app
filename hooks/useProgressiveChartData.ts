@@ -198,7 +198,7 @@ export function useProgressiveChartData(
   return {
     ...state,
     setResolution,
-    isUpgrading: state.resolution !== 'high' && autoUpgrade
+    isUpgrading: state.resolution !== 'full' && state.resolution !== 'high' && autoUpgrade
   };
 }
 

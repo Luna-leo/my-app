@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, memo } from 'react'
+import { useRef, memo, useEffect } from 'react'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { useProgressiveChartData, DataResolution } from '@/hooks/useProgressiveChartData'
 import { UplotChart } from './UplotChart'
@@ -23,6 +23,8 @@ interface ProgressiveChartProps {
   onDelete?: () => void
   enableProgressive?: boolean
   onDataLoaded?: () => void
+  globalResolution?: DataResolution
+  globalAutoUpgrade?: boolean
 }
 
 function ProgressiveChartComponent({
@@ -33,7 +35,9 @@ function ProgressiveChartComponent({
   onEdit,
   onDuplicate,
   onDelete,
-  enableProgressive = true
+  enableProgressive = true,
+  globalResolution,
+  globalAutoUpgrade = true
 }: ProgressiveChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   
@@ -45,10 +49,17 @@ function ProgressiveChartComponent({
     setResolution,
     isUpgrading
   } = useProgressiveChartData(config, selectedDataIds, {
-    initialResolution: enableProgressive ? 'preview' : 'normal',
-    autoUpgrade: enableProgressive,
+    initialResolution: globalResolution || (enableProgressive ? 'preview' : 'normal'),
+    autoUpgrade: globalResolution ? false : (enableProgressive && globalAutoUpgrade),
     upgradeDelay: 1000
   });
+
+  // Update resolution when global resolution changes
+  useEffect(() => {
+    if (globalResolution && globalResolution !== resolution) {
+      setResolution(globalResolution);
+    }
+  }, [globalResolution, resolution, setResolution]);
 
   // Debug logging
   console.log('[ProgressiveChart] Render:', {
@@ -150,8 +161,8 @@ function ProgressiveChartComponent({
             <Badge 
               variant={getResolutionBadgeVariant()} 
               className="text-xs"
-              onClick={resolution !== 'full' ? handleUpgradeResolution : undefined}
-              style={{ cursor: resolution !== 'full' ? 'pointer' : 'default' }}
+              onClick={(!globalResolution && resolution !== 'full') ? handleUpgradeResolution : undefined}
+              style={{ cursor: (!globalResolution && resolution !== 'full') ? 'pointer' : 'default' }}
             >
               {resolution === 'preview' && 'Preview'}
               {resolution === 'normal' && 'Normal'}

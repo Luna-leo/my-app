@@ -8,6 +8,7 @@ import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialo
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 import { getChartEngine } from '@/lib/chartConfig'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
+import { DataResolution } from '@/hooks/useProgressiveChartData'
 
 
 // Props for data-driven chart component
@@ -27,6 +28,8 @@ export interface DataChartProps {
   }
   samplingConfig?: SamplingConfig
   enableProgressive?: boolean
+  globalResolution?: DataResolution
+  globalAutoUpgrade?: boolean
 }
 
 

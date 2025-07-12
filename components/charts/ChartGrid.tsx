@@ -9,6 +9,7 @@ import { LayoutOption } from '@/components/layout/LayoutSelector'
 import { cn } from '@/lib/utils'
 import { useDynamicGridAspectRatio } from '@/hooks/useDynamicGridAspectRatio'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
+import { DataResolution } from '@/hooks/useProgressiveChartData'
 
 interface ChartGridProps {
   charts: (ChartConfiguration & { id: string })[]
@@ -25,6 +26,8 @@ interface ChartGridProps {
   waterfallDelay?: number
   onAllChartsLoaded?: () => void
   onChartLoaded?: (loadedCount: number) => void
+  globalResolution?: DataResolution
+  globalAutoUpgrade?: boolean
 }
 
 export function ChartGrid({ 
@@ -41,7 +44,9 @@ export function ChartGrid({
   enableWaterfall = false,
   waterfallDelay = 500,
   onAllChartsLoaded,
-  onChartLoaded
+  onChartLoaded,
+  globalResolution,
+  globalAutoUpgrade
 }: ChartGridProps) {
   const ChartComponent = getDataChartComponent(enableProgressive)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -78,12 +83,14 @@ export function ChartGrid({
     }
   }, [waterfallLoadedCharts.size, onChartLoaded])
   
-  // Stagger the loading of the first 4 charts (old mode)
+  // Reset waterfall loading when charts array changes
   useEffect(() => {
     if (enableWaterfall) {
-      // In waterfall mode, start with first chart
-      setCurrentWaterfallIndex(0)
-      setWaterfallLoadedCharts(new Set())
+      // Only reset if we have more charts to load than already loaded
+      if (charts.length > waterfallLoadedCharts.size) {
+        // Don't reset already loaded charts, just continue from current position
+        setCurrentWaterfallIndex(waterfallLoadedCharts.size)
+      }
     } else {
       // Old stagger mode
       const delays = [0, 100, 200, 300] // Stagger by 100ms each
@@ -102,7 +109,7 @@ export function ChartGrid({
         timeouts.forEach(clearTimeout)
       }
     }
-  }, [charts.length, enableWaterfall])
+  }, [charts.length, enableWaterfall]) // Use charts.length instead of charts to avoid resetting on every change
   
   // Calculate grid height to ensure it fits in the container
   useEffect(() => {
@@ -206,10 +213,10 @@ export function ChartGrid({
   
   // Check if all charts are loaded (for waterfall mode)
   useEffect(() => {
-    if (enableWaterfall && waterfallLoadedCharts.size === visibleCharts.length && visibleCharts.length > 0 && onAllChartsLoaded) {
+    if (enableWaterfall && waterfallLoadedCharts.size === charts.length && charts.length > 0 && onAllChartsLoaded) {
       onAllChartsLoaded()
     }
-  }, [enableWaterfall, waterfallLoadedCharts.size, visibleCharts.length, onAllChartsLoaded])
+  }, [enableWaterfall, waterfallLoadedCharts.size, charts.length, onAllChartsLoaded])
 
   return (
     <div 
@@ -235,6 +242,8 @@ export function ChartGrid({
                 index={index}
                 onLoadComplete={handleWaterfallLoadComplete}
                 shouldLoad={index <= currentWaterfallIndex}
+                globalResolution={globalResolution}
+                globalAutoUpgrade={globalAutoUpgrade}
                 showSkeleton={true}
               />
             </div>
@@ -276,6 +285,8 @@ export function ChartGrid({
                   onDelete={() => onDelete(chart.id)}
                   rootMargin="200px"
                   samplingConfig={samplingConfig}
+                  globalResolution={globalResolution}
+                  globalAutoUpgrade={globalAutoUpgrade}
                 />
               </div>
             )

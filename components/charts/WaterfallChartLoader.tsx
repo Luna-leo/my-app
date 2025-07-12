@@ -7,6 +7,7 @@ import { ChartLoadingState } from './ChartStates'
 import { cn } from '@/lib/utils'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
+import { DataResolution } from '@/hooks/useProgressiveChartData'
 // Use CSS animations instead of framer-motion
 import { CheckCircle2, AlertCircle } from 'lucide-react'
 
@@ -24,6 +25,8 @@ interface WaterfallChartLoaderProps {
   onLoadComplete?: (index: number) => void
   shouldLoad: boolean
   showSkeleton?: boolean
+  globalResolution?: DataResolution
+  globalAutoUpgrade?: boolean
 }
 
 type LoadingStatus = 'pending' | 'loading' | 'loaded' | 'error'
@@ -41,13 +44,15 @@ export function WaterfallChartLoader({
   index,
   onLoadComplete,
   shouldLoad,
-  showSkeleton = true
+  showSkeleton = true,
+  globalResolution,
+  globalAutoUpgrade
 }: WaterfallChartLoaderProps) {
   const [status, setStatus] = useState<LoadingStatus>('pending')
   const [error, setError] = useState<string | null>(null)
   const hasStartedLoading = useRef(false)
   
-  const ChartComponent = getDataChartComponent(enableProgressive)
+  const ChartComponent = getDataChartComponent(enableProgressive || !!globalResolution)
 
   useEffect(() => {
     if (shouldLoad && !hasStartedLoading.current && status === 'pending') {
@@ -117,6 +122,8 @@ export function WaterfallChartLoader({
               onDuplicate={onDuplicate}
               onDelete={onDelete}
               samplingConfig={samplingConfig}
+              globalResolution={globalResolution}
+              globalAutoUpgrade={globalAutoUpgrade}
               enableProgressive={enableProgressive}
             />
             

@@ -26,6 +26,7 @@ import { LayoutOption } from '@/components/layout/LayoutSelector'
 import { DataSelectionBar } from '@/components/layout/DataSelectionBar'
 import { layoutService } from '@/lib/services/layoutService'
 import { SamplingConfig, DEFAULT_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling'
+import { ResolutionConfig } from '@/components/layout/ResolutionControls'
 import { useDataPointsInfo } from '@/hooks/useDataPointsInfo'
 import { metadataService } from '@/lib/services/metadataService'
 import { colorService } from '@/lib/services/colorService'
@@ -59,9 +60,14 @@ function HomeContent() {
   // const [importProgress, setImportProgress] = useState<{ loaded: number; total: number } | null>(null)
   const [layoutOption, setLayoutOption] = useState<LayoutOption | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const [samplingConfig, setSamplingConfig] = useState<SamplingConfig>(DEFAULT_SAMPLING_CONFIG)
-  const [isUpdatingSampling, setIsUpdatingSampling] = useState(false)
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false)
+  const [samplingConfig] = useState<SamplingConfig>(DEFAULT_SAMPLING_CONFIG)
+  const [isUpdatingSampling] = useState(false)
+  const [resolutionConfig, setResolutionConfig] = useState<ResolutionConfig>({
+    mode: 'auto',
+    resolution: 'preview',
+    applyToAll: true
+  })
+  const [, setInitialLoadComplete] = useState(false)
   const [selectedDataLabels, setSelectedDataLabels] = useState<Map<number, string>>(new Map())
   const [selectedDataColors, setSelectedDataColors] = useState<Map<number, string>>(new Map())
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false)
@@ -339,8 +345,13 @@ function HomeContent() {
       id: Date.now().toString(),
       chartType: config.chartType || 'line' as const
     }
-    setCharts([...charts, newChart])
+    const newCharts = [...charts, newChart]
+    setCharts(newCharts)
     setCreateChartOpen(false)
+    
+    // Update waterfall loading state for the new chart
+    setTotalChartsToLoad(newCharts.length)
+    setShowLoadingProgress(true)
     
     // Save to database
     const dbConfig: DBChartConfiguration = {
@@ -383,7 +394,11 @@ function HomeContent() {
         id: Date.now().toString(),
         title: chartToDuplicate.title
       }
-      setCharts([...charts, duplicatedChart])
+      const newCharts = [...charts, duplicatedChart]
+      setCharts(newCharts)
+      
+      // Don't reset waterfall loading state when duplicating
+      // The ChartGrid will handle the new chart appropriately
       
       // Save to database
       const dbConfig: DBChartConfiguration = {
@@ -402,7 +417,17 @@ function HomeContent() {
 
   const confirmDelete = async () => {
     if (deleteConfirmation.chartId) {
-      setCharts(charts.filter(c => c.id !== deleteConfirmation.chartId))
+      const newCharts = charts.filter(c => c.id !== deleteConfirmation.chartId)
+      setCharts(newCharts)
+      
+      // Update waterfall loading state after deletion
+      if (newCharts.length > 0) {
+        setTotalChartsToLoad(newCharts.length)
+      } else {
+        setTotalChartsToLoad(0)
+        setShowLoadingProgress(false)
+      }
+      
       await chartConfigService.deleteChartConfiguration(deleteConfirmation.chartId)
     }
     setDeleteConfirmation({ open: false, chartId: null })
@@ -456,36 +481,13 @@ function HomeContent() {
     }
   }
 
-  // Handle sampling config changes with batch processing
-  const handleSamplingConfigChange = useCallback(async (newConfig: SamplingConfig) => {
-    setSamplingConfig(newConfig)
+  // Handle resolution config changes
+  const handleResolutionConfigChange = useCallback(async (newConfig: ResolutionConfig) => {
+    setResolutionConfig(newConfig)
     
-    // Skip batch update during initial load
-    if (!initialLoadComplete) {
-      return
-    }
-    
-    // Only trigger batch update if sampling is enabled and target points actually changed
-    if (newConfig.enabled && newConfig.targetPoints !== samplingConfig.targetPoints) {
-      setIsUpdatingSampling(true)
-      
-      try {
-        // Use the same batch processing as initial load
-        const chartsWithData = visibleCharts.map(chart => ({
-          ...chart,
-          selectedDataIds: selectedDataIds
-        }))
-        await preloadChartData(chartsWithData, {
-          batchSize: 4,
-          onProgress: (loaded, total) => {
-            console.log(`Sampling progress: ${loaded}/${total}`)
-          }
-        })
-      } finally {
-        setIsUpdatingSampling(false)
-      }
-    }
-  }, [samplingConfig.targetPoints, visibleCharts, preloadChartData, initialLoadComplete, selectedDataIds])
+    // Note: When applyToAll is true, all charts will automatically update
+    // through the globalResolution prop. No need for batch processing here.
+  }, [])
 
   const handleWelcomeSelectWorkspace = async (workspaceId: string) => {
     setShowWelcomeDialog(false)
@@ -678,10 +680,10 @@ function HomeContent() {
                 currentPage={currentPage}
                 totalPages={totalPages}
                 onPageChange={setCurrentPage}
-                samplingConfig={samplingConfig}
-                onSamplingConfigChange={handleSamplingConfigChange}
+                resolutionConfig={resolutionConfig}
+                onResolutionConfigChange={handleResolutionConfigChange}
                 dataPointsInfo={dataPointsInfo}
-                isUpdatingSampling={isUpdatingSampling}
+                isUpdatingResolution={isUpdatingSampling}
               />
             </div>
             {loading || isPreloadingData ? (
@@ -730,11 +732,15 @@ function HomeContent() {
                   enableProgressive={true}
                   enableWaterfall={true}
                   waterfallDelay={300}
+                  globalResolution={resolutionConfig.applyToAll && resolutionConfig.mode === 'manual' ? resolutionConfig.resolution : undefined}
+                  globalAutoUpgrade={resolutionConfig.mode === 'auto'}
                   onAllChartsLoaded={() => {
                     setShowLoadingProgress(false)
                   }}
                   onChartLoaded={(count) => {
                     setWaterfallLoadedCharts(count)
+                    // Update total charts to load dynamically
+                    setTotalChartsToLoad(charts.length)
                   }}
                 />
               </div>

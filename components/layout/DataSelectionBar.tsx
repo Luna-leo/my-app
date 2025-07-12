@@ -2,10 +2,9 @@
 
 import { Badge } from '@/components/ui/badge'
 import { PaginationControls } from '@/components/layout/PaginationControls'
-import { SamplingControls } from '@/components/layout/SamplingControls'
+import { ResolutionControls, ResolutionConfig } from '@/components/layout/ResolutionControls'
 import { LayoutSelector, LayoutOption } from '@/components/layout/LayoutSelector'
 import { ZoomSyncModeSelector } from '@/components/layout/ZoomSyncModeSelector'
-import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 
 interface DataSelectionBarProps {
   selectedDataIds: number[]
@@ -18,14 +17,14 @@ interface DataSelectionBarProps {
   currentPage: number
   totalPages: number
   onPageChange: (page: number) => void
-  samplingConfig: SamplingConfig
-  onSamplingConfigChange: (config: SamplingConfig) => void
+  resolutionConfig: ResolutionConfig
+  onResolutionConfigChange: (config: ResolutionConfig) => void
   dataPointsInfo?: {
     original: number
     sampled: number
     isLoading: boolean
   }
-  isUpdatingSampling?: boolean
+  isUpdatingResolution?: boolean
 }
 
 export function DataSelectionBar({
@@ -39,10 +38,10 @@ export function DataSelectionBar({
   currentPage,
   totalPages,
   onPageChange,
-  samplingConfig,
-  onSamplingConfigChange,
+  resolutionConfig,
+  onResolutionConfigChange,
   dataPointsInfo,
-  isUpdatingSampling
+  isUpdatingResolution
 }: DataSelectionBarProps) {
   return (
     <div className="flex items-center justify-between py-2 px-4 border rounded-lg bg-background/50">
@@ -83,14 +82,15 @@ export function DataSelectionBar({
         
         <ZoomSyncModeSelector />
         
-        <SamplingControls
-          config={samplingConfig}
-          onChange={onSamplingConfigChange}
+        <ResolutionControls
+          config={resolutionConfig}
+          onChange={onResolutionConfigChange}
           dataPointsInfo={dataPointsInfo && !dataPointsInfo.isLoading ? {
             original: dataPointsInfo.original,
             sampled: dataPointsInfo.sampled
           } : undefined}
-          isUpdating={isUpdatingSampling}
+          isUpdating={isUpdatingResolution}
+          chartCount={totalCharts}
         />
         
         {layoutOption && paginationEnabled && totalPages > 1 && (
