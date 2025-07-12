@@ -12,7 +12,7 @@ import { ServerDataPreviewDialog } from './ServerDataPreviewDialog'
 
 interface UploadedData {
   uploadId: string
-  dataKey: string
+  dataKey?: string
   plant: string
   machineNo: string
   label?: string
@@ -21,6 +21,19 @@ interface UploadedData {
   parameterCount: number
   recordCount: number
   uploadedAt: string
+}
+
+interface UploadedDataFromAPI {
+  uploadId: string
+  dataKey?: string
+  plantNm: string
+  machineNo: string
+  label?: string
+  startTime: string
+  endTime: string
+  parameterCount: number
+  recordCount: number
+  uploadDate: string
 }
 
 export function DownloadContent() {
@@ -45,8 +58,21 @@ export function DownloadContent() {
         })
 
         if (response.ok) {
-          const data = await response.json()
-          setUploadedData(data.uploads || [])
+          const responseData = await response.json()
+          // Transform the data to match component expectations
+          const transformedData = (responseData.data || []).map((item: UploadedDataFromAPI) => ({
+            uploadId: item.uploadId,
+            dataKey: item.dataKey,
+            plant: item.plantNm,
+            machineNo: item.machineNo,
+            label: item.label,
+            dataStartTime: item.startTime,
+            dataEndTime: item.endTime,
+            parameterCount: item.parameterCount,
+            recordCount: item.recordCount,
+            uploadedAt: item.uploadDate
+          }))
+          setUploadedData(transformedData)
         } else {
           console.error('Failed to fetch uploaded data')
         }
@@ -95,77 +121,100 @@ export function DownloadContent() {
     try {
       const totalItems = selectedIds.length
       let successCount = 0
+      const errors: string[] = []
 
       for (let i = 0; i < selectedIds.length; i++) {
         const uploadId = selectedIds[i]
         
         setDownloadProgress(Math.floor((i / totalItems) * 50))
 
-        // Fetch data from server
-        const response = await fetch(`/api/data/${uploadId}/download`, {
-          headers: {
-            'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'demo-api-key-12345'
-          }
-        })
-
-        if (!response.ok) {
-          console.error(`Failed to download ${uploadId}`)
-          continue
-        }
-
-        setDownloadProgress(Math.floor(((i + 0.5) / totalItems) * 100))
-
-        const data = await response.json()
-        
-        // Check if data already exists in IndexedDB
-        const existingMetadata = await db.getMetadataByDataKey(data.metadata.dataKey)
-        if (existingMetadata) {
-          console.log(`Data with key ${data.metadata.dataKey} already exists, skipping`)
-          continue
-        }
-
-        // Save to IndexedDB
-        await db.transaction('rw', db.metadata, db.parameters, db.timeSeries, async () => {
-          // Save metadata (exclude ID to allow auto-increment)
-          const metadataId = await db.metadata.add({
-            ...data.metadata,
-            id: undefined,  // Exclude ID
-            startTime: data.metadata.startTime ? new Date(data.metadata.startTime) : undefined,
-            endTime: data.metadata.endTime ? new Date(data.metadata.endTime) : undefined,
-            dataStartTime: data.metadata.dataStartTime ? new Date(data.metadata.dataStartTime) : undefined,
-            dataEndTime: data.metadata.dataEndTime ? new Date(data.metadata.dataEndTime) : undefined,
-            importedAt: new Date()
+        try {
+          // Fetch data from server
+          const response = await fetch(`/api/data/${uploadId}/download`, {
+            headers: {
+              'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'demo-api-key-12345'
+            }
           })
 
-          // Save parameters (exclude ID)
-          for (const param of data.parameters) {
-            await db.parameters.add({
-              ...param,
-              id: undefined  // Exclude ID
-            })
+          if (!response.ok) {
+            throw new Error(`Failed to download: ${response.statusText}`)
           }
 
-          // Save time series data (convert to correct format)
-          const timeSeriesData = data.timeSeriesData.map((item: { timestamp: string; [key: string]: unknown }) => {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { timestamp, id, ...parameterValues } = item;
-            return {
-              metadataId,
-              timestamp: new Date(timestamp),
-              data: parameterValues  // Store parameter values in 'data' field
-            };
-          });
-          await db.timeSeries.bulkAdd(timeSeriesData)
-        })
+          setDownloadProgress(Math.floor(((i + 0.5) / totalItems) * 100))
 
-        successCount++
+          const data = await response.json()
+          
+          // Check if data already exists in IndexedDB using dataKey
+          if (data.metadata.dataKey) {
+            const existingMetadata = await db.getMetadataByDataKey(data.metadata.dataKey)
+            if (existingMetadata) {
+              console.log(`Data with key ${data.metadata.dataKey} already exists, skipping`)
+              continue
+            }
+          }
+
+          // Save to IndexedDB with full transaction
+          await db.transaction('rw', db.metadata, db.parameters, db.timeSeries, async () => {
+            // Save metadata (exclude ID to allow auto-increment)
+            const metadataId = await db.metadata.add({
+              ...data.metadata,
+              id: undefined,  // Exclude ID
+              startTime: data.metadata.startTime ? new Date(data.metadata.startTime) : undefined,
+              endTime: data.metadata.endTime ? new Date(data.metadata.endTime) : undefined,
+              dataStartTime: data.metadata.dataStartTime ? new Date(data.metadata.dataStartTime) : undefined,
+              dataEndTime: data.metadata.dataEndTime ? new Date(data.metadata.dataEndTime) : undefined,
+              importedAt: new Date()
+            })
+
+            // Check for existing parameters and reuse them
+            const parameterPromises = data.parameters.map(async (param: { parameterId: string; parameterName: string; unit: string; plant: string; machineNo: string }) => {
+              const existingParam = await db.parameters
+                .where('[parameterId+plant+machineNo]')
+                .equals([param.parameterId, param.plant, param.machineNo])
+                .first()
+              
+              if (!existingParam) {
+                await db.parameters.add({
+                  ...param,
+                  id: undefined  // Exclude ID
+                })
+              }
+            })
+            await Promise.all(parameterPromises)
+
+            // Save time series data (convert to correct format)
+            const timeSeriesData = data.timeSeriesData.map((item: { timestamp: string; [key: string]: unknown }) => {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const { timestamp, id, ...parameterValues } = item;
+              return {
+                metadataId,
+                timestamp: new Date(timestamp),
+                data: parameterValues  // Store parameter values in 'data' field
+              };
+            });
+            await db.timeSeries.bulkAdd(timeSeriesData)
+          })
+
+          successCount++
+        } catch (err) {
+          console.error(`Failed to download ${uploadId}:`, err)
+          errors.push(`${uploadId}: ${err instanceof Error ? err.message : 'Unknown error'}`)
+        }
+
         setDownloadProgress(Math.floor(((i + 1) / totalItems) * 100))
       }
 
-      setDownloadResult({
-        success: true,
-        message: `Successfully downloaded ${successCount} of ${totalItems} dataset(s)`
-      })
+      if (errors.length > 0 && successCount === 0) {
+        setDownloadResult({
+          success: false,
+          message: `All downloads failed. First error: ${errors[0]}`
+        })
+      } else {
+        setDownloadResult({
+          success: true,
+          message: `Successfully downloaded ${successCount} of ${totalItems} dataset(s)${errors.length > 0 ? ` (${errors.length} failed)` : ''}`
+        })
+      }
       
       // Clear selection after successful download
       setSelectedIds([])

@@ -8,6 +8,7 @@ import {
   loadIndex
 } from '@/lib/api/storage';
 import { saveTimeSeriesAsParquet } from '@/lib/api/parquet';
+import { generateDataKey } from '@/lib/utils/dataKeyUtils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,11 +23,12 @@ export async function POST(request: NextRequest) {
     await ensureUploadsDir();
 
     const body = await request.json();
-    const { metadata, timeSeriesData, dataPeriods } = body;
+    const { metadata, parameters, timeSeriesData, dataPeriods } = body;
 
     // Log incoming data for debugging
     console.log('Upload request received:', {
       hasMetadata: !!metadata,
+      hasParameters: !!parameters,
       hasTimeSeriesData: !!timeSeriesData,
       timeSeriesDataLength: timeSeriesData?.length,
       dataPeriods
@@ -42,15 +44,20 @@ export async function POST(request: NextRequest) {
     // Check for duplicate data
     const existingIndex = await loadIndex();
     
-    // Create a unique key for this data
-    const dataKey = `${metadata.plant}_${metadata.machineNo}_${metadata.label || 'no-label'}_${metadata.dataStartTime}_${metadata.dataEndTime}`;
-    console.log('Checking for duplicate with key:', dataKey);
+    // Generate dataKey using the same logic as local
+    const dataKey = generateDataKey({
+      plant: metadata.plant,
+      machineNo: metadata.machineNo,
+      dataSource: metadata.dataSource,
+      dataStartTime: metadata.dataStartTime ? new Date(metadata.dataStartTime) : undefined,
+      dataEndTime: metadata.dataEndTime ? new Date(metadata.dataEndTime) : undefined
+    });
+    console.log('Checking for duplicate with dataKey:', dataKey);
     
-    // Check if data with same key already exists
+    // Check if data with same dataKey already exists
     const duplicateEntry = Object.entries(existingIndex).find(([, data]) => {
       const uploadData = data as Record<string, unknown>;
-      const existingKey = `${uploadData.plantNm}_${uploadData.machineNo}_${uploadData.label || 'no-label'}_${uploadData.startTime}_${uploadData.endTime}`;
-      return existingKey === dataKey;
+      return uploadData.dataKey === dataKey;
     });
     
     if (duplicateEntry) {
@@ -65,19 +72,13 @@ export async function POST(request: NextRequest) {
     // Generate unique upload ID
     const uploadId = generateUploadId();
 
-    // Extract parameters from time series data if not provided
-    let parameters: Array<{
-      parameterId: string;
-      parameterName: string;
-      unit: string;
-      plant: string;
-      machineNo: string;
-    }> = [];
+    // Use provided parameters or extract from time series data
+    let parametersToSave = parameters;
     
-    if (timeSeriesData.length > 0) {
+    if (!parametersToSave && timeSeriesData.length > 0) {
       const firstRow = timeSeriesData[0];
       const dataKeys = Object.keys(firstRow.data || {});
-      parameters = dataKeys.map(key => ({
+      parametersToSave = dataKeys.map(key => ({
         parameterId: key,
         parameterName: key,
         unit: '',
@@ -86,13 +87,17 @@ export async function POST(request: NextRequest) {
       }));
     }
 
-    console.log('Extracted parameters:', parameters);
+    console.log('Parameters to save:', parametersToSave?.length || 0);
 
-    // Save metadata and parameters
-    await saveMetadata(uploadId, metadata, parameters);
+    // Save metadata with dataKey and parameters
+    const metadataWithKey = {
+      ...metadata,
+      dataKey
+    };
+    await saveMetadata(uploadId, metadataWithKey, parametersToSave || []);
 
     // Extract parameter IDs
-    const parameterIds = parameters.map((p: { parameterId: string }) => p.parameterId);
+    const parameterIds = (parametersToSave || []).map((p: { parameterId: string }) => p.parameterId);
 
     // Save time series data as parquet
     await saveTimeSeriesAsParquet(uploadId, timeSeriesData, parameterIds);
@@ -100,13 +105,14 @@ export async function POST(request: NextRequest) {
     // Update index
     const uploadInfo = {
       uploadId: uploadId,
+      dataKey: dataKey,
       uploadDate: new Date().toISOString(),
       plantNm: metadata.plant,
       machineNo: metadata.machineNo,
       label: metadata.label,
       startTime: metadata.dataStartTime || metadata.startTime,
       endTime: metadata.dataEndTime || metadata.endTime,
-      parameterCount: parameters.length,
+      parameterCount: (parametersToSave || []).length,
       recordCount: timeSeriesData.length
     };
     

@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
       const transformed = {
         id: upload.uploadId,
         uploadId: upload.uploadId,
+        dataKey: upload.dataKey as string | undefined,
         plantNm: upload.plantNm as string,
         machineNo: upload.machineNo as string,
         label: upload.label as string | undefined,

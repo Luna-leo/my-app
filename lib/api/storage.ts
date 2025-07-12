@@ -25,8 +25,14 @@ export async function saveMetadata(uploadId: string, metadata: Record<string, un
   const uploadPath = getUploadPath(uploadId);
   await fs.mkdir(uploadPath, { recursive: true });
   
+  // Include dataKey in metadata if not already present
+  const metadataWithKey = {
+    ...metadata,
+    dataKey: metadata.dataKey || undefined
+  };
+  
   const metadataPath = path.join(uploadPath, 'metadata.json');
-  await fs.writeFile(metadataPath, JSON.stringify({ metadata, parameters }, null, 2));
+  await fs.writeFile(metadataPath, JSON.stringify({ metadata: metadataWithKey, parameters }, null, 2));
 }
 
 export async function loadMetadata(uploadId: string) {

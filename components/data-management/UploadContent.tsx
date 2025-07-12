@@ -120,69 +120,93 @@ export function UploadContent() {
       // Process each selected dataset
       const totalItems = selectedDataIds.length
       let successCount = 0
+      const errors: string[] = []
 
       for (let i = 0; i < selectedDataIds.length; i++) {
         const metadataId = selectedDataIds[i]
-        const metadata = await db.metadata.get(metadataId)
         
-        if (!metadata) continue
+        try {
+          const metadata = await db.metadata.get(metadataId)
+          
+          if (!metadata) {
+            throw new Error('Metadata not found')
+          }
 
-        setUploadProgress(Math.floor((i / totalItems) * 50))
+          setUploadProgress(Math.floor((i / totalItems) * 50))
 
-        // Get parameters
-        const parameters = await db.getParametersByPlantAndMachine(
-          metadata.plant,
-          metadata.machineNo
-        )
+          // Get parameters
+          const parameters = await db.getParametersByPlantAndMachine(
+            metadata.plant,
+            metadata.machineNo
+          )
 
-        // Get time series data
-        const timeSeriesData = await db.getTimeSeriesData(metadata.id!)
+          // Get time series data
+          const timeSeriesData = await db.getTimeSeriesData(metadata.id!)
 
-        setUploadProgress(Math.floor(((i + 0.5) / totalItems) * 100))
+          setUploadProgress(Math.floor(((i + 0.5) / totalItems) * 100))
 
-        // Prepare upload payload (exclude ID fields)
-        const payload = {
-          metadata: {
-            ...metadata,
-            id: undefined,  // Exclude ID
-            startTime: metadata.startTime?.toISOString(),
-            endTime: metadata.endTime?.toISOString(),
-            dataStartTime: metadata.dataStartTime?.toISOString(),
-            dataEndTime: metadata.dataEndTime?.toISOString(),
-            importedAt: metadata.importedAt.toISOString()
-          },
-          parameters: parameters.map(p => ({
-            ...p,
-            id: undefined  // Exclude ID
-          })),
-          timeSeriesData: timeSeriesData.map(item => ({
-            ...item,
-            id: undefined,  // Exclude ID
-            timestamp: item.timestamp.toISOString()
-          }))
-        }
+          // Prepare upload payload (exclude ID fields)
+          const payload = {
+            metadata: {
+              ...metadata,
+              id: undefined,  // Exclude ID
+              startTime: metadata.startTime?.toISOString(),
+              endTime: metadata.endTime?.toISOString(),
+              dataStartTime: metadata.dataStartTime?.toISOString(),
+              dataEndTime: metadata.dataEndTime?.toISOString(),
+              importedAt: metadata.importedAt.toISOString()
+            },
+            parameters: parameters.map(p => ({
+              ...p,
+              id: undefined  // Exclude ID
+            })),
+            timeSeriesData: timeSeriesData.map(item => ({
+              ...item,
+              id: undefined,  // Exclude ID
+              timestamp: item.timestamp.toISOString()
+            }))
+          }
 
-        // Upload to server
-        const response = await fetch('/api/data/upload', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'demo-api-key-12345'
-          },
-          body: JSON.stringify(payload)
-        })
+          // Upload to server
+          const response = await fetch('/api/data/upload', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'demo-api-key-12345'
+            },
+            body: JSON.stringify(payload)
+          })
 
-        if (response.ok) {
-          successCount++
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Upload failed' }))
+            throw new Error(errorData.error || 'Upload failed')
+          }
+
+          const result = await response.json()
+          if (result.duplicate) {
+            console.log(`Data already exists on server: ${metadata.dataKey}`)
+          } else {
+            successCount++
+          }
+        } catch (err) {
+          console.error(`Failed to upload data ${metadataId}:`, err)
+          errors.push(`ID ${metadataId}: ${err instanceof Error ? err.message : 'Unknown error'}`)
         }
 
         setUploadProgress(Math.floor(((i + 1) / totalItems) * 100))
       }
 
-      setUploadResult({
-        success: true,
-        message: `Successfully uploaded ${successCount} of ${totalItems} dataset(s)`
-      })
+      if (errors.length > 0 && successCount === 0) {
+        setUploadResult({
+          success: false,
+          message: `All uploads failed. First error: ${errors[0]}`
+        })
+      } else {
+        setUploadResult({
+          success: true,
+          message: `Successfully uploaded ${successCount} of ${totalItems} dataset(s)${errors.length > 0 ? ` (${errors.length} failed)` : ''}`
+        })
+      }
       
       // Clear selection after successful upload
       setSelectedDataIds([])

@@ -319,9 +319,8 @@ export class CsvImporter {
       const existingMetadata = await db.metadata.where('dataKey').equals(dataKey).first();
       
       if (existingMetadata) {
-        // Optional: Handle duplicate data
-        // For now, we'll proceed with adding new data
-        console.warn(`Data with key ${dataKey} already exists. Adding as new entry.`);
+        // Throw error to prevent duplicate data
+        throw new Error(`Data with same plant, machine, source, and time range already exists (ID: ${existingMetadata.id})`);
       }
 
       // Save metadata
