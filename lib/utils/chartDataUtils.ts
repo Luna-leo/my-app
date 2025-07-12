@@ -63,7 +63,23 @@ export async function transformDataForChart(
   parameterInfoMap: Map<string, ParameterInfo>,
   metadataMap: Map<number, { label?: string; plant: string; machineNo: string }>
 ): Promise<ChartData> {
+  // Debug logging
+  console.log('[transformDataForChart] Input:', {
+    dataLength: timeSeriesData.length,
+    yAxisParameters,
+    parameterInfoMapSize: parameterInfoMap.size,
+    metadataMapSize: metadataMap.size
+  });
+
   if (timeSeriesData.length === 0) {
+    return {
+      series: []
+    };
+  }
+
+  // Validate input data
+  if (!Array.isArray(yAxisParameters)) {
+    console.error('[transformDataForChart] yAxisParameters is not an array:', yAxisParameters);
     return {
       series: []
     };
@@ -72,6 +88,10 @@ export async function transformDataForChart(
   // Group data by metadataId
   const dataByMetadata = new Map<number, TimeSeriesData[]>();
   timeSeriesData.forEach(data => {
+    if (!data || typeof data.metadataId !== 'number') {
+      console.warn('[transformDataForChart] Invalid data point:', data);
+      return;
+    }
     const group = dataByMetadata.get(data.metadataId) || [];
     group.push(data);
     dataByMetadata.set(data.metadataId, group);
@@ -85,9 +105,15 @@ export async function transformDataForChart(
     const metadataLabel = metadata?.label || `${metadata?.plant}-${metadata?.machineNo}` || `Data ${metadataId}`;
     
     yAxisParameters.forEach(parameterId => {
+      if (!parameterId) {
+        console.warn('[transformDataForChart] Empty parameterId');
+        return;
+      }
+
       const parameterInfo = parameterInfoMap.get(parameterId);
       if (!parameterInfo) {
-        throw new Error(`Parameter info not found for ${parameterId}`);
+        console.warn(`[transformDataForChart] Parameter info not found for ${parameterId}`);
+        return;
       }
 
       // Pre-allocate arrays for better performance
@@ -96,8 +122,31 @@ export async function transformDataForChart(
       
       // Fill arrays without creating intermediate objects
       for (let i = 0; i < dataPoints.length; i++) {
-        timestamps[i] = dataPoints[i].timestamp.getTime();
-        values[i] = dataPoints[i].data[parameterId] ?? null;
+        const dataPoint = dataPoints[i];
+        
+        // Validate data point
+        if (!dataPoint || !dataPoint.timestamp) {
+          console.warn(`[transformDataForChart] Invalid data point at index ${i}:`, dataPoint);
+          timestamps[i] = 0;
+          values[i] = null;
+          continue;
+        }
+        
+        // Safely get timestamp
+        try {
+          timestamps[i] = dataPoint.timestamp.getTime();
+        } catch {
+          console.warn(`[transformDataForChart] Invalid timestamp at index ${i}:`, dataPoint.timestamp);
+          timestamps[i] = 0;
+        }
+        
+        // Safely get value
+        if (dataPoint.data && typeof dataPoint.data === 'object') {
+          values[i] = dataPoint.data[parameterId] ?? null;
+        } else {
+          console.warn(`[transformDataForChart] Invalid data object at index ${i}:`, dataPoint.data);
+          values[i] = null;
+        }
       }
 
       series.push({
@@ -126,7 +175,25 @@ export async function transformDataForXYChart(
   parameterInfoMap: Map<string, ParameterInfo>,
   metadataMap: Map<number, { label?: string; plant: string; machineNo: string }>
 ): Promise<XYData> {
+  // Debug logging
+  console.log('[transformDataForXYChart] Input:', {
+    dataLength: timeSeriesData.length,
+    xAxisParameter,
+    yAxisParameters,
+    parameterInfoMapSize: parameterInfoMap.size,
+    metadataMapSize: metadataMap.size
+  });
+
   if (timeSeriesData.length === 0) {
+    return {
+      xParameterInfo: null,
+      series: []
+    };
+  }
+
+  // Validate input data
+  if (!Array.isArray(yAxisParameters)) {
+    console.error('[transformDataForXYChart] yAxisParameters is not an array:', yAxisParameters);
     return {
       xParameterInfo: null,
       series: []

@@ -51,19 +51,37 @@ interface ChartErrorStateProps {
 }
 
 export function ChartErrorState({ title, error, className }: ChartErrorStateProps) {
+  // If title is provided, render as a full card (for standalone use)
+  if (title) {
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>Error loading chart</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  // Otherwise, just render the alert (when used inside ChartContainer)
   return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>Error loading chart</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      </CardContent>
-    </Card>
+    <div className={className}>
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          <div className="space-y-1">
+            <p className="font-medium">Error loading chart</p>
+            <p className="text-sm">{error}</p>
+          </div>
+        </AlertDescription>
+      </Alert>
+    </div>
   );
 }
 
@@ -73,20 +91,38 @@ interface ChartEmptyStateProps {
 }
 
 export function ChartEmptyState({ title, className }: ChartEmptyStateProps) {
+  // If title is provided, render as a full card (for standalone use)
+  if (title) {
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>No data available</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert>
+            <TrendingUp className="h-4 w-4" />
+            <AlertDescription>
+              No data points found for the selected parameters
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  // Otherwise, just render the alert (when used inside ChartContainer)
   return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>No data available</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Alert>
-          <TrendingUp className="h-4 w-4" />
-          <AlertDescription>
-            No data points found for the selected parameters
-          </AlertDescription>
-        </Alert>
-      </CardContent>
-    </Card>
+    <div className={className}>
+      <Alert>
+        <TrendingUp className="h-4 w-4" />
+        <AlertDescription>
+          <div className="space-y-1">
+            <p className="font-medium">No data available</p>
+            <p className="text-sm">No data points found for the selected parameters</p>
+          </div>
+        </AlertDescription>
+      </Alert>
+    </div>
   );
 }

@@ -423,11 +423,24 @@ function UplotChartWithDataComponent({
   // Error state
   if (loadingState.error || error) {
     return (
-      <ChartErrorState
+      <ChartContainer
         title={config.title}
-        error={loadingState.error || error || UPLOT_ERROR_MESSAGES.INIT_FAILED}
-        className={className}
-      />
+        chartType={config.chartType}
+        seriesCount={0}
+        pointCount={0}
+        className={cn("h-full", className)}
+        onEdit={onEdit}
+        onDuplicate={onDuplicate}
+        onDelete={onDelete}
+      >
+        <div className="w-full h-full flex items-center justify-center">
+          <ChartErrorState
+            title=""
+            error={loadingState.error || error || UPLOT_ERROR_MESSAGES.INIT_FAILED}
+            className="w-full"
+          />
+        </div>
+      </ChartContainer>
     )
   }
   
@@ -441,7 +454,25 @@ function UplotChartWithDataComponent({
       loadingState,
       error
     })
-    return <ChartEmptyState title={config.title} className={className} />
+    return (
+      <ChartContainer
+        title={config.title}
+        chartType={config.chartType}
+        seriesCount={0}
+        pointCount={0}
+        className={cn("h-full", className)}
+        onEdit={onEdit}
+        onDuplicate={onDuplicate}
+        onDelete={onDelete}
+      >
+        <div className="w-full h-full flex items-center justify-center">
+          <ChartEmptyState
+            title=""
+            className="w-full"
+          />
+        </div>
+      </ChartContainer>
+    )
   }
   
   // Calculate total points
