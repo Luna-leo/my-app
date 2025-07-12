@@ -21,6 +21,7 @@ import { AppHeader } from '@/components/layout/AppHeader'
 import { LoadingState } from '@/components/common/LoadingState'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ChartGrid } from '@/components/charts/ChartGrid'
+import { ChartLoadingProgress } from '@/components/charts/ChartLoadingProgress'
 import { LayoutOption } from '@/components/layout/LayoutSelector'
 import { DataSelectionBar } from '@/components/layout/DataSelectionBar'
 import { layoutService } from '@/lib/services/layoutService'
@@ -68,6 +69,9 @@ function HomeContent() {
   const [showWorkspaceListDialog, setShowWorkspaceListDialog] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
   const [currentWorkspace, setCurrentWorkspace] = useState<{ id: string; name: string; description?: string } | null>(null)
+  const [waterfallLoadedCharts, setWaterfallLoadedCharts] = useState(0)
+  const [totalChartsToLoad, setTotalChartsToLoad] = useState(0)
+  const [showLoadingProgress, setShowLoadingProgress] = useState(false)
   const { preloadChartData, clearCache } = useChartDataContext()
   
   const loadWorkspaceAndCharts = useCallback(async (startupOptions?: { mode?: 'clean' | 'restore', workspaceId?: string }) => {
@@ -160,6 +164,13 @@ function HomeContent() {
         }))
         setCharts(convertedCharts)
         console.log(`[Initial Load] Found ${convertedCharts.length} charts in workspace`)
+        
+        // Set up waterfall loading progress
+        if (convertedCharts.length > 0) {
+          setTotalChartsToLoad(convertedCharts.length)
+          setWaterfallLoadedCharts(0)
+          setShowLoadingProgress(true)
+        }
       } else {
         setCharts([])
         console.log(`[Initial Load] Clean start - no charts loaded`)
@@ -648,6 +659,15 @@ function HomeContent() {
               </div>
             ) : charts.length > 0 ? (
               <div className="container mx-auto px-8 pb-8 flex-1 overflow-hidden">
+                {showLoadingProgress && (
+                  <div className="mb-4">
+                    <ChartLoadingProgress
+                      totalCharts={totalChartsToLoad}
+                      loadedCharts={waterfallLoadedCharts}
+                      showEstimatedTime={true}
+                    />
+                  </div>
+                )}
                 <ChartGrid
                   charts={charts}
                   selectedDataIds={selectedDataIds}
@@ -659,6 +679,14 @@ function HomeContent() {
                   currentPage={currentPage}
                   samplingConfig={samplingConfig}
                   enableProgressive={true}
+                  enableWaterfall={true}
+                  waterfallDelay={300}
+                  onAllChartsLoaded={() => {
+                    setShowLoadingProgress(false)
+                  }}
+                  onChartLoaded={(count) => {
+                    setWaterfallLoadedCharts(count)
+                  }}
                 />
               </div>
             ) : (
