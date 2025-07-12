@@ -61,10 +61,12 @@ export function ChartGrid({
       const newSet = new Set(prev)
       newSet.add(index)
       
-      // Notify parent of progress
-      if (onChartLoaded) {
-        onChartLoaded(newSet.size)
-      }
+      // Notify parent of progress after state update
+      requestAnimationFrame(() => {
+        if (onChartLoaded) {
+          onChartLoaded(newSet.size)
+        }
+      })
       
       return newSet
     })
