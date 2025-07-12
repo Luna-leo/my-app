@@ -658,6 +658,7 @@ function HomeContent() {
                   paginationEnabled={paginationEnabled}
                   currentPage={currentPage}
                   samplingConfig={samplingConfig}
+                  enableProgressive={true}
                 />
               </div>
             ) : (

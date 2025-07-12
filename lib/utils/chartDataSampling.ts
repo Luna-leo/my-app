@@ -28,6 +28,22 @@ export const DEFAULT_SAMPLING_CONFIG: SamplingConfig = {
   samplingThreshold: 3000 // Sample if data exceeds this threshold
 };
 
+export const PREVIEW_SAMPLING_CONFIG: SamplingConfig = {
+  enabled: true,
+  method: 'nth', // Faster sampling for preview
+  targetPoints: 500, // Lower resolution for quick display
+  preserveExtremes: false, // Skip for speed
+  samplingThreshold: 100 // Always sample for preview
+};
+
+export const HIGH_RES_SAMPLING_CONFIG: SamplingConfig = {
+  enabled: true,
+  method: 'lttb',
+  targetPoints: 5000, // Higher resolution for detailed view
+  preserveExtremes: true,
+  samplingThreshold: 10000
+};
+
 /**
  * Sample time series data while preserving all parameters
  * @param data - Time series data to sample

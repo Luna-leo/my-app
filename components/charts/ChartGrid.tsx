@@ -19,6 +19,7 @@ interface ChartGridProps {
   paginationEnabled?: boolean
   currentPage?: number
   samplingConfig?: SamplingConfig
+  enableProgressive?: boolean
 }
 
 export function ChartGrid({ 
@@ -30,9 +31,10 @@ export function ChartGrid({
   layoutOption,
   paginationEnabled = false,
   currentPage = 1,
-  samplingConfig
+  samplingConfig,
+  enableProgressive = false
 }: ChartGridProps) {
-  const ChartComponent = getDataChartComponent()
+  const ChartComponent = getDataChartComponent(enableProgressive)
   const containerRef = useRef<HTMLDivElement>(null)
   const [gridHeight, setGridHeight] = useState<string>('100%')
   const [itemHeight, setItemHeight] = useState<string>('auto')
@@ -185,6 +187,7 @@ export function ChartGrid({
                 onDuplicate={() => onDuplicate(chart.id)}
                 onDelete={() => onDelete(chart.id)}
                 samplingConfig={samplingConfig}
+                enableProgressive={enableProgressive}
               />
             </div>
           )
