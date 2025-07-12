@@ -49,6 +49,16 @@ function ProgressiveChartComponent({
     upgradeDelay: 1000
   });
 
+  // Debug logging
+  console.log('[ProgressiveChart] Render:', {
+    title: config.title,
+    resolution,
+    hasPlotData: !!plotData,
+    seriesCount: plotData?.series?.length || 0,
+    hasDataViewport: !!dataViewport,
+    loadingState
+  });
+
   // Create uPlot options
   let aspectRatioValue = 1.5;
   if (typeof aspectRatio === 'string') {
@@ -58,7 +68,7 @@ function ProgressiveChartComponent({
     aspectRatioValue = aspectRatio;
   }
   
-  const uplotOptions = plotData && dataViewport ? buildUplotOptions({
+  const uplotOptions = plotData && dataViewport && plotData.series.length > 0 ? buildUplotOptions({
     width: 800, // Default width, will be adjusted by ResizeObserver
     height: Math.round(800 / aspectRatioValue),
     xLabel: plotData.xParameterInfo 
@@ -75,6 +85,15 @@ function ProgressiveChartComponent({
     xRange: [dataViewport.xMin, dataViewport.xMax],
     yRange: [dataViewport.yMin, dataViewport.yMax]
   }) : null;
+
+  // Debug uplot options
+  if (plotData && plotData.series.length > 0) {
+    console.log('[ProgressiveChart] Data check:', {
+      firstSeriesXValues: plotData.series[0]?.xValues?.length || 0,
+      firstSeriesYValues: plotData.series[0]?.yValues?.length || 0,
+      hasUplotOptions: !!uplotOptions
+    });
+  }
 
   // Resolution badge color
   const getResolutionBadgeVariant = () => {
@@ -153,13 +172,25 @@ function ProgressiveChartComponent({
         </div>
       </div>
       <CardContent className="flex-1 p-4 min-h-0" ref={containerRef}>
-        {plotData && uplotOptions && (
+        {plotData && plotData.series.length > 0 && uplotOptions ? (
           <div className="relative h-full">
             <UplotChart
-              data={transformToUplotData(
-                plotData.series[0]?.xValues || [],
-                plotData.series.map(s => s.yValues)
-              )}
+              data={(() => {
+                // Convert timestamps to seconds if this is a time-based chart
+                const xValues = config.xAxisParameter === 'timestamp' 
+                  ? (plotData.series[0]?.xValues || []).map(x => x / 1000)
+                  : (plotData.series[0]?.xValues || []);
+                
+                const ySeriesData = plotData.series.map(s => s.yValues || []);
+                
+                console.log('[ProgressiveChart] Transformed data:', {
+                  xValuesLength: xValues.length,
+                  ySeriesCount: ySeriesData.length,
+                  firstYSeriesLength: ySeriesData[0]?.length || 0
+                });
+                
+                return transformToUplotData(xValues, ySeriesData);
+              })()}
               options={uplotOptions}
               className="h-full"
             />
@@ -168,6 +199,10 @@ function ProgressiveChartComponent({
                 {plotData.samplingInfo.sampledCount.toLocaleString()} / {plotData.samplingInfo.originalCount.toLocaleString()} points
               </div>
             )}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-sm text-muted-foreground">No data to display</p>
           </div>
         )}
       </CardContent>

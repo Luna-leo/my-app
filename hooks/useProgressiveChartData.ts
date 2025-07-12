@@ -60,6 +60,8 @@ export function useProgressiveChartData(
   // Load data at specific resolution
   const loadDataAtResolution = useCallback(async (resolution: DataResolution) => {
     try {
+      console.log('[useProgressiveChartData] Loading data at resolution:', resolution, 'for chart:', config.title);
+      
       setState(prev => ({
         ...prev,
         loadingState: { loading: true, progress: 0, error: null }
@@ -71,6 +73,12 @@ export function useProgressiveChartData(
         ...config,
         selectedDataIds
       };
+
+      console.log('[useProgressiveChartData] Calling getChartData with:', {
+        title: config.title,
+        selectedDataIds,
+        samplingConfig
+      });
 
       const { plotData, dataViewport } = await getChartData(
         configWithData,
@@ -85,6 +93,13 @@ export function useProgressiveChartData(
         }
       );
 
+      console.log('[useProgressiveChartData] Data loaded:', {
+        title: config.title,
+        hasPlotData: !!plotData,
+        seriesCount: plotData?.series?.length || 0,
+        hasDataViewport: !!dataViewport
+      });
+
       if (isMountedRef.current) {
         setState({
           plotData,
@@ -97,6 +112,7 @@ export function useProgressiveChartData(
         onResolutionChange?.(resolution);
       }
     } catch (error) {
+      console.error('[useProgressiveChartData] Error loading data:', error);
       if (isMountedRef.current) {
         setState(prev => ({
           ...prev,
