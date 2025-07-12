@@ -60,14 +60,6 @@ export function ChartGrid({
     setWaterfallLoadedCharts(prev => {
       const newSet = new Set(prev)
       newSet.add(index)
-      
-      // Notify parent of progress after state update
-      requestAnimationFrame(() => {
-        if (onChartLoaded) {
-          onChartLoaded(newSet.size)
-        }
-      })
-      
       return newSet
     })
     
@@ -77,7 +69,14 @@ export function ChartGrid({
         setCurrentWaterfallIndex(prev => prev + 1)
       }, waterfallDelay)
     }
-  }, [enableWaterfall, waterfallDelay, onChartLoaded])
+  }, [enableWaterfall, waterfallDelay])
+  
+  // Notify parent of loading progress
+  useEffect(() => {
+    if (onChartLoaded && waterfallLoadedCharts.size > 0) {
+      onChartLoaded(waterfallLoadedCharts.size)
+    }
+  }, [waterfallLoadedCharts.size, onChartLoaded])
   
   // Stagger the loading of the first 4 charts (old mode)
   useEffect(() => {
