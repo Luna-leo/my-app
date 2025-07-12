@@ -15,6 +15,7 @@ import { db } from '@/lib/db'
 import { Metadata } from '@/lib/db/schema'
 import { DataPreviewDialog } from './DataPreviewDialog'
 import { ServerDataPreviewDialog } from './ServerDataPreviewDialog'
+import { EditMetadataDialog } from './EditMetadataDialog'
 import { 
   Dialog,
   DialogContent,
@@ -56,6 +57,9 @@ export function UnifiedDataView({
     totalRecords: number
     previewLimit: number
   } | null>(null)
+  
+  // Edit state
+  const [editMetadata, setEditMetadata] = useState<Metadata | null>(null)
   
   // Download confirmation dialog
   const [downloadConfirm, setDownloadConfirm] = useState<{
@@ -318,6 +322,12 @@ export function UnifiedDataView({
     }
   }
   
+  const handleEdit = (item: UnifiedDataItem) => {
+    if (item.metadata) {
+      setEditMetadata(item.metadata)
+    }
+  }
+  
   const handleDelete = (item: UnifiedDataItem) => {
     if (item.metadata) {
       setDeleteConfirm({ item, show: true })
@@ -477,6 +487,7 @@ export function UnifiedDataView({
                   onUpload={() => handleUpload(item)}
                   onDownload={() => handleDownload(item)}
                   onPreview={() => handlePreview(item)}
+                  onEdit={() => handleEdit(item)}
                   onDelete={() => handleDelete(item)}
                   isLoading={progress !== undefined}
                 />
@@ -513,6 +524,20 @@ export function UnifiedDataView({
             plant: serverPreviewData.metadata.plant as string || '',
             machineNo: serverPreviewData.metadata.machineNo as string || '',
             label: serverPreviewData.metadata.label as string | undefined
+          }}
+        />
+      )}
+
+      {/* Edit Metadata Dialog */}
+      {editMetadata && (
+        <EditMetadataDialog
+          open={!!editMetadata}
+          onOpenChange={(open) => !open && setEditMetadata(null)}
+          metadata={editMetadata}
+          onUpdate={async () => {
+            await refreshData()
+            setEditMetadata(null)
+            showAlert('success', 'Metadata updated successfully')
           }}
         />
       )}

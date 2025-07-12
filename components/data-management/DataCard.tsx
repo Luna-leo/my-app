@@ -16,7 +16,8 @@ import {
   Eye,
   RefreshCw,
   Loader2,
-  Trash2
+  Trash2,
+  Edit
 } from 'lucide-react'
 import { UnifiedDataItem } from '@/lib/hooks/useUnifiedData'
 
@@ -27,6 +28,7 @@ interface DataCardProps {
   onUpload?: () => void
   onDownload?: () => void
   onPreview?: () => void
+  onEdit?: () => void
   onDelete?: () => void
   isLoading?: boolean
 }
@@ -38,6 +40,7 @@ export function DataCard({
   onUpload,
   onDownload,
   onPreview,
+  onEdit,
   onDelete,
   isLoading = false
 }: DataCardProps) {
@@ -232,6 +235,17 @@ export function DataCard({
                   disabled={isLoading}
                 >
                   <Eye className="h-4 w-4" />
+                </Button>
+              )}
+              
+              {item.metadata && onEdit && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onEdit}
+                  disabled={isLoading}
+                >
+                  <Edit className="h-4 w-4" />
                 </Button>
               )}
               
