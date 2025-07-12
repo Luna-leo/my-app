@@ -46,8 +46,22 @@ export function Combobox({
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState('');
+  const listRef = React.useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find((option) => option.value === value);
+
+  // Scroll to selected item when dropdown opens
+  React.useEffect(() => {
+    if (open && value && listRef.current) {
+      // Small delay to ensure the list is rendered
+      setTimeout(() => {
+        const selectedElement = listRef.current?.querySelector(`[data-value="${value}"]`);
+        if (selectedElement) {
+          selectedElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+      }, 100);
+    }
+  }, [open, value]);
 
   const customFilter = React.useCallback((value: string, search: string) => {
     const option = options.find(opt => opt.value === value);
@@ -81,13 +95,14 @@ export function Combobox({
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandList>
+          <CommandList ref={listRef}>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
                   value={option.value}
+                  data-value={option.value}
                   onSelect={() => {
                     onChange?.(option.value);
                     setOpen(false);
@@ -139,8 +154,22 @@ export function MultiCombobox({
 }: MultiComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState('');
+  const listRef = React.useRef<HTMLDivElement>(null);
 
   const selectedOptions = options.filter((option) => value.includes(option.value));
+
+  // Scroll to first selected item when dropdown opens
+  React.useEffect(() => {
+    if (open && value.length > 0 && listRef.current) {
+      // Small delay to ensure the list is rendered
+      setTimeout(() => {
+        const firstSelectedElement = listRef.current?.querySelector(`[data-value="${value[0]}"]`);
+        if (firstSelectedElement) {
+          firstSelectedElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+      }, 100);
+    }
+  }, [open, value]);
 
   const customFilter = React.useCallback((value: string, search: string) => {
     const option = options.find(opt => opt.value === value);
@@ -186,13 +215,14 @@ export function MultiCombobox({
               value={searchValue}
               onValueChange={setSearchValue}
             />
-            <CommandList>
+            <CommandList ref={listRef}>
               <CommandEmpty>{emptyMessage}</CommandEmpty>
               <CommandGroup>
                 {options.map((option) => (
                   <CommandItem
                     key={option.value}
                     value={option.value}
+                    data-value={option.value}
                     onSelect={() => handleSelect(option.value)}
                   >
                     <Check
