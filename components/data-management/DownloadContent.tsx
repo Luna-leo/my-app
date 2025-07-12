@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { db } from '@/lib/db'
-import { Calendar, Factory, Cpu, Download, Loader2, CheckCircle, AlertCircle, Eye } from 'lucide-react'
+import { Calendar, Factory, Cpu, Download, Loader2, CheckCircle, AlertCircle, Eye, Trash2 } from 'lucide-react'
 import { ServerDataPreviewDialog } from './ServerDataPreviewDialog'
 
 interface UploadedData {
@@ -45,6 +45,8 @@ export function DownloadContent() {
   const [downloadResult, setDownloadResult] = useState<{ success: boolean; message: string } | null>(null)
   const [previewUploadId, setPreviewUploadId] = useState<string | null>(null)
   const [previewDataInfo, setPreviewDataInfo] = useState<{ plant: string; machineNo: string; label?: string } | null>(null)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [deleteResult, setDeleteResult] = useState<{ success: boolean; message: string } | null>(null)
 
   // Load uploaded data from server
   useEffect(() => {
@@ -84,7 +86,7 @@ export function DownloadContent() {
     }
 
     loadUploadedData()
-  }, [])
+  }, [refreshTrigger])
 
   const handleSelectionChange = (id: string, checked: boolean) => {
     if (checked) {
@@ -229,6 +231,45 @@ export function DownloadContent() {
     }
   }
 
+  const handleDelete = async (uploadId: string) => {
+    setDeleteResult(null)
+    
+    if (!confirm('Are you sure you want to delete this data from the server?')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/data/${uploadId}/delete`, {
+        method: 'DELETE',
+        headers: {
+          'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'demo-api-key-12345'
+        }
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Delete failed' }))
+        throw new Error(errorData.error || 'Delete failed')
+      }
+
+      setDeleteResult({
+        success: true,
+        message: 'Data deleted successfully from server'
+      })
+      
+      // Refresh the list
+      setRefreshTrigger(prev => prev + 1)
+      
+      // Clear selection if the deleted item was selected
+      setSelectedIds(prev => prev.filter(id => id !== uploadId))
+    } catch (err) {
+      console.error('Delete error:', err)
+      setDeleteResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Failed to delete data'
+      })
+    }
+  }
+
   return (
     <div className="flex flex-col h-full gap-4">
       {downloadResult && (
@@ -240,6 +281,19 @@ export function DownloadContent() {
           )}
           <AlertDescription className={downloadResult.success ? "text-green-800" : ""}>
             {downloadResult.message}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {deleteResult && (
+        <Alert className={deleteResult.success ? "border-green-200 bg-green-50" : ""}>
+          {deleteResult.success ? (
+            <CheckCircle className="h-4 w-4 text-green-600" />
+          ) : (
+            <AlertCircle className="h-4 w-4" />
+          )}
+          <AlertDescription className={deleteResult.success ? "text-green-800" : ""}>
+            {deleteResult.message}
           </AlertDescription>
         </Alert>
       )}
@@ -348,6 +402,15 @@ export function DownloadContent() {
                     title="Preview data"
                   >
                     <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => handleDelete(item.uploadId)}
+                    title="Delete from server"
+                  >
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>

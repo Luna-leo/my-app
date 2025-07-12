@@ -81,3 +81,34 @@ export async function loadIndex() {
     return {};
   }
 }
+
+export async function deleteFromIndex(uploadId: string) {
+  await ensureUploadsDir();
+  const indexPath = path.join(UPLOADS_DIR, 'index.json');
+  
+  let index: Record<string, Record<string, unknown>> = {};
+  try {
+    const content = await fs.readFile(indexPath, 'utf-8');
+    index = JSON.parse(content);
+  } catch {
+    // Index doesn't exist yet
+  }
+  
+  // Delete the entry
+  delete index[uploadId];
+  
+  await fs.writeFile(indexPath, JSON.stringify(index, null, 2));
+}
+
+export async function deleteUploadData(uploadId: string) {
+  // Delete from index first
+  await deleteFromIndex(uploadId);
+  
+  // Delete the upload directory
+  const uploadPath = getUploadPath(uploadId);
+  try {
+    await fs.rm(uploadPath, { recursive: true, force: true });
+  } catch (error) {
+    console.error(`Failed to delete upload directory ${uploadPath}:`, error);
+  }
+}
