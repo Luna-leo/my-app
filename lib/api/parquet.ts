@@ -49,7 +49,13 @@ export async function readTimeSeriesFromParquet(uploadId: string) {
   
   let record = null;
   while (record = await cursor.next()) {
-    data.push(record);
+    // Transform the record to match expected format
+    const { timestamp, ...parameterValues } = record;
+    const transformedRecord = {
+      timestamp,
+      data: parameterValues
+    };
+    data.push(transformedRecord);
   }
   
   await reader.close();
