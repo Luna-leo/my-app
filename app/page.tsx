@@ -35,6 +35,7 @@ import { StartupService } from '@/lib/services/startupService'
 import { WelcomeDialog } from '@/components/startup/WelcomeDialog'
 import { SaveSessionDialog } from '@/components/workspace/SaveSessionDialog'
 import { WorkspaceListDialog } from '@/components/workspace/WorkspaceListDialog'
+import { ExportWorkspaceDialog } from '@/components/workspace/ExportWorkspaceDialog'
 
 function HomeContent() {
   const searchParams = useSearchParams()
@@ -65,6 +66,7 @@ function HomeContent() {
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false)
   const [showSaveSessionDialog, setShowSaveSessionDialog] = useState(false)
   const [showWorkspaceListDialog, setShowWorkspaceListDialog] = useState(false)
+  const [showExportDialog, setShowExportDialog] = useState(false)
   const [currentWorkspace, setCurrentWorkspace] = useState<{ id: string; name: string; description?: string } | null>(null)
   const { preloadChartData, clearCache } = useChartDataContext()
   
@@ -392,7 +394,7 @@ function HomeContent() {
   // Get data points info for visible charts
   const dataPointsInfo = useDataPointsInfo(visibleCharts, samplingConfig, selectedDataIds);
 
-  const handleExportWorkspace = async () => {
+  const handleExportWorkspace = async (filename: string) => {
     try {
       const jsonData = await chartConfigService.exportWorkspace(workspaceId)
       console.log('[Export] Workspace data:', JSON.parse(jsonData))
@@ -400,7 +402,7 @@ function HomeContent() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `workspace-${new Date().toISOString().split('T')[0]}.json`
+      a.download = `${filename}.json`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -456,23 +458,52 @@ function HomeContent() {
     })
   }
 
-  const handleSaveSession = async (name: string, description: string) => {
+  const handleSaveSession = async (name: string, description: string, saveAsNew: boolean) => {
     if (!workspaceId) return
     
     try {
-      // Update workspace with name, description, AND current selected data keys
-      await chartConfigService.updateWorkspace(workspaceId, { 
-        name, 
-        description,
-        selectedDataKeys: selectedDataKeys 
-      })
-      setWorkspaceName(name)
-      setCurrentWorkspace({ 
-        id: workspaceId, 
-        name, 
-        description 
-      })
-      console.log('Session saved successfully with data keys:', selectedDataKeys)
+      if (saveAsNew) {
+        // Create a new workspace
+        const newWorkspace = await chartConfigService.createWorkspace(name, description)
+        
+        // Update the new workspace with selected data keys
+        await chartConfigService.updateWorkspace(newWorkspace.id!, {
+          selectedDataKeys: selectedDataKeys
+        })
+        
+        // Copy all charts from current workspace to new workspace
+        const currentCharts = await chartConfigService.loadChartConfigurations(workspaceId)
+        for (const chart of currentCharts) {
+          await chartConfigService.saveChartConfiguration({
+            ...chart,
+            id: undefined, // Let the service generate a new ID
+            workspaceId: newWorkspace.id!,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          })
+        }
+        
+        // Switch to the new workspace
+        await loadWorkspaceAndCharts({
+          workspaceId: newWorkspace.id!
+        })
+        
+        console.log('Session saved as new workspace successfully')
+      } else {
+        // Update existing workspace
+        await chartConfigService.updateWorkspace(workspaceId, { 
+          name, 
+          description,
+          selectedDataKeys: selectedDataKeys 
+        })
+        setWorkspaceName(name)
+        setCurrentWorkspace({ 
+          id: workspaceId, 
+          name, 
+          description 
+        })
+        console.log('Session updated successfully with data keys:', selectedDataKeys)
+      }
     } catch (error) {
       console.error('Failed to save session:', error)
     }
@@ -566,12 +597,19 @@ function HomeContent() {
         currentWorkspaceId={workspaceId}
       />
       
+      <ExportWorkspaceDialog
+        open={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        onExport={handleExportWorkspace}
+        workspaceName={workspaceName || 'workspace'}
+      />
+      
       <div className="h-screen flex flex-col">
         <div className="container mx-auto p-8 pb-0 flex-shrink-0">
           <AppHeader
           onDataClick={() => setDataManagementOpen(true)}
           onCreateChartClick={() => setCreateChartOpen(true)}
-          onExportClick={handleExportWorkspace}
+          onExportClick={() => setShowExportDialog(true)}
           onImportWorkspaceClick={handleImportWorkspace}
           onSaveSessionClick={() => setShowSaveSessionDialog(true)}
           onLoadSessionClick={() => setShowWorkspaceListDialog(true)}

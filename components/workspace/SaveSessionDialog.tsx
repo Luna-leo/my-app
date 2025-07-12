@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Save, AlertCircle } from 'lucide-react'
+import { Save, AlertCircle, Copy, RefreshCw } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -14,11 +14,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 
 interface SaveSessionDialogProps {
   open: boolean
   onClose: () => void
-  onSave: (name: string, description: string) => void
+  onSave: (name: string, description: string, saveAsNew: boolean) => void
   currentName?: string
   currentDescription?: string
   hasData?: boolean
@@ -37,13 +38,14 @@ export function SaveSessionDialog({
   const [name, setName] = useState(currentName)
   const [description, setDescription] = useState(currentDescription)
   const [isSaving, setIsSaving] = useState(false)
+  const [saveMode, setSaveMode] = useState<'update' | 'new'>(currentName ? 'update' : 'new')
 
   const handleSave = async () => {
     if (!name.trim() || (!hasData && !hasCharts)) return
     
     setIsSaving(true)
     try {
-      await onSave(name.trim(), description.trim())
+      await onSave(name.trim(), description.trim(), saveMode === 'new')
       onClose()
     } catch (error) {
       console.error('Failed to save session:', error)
@@ -52,10 +54,20 @@ export function SaveSessionDialog({
     }
   }
 
+  // Reset form when dialog opens
+  const handleOpenChange = (newOpen: boolean) => {
+    if (newOpen) {
+      setName(currentName)
+      setDescription(currentDescription)
+      setSaveMode(currentName ? 'update' : 'new')
+    }
+    onClose()
+  }
+
   const isEmpty = !hasData && !hasCharts
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Save Session</DialogTitle>
@@ -71,6 +83,28 @@ export function SaveSessionDialog({
               <p className="text-sm">
                 Cannot save an empty session. Add some data or create charts first.
               </p>
+            </div>
+          )}
+          
+          {currentName && (
+            <div className="grid gap-3">
+              <Label>Save Mode</Label>
+              <RadioGroup value={saveMode} onValueChange={(value) => setSaveMode(value as 'update' | 'new')}>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="update" id="update" />
+                  <Label htmlFor="update" className="flex items-center gap-2 font-normal cursor-pointer">
+                    <RefreshCw className="h-4 w-4" />
+                    Update current session &quot;{currentName}&quot;
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="new" id="new" />
+                  <Label htmlFor="new" className="flex items-center gap-2 font-normal cursor-pointer">
+                    <Copy className="h-4 w-4" />
+                    Save as new session
+                  </Label>
+                </div>
+              </RadioGroup>
             </div>
           )}
           
