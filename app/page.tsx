@@ -72,6 +72,8 @@ function HomeContent() {
   const [waterfallLoadedCharts, setWaterfallLoadedCharts] = useState(0)
   const [totalChartsToLoad, setTotalChartsToLoad] = useState(0)
   const [showLoadingProgress, setShowLoadingProgress] = useState(false)
+  const [isPreloadingData, setIsPreloadingData] = useState(false)
+  const [preloadProgress, setPreloadProgress] = useState({ loaded: 0, total: 0 })
   const { preloadChartData, clearCache } = useChartDataContext()
   
   const loadWorkspaceAndCharts = useCallback(async (startupOptions?: { mode?: 'clean' | 'restore', workspaceId?: string }) => {
@@ -128,6 +130,8 @@ function HomeContent() {
       })
       
       // Load selected data keys from workspace (skip for clean start)
+      let currentSelectedDataIds: number[] = []
+      
       if (startupOptions?.mode !== 'clean' && workspace.selectedDataKeys && workspace.selectedDataKeys.length > 0) {
         setSelectedDataKeys(workspace.selectedDataKeys)
         
@@ -135,6 +139,7 @@ function HomeContent() {
         const metadata = await db.getMetadataByDataKeys(workspace.selectedDataKeys)
         const ids = metadata.map(m => m.id!).filter(id => id !== undefined)
         setSelectedDataIds(ids)
+        currentSelectedDataIds = ids
       } else if (startupOptions?.mode !== 'clean') {
         // Migrate from chart-based selection if needed
         const migratedKeys = await chartConfigService.migrateSelectedDataFromCharts(workspace.id!)
@@ -145,11 +150,13 @@ function HomeContent() {
           const metadata = await db.getMetadataByDataKeys(migratedKeys)
           const ids = metadata.map(m => m.id!).filter(id => id !== undefined)
           setSelectedDataIds(ids)
+          currentSelectedDataIds = ids
         }
       } else {
         // Clean start - clear selections
         setSelectedDataKeys([])
         setSelectedDataIds([])
+        currentSelectedDataIds = []
       }
       
       // Load charts (skip for clean start)
@@ -162,8 +169,34 @@ function HomeContent() {
           xAxisParameter: chart.xAxisParameter,
           yAxisParameters: chart.yAxisParameters
         }))
-        setCharts(convertedCharts)
         console.log(`[Initial Load] Found ${convertedCharts.length} charts in workspace`)
+        
+        // Preload data for all charts before displaying them
+        if (convertedCharts.length > 0) {
+          setIsPreloadingData(true)
+          setPreloadProgress({ loaded: 0, total: convertedCharts.length })
+          
+          console.log(`[Initial Load] Preloading data for ${convertedCharts.length} charts`)
+          
+          // Prepare chart configurations for preloading
+          const chartsWithData = convertedCharts.map(chart => ({
+            ...chart,
+            selectedDataIds: currentSelectedDataIds
+          }))
+          
+          await preloadChartData(chartsWithData, {
+            onProgress: (loaded, total) => {
+              console.log(`[Preload Progress] ${loaded}/${total} charts`)
+              setPreloadProgress({ loaded, total })
+            }
+          })
+          
+          console.log(`[Initial Load] Data preloading complete`)
+          setIsPreloadingData(false)
+        }
+        
+        // Now set the charts (data is already cached)
+        setCharts(convertedCharts)
         
         // Set up waterfall loading progress
         if (convertedCharts.length > 0) {
@@ -182,7 +215,7 @@ function HomeContent() {
     } finally {
       setLoading(false)
     }
-  }, [clearCache])
+  }, [clearCache, preloadChartData])
   
   useEffect(() => {
     console.log('[Page] useEffect triggered, searchParams:', searchParams?.toString())
@@ -651,11 +684,27 @@ function HomeContent() {
                 isUpdatingSampling={isUpdatingSampling}
               />
             </div>
-            {loading ? (
+            {loading || isPreloadingData ? (
               <div className="container mx-auto p-8 flex-1">
-                <LoadingState
-                  message="Loading charts..."
-                />
+                {isPreloadingData ? (
+                  <div className="max-w-2xl mx-auto">
+                    <div className="text-center mb-4">
+                      <h3 className="text-lg font-semibold mb-2">Loading workspace data...</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Preparing your charts for optimal performance
+                      </p>
+                    </div>
+                    <ChartLoadingProgress
+                      totalCharts={preloadProgress.total}
+                      loadedCharts={preloadProgress.loaded}
+                      showEstimatedTime={true}
+                    />
+                  </div>
+                ) : (
+                  <LoadingState
+                    message="Loading charts..."
+                  />
+                )}
               </div>
             ) : charts.length > 0 ? (
               <div className="container mx-auto px-8 pb-8 flex-1 overflow-hidden">

@@ -22,6 +22,7 @@ interface ProgressiveChartProps {
   onDuplicate?: () => void
   onDelete?: () => void
   enableProgressive?: boolean
+  onDataLoaded?: () => void
 }
 
 function ProgressiveChartComponent({
