@@ -51,6 +51,13 @@ export function useProgressiveChartData(
     loadingState: { loading: true, progress: 0, error: null },
     resolution: initialResolution
   });
+  
+  console.log('[useProgressiveChartData] Hook state:', {
+    title: config.title,
+    hasPlotData: !!state.plotData,
+    resolution: state.resolution,
+    loading: state.loadingState.loading
+  });
 
   const { getChartData } = useChartDataContext();
   const upgradeTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
@@ -97,10 +104,18 @@ export function useProgressiveChartData(
         title: config.title,
         hasPlotData: !!plotData,
         seriesCount: plotData?.series?.length || 0,
-        hasDataViewport: !!dataViewport
+        firstSeriesLength: plotData?.series?.[0]?.xValues?.length || 0,
+        hasDataViewport: !!dataViewport,
+        viewport: dataViewport
       });
 
       if (isMountedRef.current) {
+        console.log('[useProgressiveChartData] Setting state with data:', {
+          hasPlotData: !!plotData,
+          hasDataViewport: !!dataViewport,
+          resolution
+        });
+        
         setState({
           plotData,
           dataViewport,
@@ -124,7 +139,7 @@ export function useProgressiveChartData(
         }));
       }
     }
-  }, [config, selectedDataIds, getChartData, onResolutionChange]);
+  }, [config.title, config.chartType, config.xAxisParameter, config.yAxisParameters.join(','), selectedDataIds.join(','), getChartData, onResolutionChange]);
 
   // Schedule resolution upgrade
   const scheduleUpgrade = useCallback((fromResolution: DataResolution) => {
@@ -164,17 +179,21 @@ export function useProgressiveChartData(
 
   // Initial load and auto-upgrade
   useEffect(() => {
+    console.log('[useProgressiveChartData] Effect triggered for:', config.title);
+    isMountedRef.current = true;
+    
     loadDataAtResolution(initialResolution).then(() => {
       scheduleUpgrade(initialResolution);
     });
 
     return () => {
+      console.log('[useProgressiveChartData] Cleanup for:', config.title);
       isMountedRef.current = false;
       if (upgradeTimeoutRef.current) {
         clearTimeout(upgradeTimeoutRef.current);
       }
     };
-  }, [config, selectedDataIds]); // Intentionally not including all deps to prevent re-runs
+  }, [config.title, selectedDataIds.join(',')]); // Use stable dependencies
 
   return {
     ...state,

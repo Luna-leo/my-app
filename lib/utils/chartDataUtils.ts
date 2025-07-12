@@ -43,15 +43,21 @@ export function mergeTimeSeriesData(dataArrays: TimeSeriesData[][]): TimeSeriesD
   
   // Copy data without using flat()
   for (const arr of dataArrays) {
+    if (!arr) continue; // Skip null/undefined arrays
     for (const item of arr) {
-      allData[index++] = item;
+      if (item) { // Only add valid items
+        allData[index++] = item;
+      }
     }
   }
   
-  // Sort by timestamp
-  allData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  // Remove any undefined entries that might have been created if index < totalSize
+  const validData = allData.slice(0, index);
   
-  return allData;
+  // Sort by timestamp
+  validData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  
+  return validData;
 }
 
 /**
@@ -87,15 +93,19 @@ export async function transformDataForChart(
 
   // Group data by metadataId
   const dataByMetadata = new Map<number, TimeSeriesData[]>();
-  timeSeriesData.forEach(data => {
+  console.log('[transformDataForChart] Grouping data. Total points:', timeSeriesData.length);
+  
+  timeSeriesData.forEach((data, index) => {
     if (!data || typeof data.metadataId !== 'number') {
-      console.warn('[transformDataForChart] Invalid data point:', data);
+      console.warn(`[transformDataForChart] Invalid data point at index ${index}:`, data);
       return;
     }
     const group = dataByMetadata.get(data.metadataId) || [];
     group.push(data);
     dataByMetadata.set(data.metadataId, group);
   });
+  
+  console.log('[transformDataForChart] Data grouped into', dataByMetadata.size, 'metadata groups');
 
   // Create series for each metadata x parameter combination
   const series: ChartSeriesData[] = [];
@@ -110,9 +120,11 @@ export async function transformDataForChart(
         return;
       }
 
+      console.log(`[transformDataForChart] Processing parameterId: "${parameterId}" (type: ${typeof parameterId})`);
+
       const parameterInfo = parameterInfoMap.get(parameterId);
       if (!parameterInfo) {
-        console.warn(`[transformDataForChart] Parameter info not found for ${parameterId}`);
+        console.warn(`[transformDataForChart] Parameter info not found for "${parameterId}". Available in map:`, Array.from(parameterInfoMap.keys()));
         return;
       }
 
@@ -121,6 +133,7 @@ export async function transformDataForChart(
       const values = new Array<number | null>(dataPoints.length);
       
       // Fill arrays without creating intermediate objects
+      let validPointCount = 0;
       for (let i = 0; i < dataPoints.length; i++) {
         const dataPoint = dataPoints[i];
         
@@ -132,6 +145,8 @@ export async function transformDataForChart(
           continue;
         }
         
+        validPointCount++;
+        
         // Safely get timestamp
         try {
           timestamps[i] = dataPoint.timestamp.getTime();
@@ -142,12 +157,30 @@ export async function transformDataForChart(
         
         // Safely get value
         if (dataPoint.data && typeof dataPoint.data === 'object') {
-          values[i] = dataPoint.data[parameterId] ?? null;
+          // Check if the parameter exists in the data
+          if (parameterId in dataPoint.data) {
+            values[i] = dataPoint.data[parameterId] ?? null;
+          } else {
+            // Only log first occurrence to avoid spam
+            if (i === 0) {
+              const dataKeys = Object.keys(dataPoint.data);
+              console.warn(`[transformDataForChart] Parameter "${parameterId}" not found in data.`);
+              console.warn(`[transformDataForChart] Available keys (first 10):`, dataKeys.slice(0, 10));
+              console.warn(`[transformDataForChart] Total keys:`, dataKeys.length);
+              console.warn(`[transformDataForChart] Sample key types:`, dataKeys.slice(0, 5).map(k => `${k}: ${typeof dataPoint.data[k]}`));
+            }
+            values[i] = null;
+          }
         } else {
-          console.warn(`[transformDataForChart] Invalid data object at index ${i}:`, dataPoint.data);
+          // Only log first occurrence to avoid spam
+          if (i === 0) {
+            console.warn(`[transformDataForChart] Invalid data object at index ${i}:`, dataPoint);
+          }
           values[i] = null;
         }
       }
+      
+      console.log(`[transformDataForChart] Processed ${validPointCount}/${dataPoints.length} valid points for parameterId "${parameterId}"`);
 
       series.push({
         metadataId,
@@ -200,6 +233,16 @@ export async function transformDataForXYChart(
     };
   }
 
+  // Check if data has valid structure
+  const sampleData = timeSeriesData[0];
+  if (!sampleData || !sampleData.data) {
+    console.error('[transformDataForXYChart] Invalid data structure:', sampleData);
+    return {
+      xParameterInfo: null,
+      series: []
+    };
+  }
+
   // Get X-axis parameter info
   const xParameterInfo = parameterInfoMap.get(xAxisParameter) || null;
 
@@ -230,9 +273,20 @@ export async function transformDataForXYChart(
       
       // Fill arrays without creating intermediate objects
       for (let i = 0; i < dataPoints.length; i++) {
-        const xValue = dataPoints[i].data[xAxisParameter];
-        xValues[i] = xValue !== null ? xValue : NaN;
-        yValues[i] = dataPoints[i].data[parameterId] ?? null;
+        const dataPoint = dataPoints[i];
+        if (!dataPoint || !dataPoint.data) {
+          // Only log first occurrence to avoid spam
+          if (i === 0) {
+            console.error(`[transformDataForXYChart] Invalid data point for metadataId ${metadataId}:`, dataPoint);
+          }
+          xValues[i] = NaN;
+          yValues[i] = null;
+          continue;
+        }
+        
+        const xValue = dataPoint.data[xAxisParameter];
+        xValues[i] = xValue !== null && xValue !== undefined ? Number(xValue) : NaN;
+        yValues[i] = dataPoint.data[parameterId] ?? null;
       }
 
       series.push({

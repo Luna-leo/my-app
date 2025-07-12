@@ -55,6 +55,11 @@ function ProgressiveChartComponent({
     resolution,
     hasPlotData: !!plotData,
     seriesCount: plotData?.series?.length || 0,
+    firstSeriesData: plotData?.series?.[0] ? {
+      xValuesLength: plotData.series[0].xValues?.length || 0,
+      yValuesLength: plotData.series[0].yValues?.length || 0,
+      parameterId: plotData.series[0].parameterId
+    } : null,
     hasDataViewport: !!dataViewport,
     loadingState
   });
@@ -171,9 +176,9 @@ function ProgressiveChartComponent({
           )}
         </div>
       </div>
-      <CardContent className="flex-1 p-4 min-h-0" ref={containerRef}>
+      <CardContent className="flex-1 p-4 min-h-[200px]" ref={containerRef}>
         {plotData && plotData.series.length > 0 && uplotOptions ? (
-          <div className="relative h-full">
+          <div className="relative h-full w-full">
             <UplotChart
               data={(() => {
                 // Convert timestamps to seconds if this is a time-based chart

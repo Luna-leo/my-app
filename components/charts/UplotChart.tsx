@@ -28,7 +28,19 @@ function UplotChartComponent({
     if (!containerRef.current || chartRef.current) return
     
     try {
-      const chart = new uPlot(options, data, containerRef.current)
+      // Get the actual container dimensions
+      const rect = containerRef.current.getBoundingClientRect()
+      const actualWidth = rect.width || options.width
+      const actualHeight = rect.height || options.height
+      
+      // Create options with actual dimensions
+      const chartOptions = {
+        ...options,
+        width: actualWidth,
+        height: actualHeight
+      }
+      
+      const chart = new uPlot(chartOptions, data, containerRef.current)
       chartRef.current = chart
       
       if (onCreate) {
@@ -52,9 +64,13 @@ function UplotChartComponent({
   
   // Initialize chart
   useEffect(() => {
-    createChart()
+    // Delay chart creation to ensure container is properly sized
+    const timeoutId = setTimeout(() => {
+      createChart()
+    }, 0)
     
     return () => {
+      clearTimeout(timeoutId)
       if (chartRef.current) {
         if (onDestroy) {
           onDestroy(chartRef.current)
@@ -74,12 +90,21 @@ function UplotChartComponent({
   
   // Handle resize
   useEffect(() => {
-    if (!chartRef.current || !containerRef.current) return
+    if (!containerRef.current) return
     
     const resizeObserver = new ResizeObserver((entries) => {
-      if (chartRef.current && entries[0]) {
+      if (entries[0]) {
         const { width, height } = entries[0].contentRect
-        chartRef.current.setSize({ width, height })
+        
+        // Only update if we have valid dimensions
+        if (width > 0 && height > 0) {
+          if (chartRef.current) {
+            chartRef.current.setSize({ width, height })
+          } else {
+            // If chart doesn't exist yet but we have dimensions, try creating it
+            createChart()
+          }
+        }
       }
     })
     
@@ -88,7 +113,7 @@ function UplotChartComponent({
     return () => {
       resizeObserver.disconnect()
     }
-  }, [])
+  }, [createChart])
   
   return (
     <div 

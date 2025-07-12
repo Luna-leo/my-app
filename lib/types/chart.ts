@@ -27,6 +27,7 @@ export interface DataRange {
 export interface ChartSeriesData {
   xValues: number[]
   yValues: number[]
+  parameterId: string
   parameterInfo: ParameterInfo
   metadataId: number
   metadataLabel: string

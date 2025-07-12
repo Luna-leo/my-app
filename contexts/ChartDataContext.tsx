@@ -232,6 +232,16 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       }
       
       const data = await db.getTimeSeriesData(metadataId);
+      
+      // Debug: Check data structure
+      if (data.length > 0) {
+        console.log(`[ChartDataContext] Sample data point for metadataId ${metadataId}:`, {
+          firstPoint: data[0],
+          hasData: !!data[0]?.data,
+          dataKeys: data[0]?.data ? Object.keys(data[0].data) : []
+        });
+      }
+      
       timeSeriesCache.set(metadataId, data);
       return { metadataId, data };
     });
@@ -342,6 +352,8 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         ...config.yAxisParameters,
       ];
       
+      console.log(`[ChartDataContext] Parameter IDs for "${config.title}":`, parameterIds);
+      
       const parameterInfoMap = await fetchParameters(parameterIds);
       
       // Report progress after parameter fetch
@@ -429,6 +441,17 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           parameterInfoMap,
           rawData.metadata
         );
+
+        console.log(`[ChartDataContext] Transform complete for "${config.title}":`, {
+          seriesCount: timeChartData.series.length,
+          firstSeries: timeChartData.series[0] ? {
+            parameterId: timeChartData.series[0].parameterId,
+            timestampsLength: timeChartData.series[0].timestamps.length,
+            valuesLength: timeChartData.series[0].values.length,
+            firstTimestamp: timeChartData.series[0].timestamps[0],
+            firstValue: timeChartData.series[0].values[0]
+          } : null
+        });
 
         // Calculate combined Y range
         let combinedYMin = Number.POSITIVE_INFINITY;
@@ -531,6 +554,13 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       onProgress?.(90);
 
       console.log(`[ChartDataContext] Total processing time for "${config.title}": ${performance.now() - startTime}ms`);
+      console.log(`[ChartDataContext] Returning data for "${config.title}":`, {
+        hasPlotData: !!chartData,
+        seriesCount: chartData?.series?.length || 0,
+        hasDataViewport: !!dataViewport,
+        dataViewport,
+        firstSeriesDataLength: chartData?.series?.[0]?.xValues?.length || 0
+      });
 
       return { plotData: chartData, dataViewport };
     } catch (error) {
