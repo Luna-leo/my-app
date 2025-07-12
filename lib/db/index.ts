@@ -116,7 +116,7 @@ export class AppDatabase extends Dexie {
     // Add unique constraint to dataKey and optimize indexes
     this.version(6).stores({
       metadata: '++id, &dataKey, plant, machineNo, importedAt, [plant+machineNo+dataStartTime]',
-      parameters: '++id, &[parameterId+plant+machineNo], parameterId, [plant+machineNo], plant, machineNo',
+      parameters: '++id, parameterId, [plant+machineNo], plant, machineNo, [parameterId+plant+machineNo]',
       timeSeries: '++id, metadataId, timestamp, [metadataId+timestamp]',
       chartConfigurations: '++id, workspaceId, createdAt, updatedAt',
       workspaces: '++id, name, isActive, createdAt, selectedDataKeys'
