@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { db } from '@/lib/db'
 import { Metadata } from '@/lib/db/schema'
+import { calculateDataPeriodFromTimeSeries } from '@/lib/db/dataUtils'
 import { Search, Calendar, Factory, Cpu, Eye, Upload, Loader2, CheckCircle } from 'lucide-react'
 import { DataPreviewDialog } from './DataPreviewDialog'
 
@@ -23,6 +24,7 @@ export function UploadContent() {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [calculatedPeriods, setCalculatedPeriods] = useState<Record<number, { dataStartTime: Date; dataEndTime: Date }>>({})
 
   // Load metadata from IndexedDB
   useEffect(() => {
@@ -38,6 +40,26 @@ export function UploadContent() {
         })
         setMetadata(sortedData)
         setFilteredMetadata(sortedData)
+        
+        // Calculate periods for metadata without dataStartTime/dataEndTime
+        const periodsToCalculate = sortedData.filter(item => 
+          item.id && (!item.dataStartTime || !item.dataEndTime)
+        )
+        
+        const calculatedPeriodsMap: Record<number, { dataStartTime: Date; dataEndTime: Date }> = {}
+        
+        await Promise.all(
+          periodsToCalculate.map(async (item) => {
+            if (item.id) {
+              const period = await calculateDataPeriodFromTimeSeries(item.id)
+              if (period) {
+                calculatedPeriodsMap[item.id] = period
+              }
+            }
+          })
+        )
+        
+        setCalculatedPeriods(calculatedPeriodsMap)
       } catch (error) {
         console.error('Failed to load metadata:', error)
       } finally {
@@ -273,7 +295,10 @@ export function UploadContent() {
                   <div className="flex items-center gap-1 text-xs text-gray-500">
                     <Calendar className="h-3 w-3" />
                     <span>
-                      {formatDate(item.dataStartTime)} ~ {formatDate(item.dataEndTime)}
+                      {formatDate(item.dataStartTime || calculatedPeriods[item.id!]?.dataStartTime)} ~ {formatDate(item.dataEndTime || calculatedPeriods[item.id!]?.dataEndTime)}
+                      {item.id && calculatedPeriods[item.id!] && (!item.dataStartTime || !item.dataEndTime) && (
+                        <span className="text-xs text-gray-400 ml-1">(計算値)</span>
+                      )}
                     </span>
                   </div>
                   

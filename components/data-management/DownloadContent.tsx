@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { db } from '@/lib/db'
-import { Calendar, Factory, Cpu, Download, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
+import { Calendar, Factory, Cpu, Download, Loader2, CheckCircle, AlertCircle, Eye } from 'lucide-react'
+import { ServerDataPreviewDialog } from './ServerDataPreviewDialog'
 
 interface UploadedData {
   uploadId: string
@@ -29,6 +30,8 @@ export function DownloadContent() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [downloadResult, setDownloadResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [previewUploadId, setPreviewUploadId] = useState<string | null>(null)
+  const [previewDataInfo, setPreviewDataInfo] = useState<{ plant: string; machineNo: string; label?: string } | null>(null)
 
   // Load uploaded data from server
   useEffect(() => {
@@ -280,6 +283,24 @@ export function DownloadContent() {
                     ID: {item.uploadId}
                   </p>
                 </div>
+                <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    onClick={() => {
+                      setPreviewUploadId(item.uploadId)
+                      setPreviewDataInfo({
+                        plant: item.plant,
+                        machineNo: item.machineNo,
+                        label: item.label
+                      })
+                    }}
+                    title="Preview data"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -317,6 +338,18 @@ export function DownloadContent() {
           )}
         </Button>
       </div>
+      
+      <ServerDataPreviewDialog
+        open={!!previewUploadId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewUploadId(null)
+            setPreviewDataInfo(null)
+          }
+        }}
+        uploadId={previewUploadId}
+        dataInfo={previewDataInfo}
+      />
     </div>
   )
 }
