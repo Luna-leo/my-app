@@ -114,7 +114,7 @@ function ProgressiveChartComponent({
 
   // Manual resolution upgrade
   const handleUpgradeResolution = () => {
-    const resolutionOrder: DataResolution[] = ['preview', 'normal', 'high'];
+    const resolutionOrder: DataResolution[] = ['preview', 'normal', 'high', 'full'];
     const currentIndex = resolutionOrder.indexOf(resolution);
     if (currentIndex < resolutionOrder.length - 1) {
       setResolution(resolutionOrder[currentIndex + 1]);
@@ -150,12 +150,13 @@ function ProgressiveChartComponent({
             <Badge 
               variant={getResolutionBadgeVariant()} 
               className="text-xs"
-              onClick={resolution !== 'high' ? handleUpgradeResolution : undefined}
-              style={{ cursor: resolution !== 'high' ? 'pointer' : 'default' }}
+              onClick={resolution !== 'full' ? handleUpgradeResolution : undefined}
+              style={{ cursor: resolution !== 'full' ? 'pointer' : 'default' }}
             >
               {resolution === 'preview' && 'Preview'}
               {resolution === 'normal' && 'Normal'}
               {resolution === 'high' && 'High-Res'}
+              {resolution === 'full' && 'Full'}
               {isUpgrading && <Loader2 className="ml-1 h-2 w-2 animate-spin" />}
             </Badge>
           )}
