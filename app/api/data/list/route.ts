@@ -31,9 +31,28 @@ export async function GET(request: NextRequest) {
       return dateB - dateA; // Newest first
     });
 
+    // Transform uploads to match the expected UploadedData structure
+    const data = uploads.map(upload => {
+      // Ensure we have consistent field names
+      const transformed: any = {
+        id: upload.uploadId,
+        uploadId: upload.uploadId,
+        plantNm: upload.plantNm,
+        machineNo: upload.machineNo,
+        label: upload.label,
+        startTime: upload.startTime,
+        endTime: upload.endTime,
+        uploadDate: upload.uploadDate || upload.uploadedAt, // Use uploadDate if available, fallback to uploadedAt
+        parameterCount: upload.parameterCount,
+        recordCount: upload.recordCount
+      };
+      
+      return transformed;
+    });
+
     return NextResponse.json({
-      uploads,
-      count: uploads.length
+      data,
+      count: data.length
     });
 
   } catch (error) {

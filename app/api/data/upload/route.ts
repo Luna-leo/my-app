@@ -4,7 +4,8 @@ import {
   generateUploadId, 
   saveMetadata, 
   updateIndex,
-  ensureUploadsDir 
+  ensureUploadsDir,
+  loadIndex
 } from '@/lib/api/storage';
 import { saveTimeSeriesAsParquet } from '@/lib/api/parquet';
 
@@ -21,17 +22,63 @@ export async function POST(request: NextRequest) {
     await ensureUploadsDir();
 
     const body = await request.json();
-    const { metadata, parameters, timeSeriesData } = body;
+    const { metadata, timeSeriesData, dataPeriods } = body;
 
-    if (!metadata || !parameters || !timeSeriesData) {
+    // Log incoming data for debugging
+    console.log('Upload request received:', {
+      hasMetadata: !!metadata,
+      hasTimeSeriesData: !!timeSeriesData,
+      timeSeriesDataLength: timeSeriesData?.length,
+      dataPeriods
+    });
+
+    if (!metadata || !timeSeriesData) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: metadata or timeSeriesData' },
         { status: 400 }
       );
     }
 
+    // Check for duplicate data
+    const existingIndex = await loadIndex();
+    
+    // Create a unique key for this data
+    const dataKey = `${metadata.plant}_${metadata.machineNo}_${metadata.label || 'no-label'}_${metadata.dataStartTime}_${metadata.dataEndTime}`;
+    console.log('Checking for duplicate with key:', dataKey);
+    
+    // Check if data with same key already exists
+    const duplicateEntry = Object.entries(existingIndex).find(([_, data]: [string, any]) => {
+      const existingKey = `${data.plantNm}_${data.machineNo}_${data.label || 'no-label'}_${data.startTime}_${data.endTime}`;
+      return existingKey === dataKey;
+    });
+    
+    if (duplicateEntry) {
+      console.log('Duplicate data found:', duplicateEntry[0]);
+      return NextResponse.json({
+        uploadId: duplicateEntry[0],
+        message: 'Data already exists on server',
+        duplicate: true
+      });
+    }
+
     // Generate unique upload ID
     const uploadId = generateUploadId();
+
+    // Extract parameters from time series data if not provided
+    let parameters = [];
+    if (timeSeriesData.length > 0) {
+      const firstRow = timeSeriesData[0];
+      const dataKeys = Object.keys(firstRow.data || {});
+      parameters = dataKeys.map(key => ({
+        parameterId: key,
+        parameterName: key,
+        unit: '',
+        plant: metadata.plant,
+        machineNo: metadata.machineNo
+      }));
+    }
+
+    console.log('Extracted parameters:', parameters);
 
     // Save metadata and parameters
     await saveMetadata(uploadId, metadata, parameters);
@@ -43,16 +90,21 @@ export async function POST(request: NextRequest) {
     await saveTimeSeriesAsParquet(uploadId, timeSeriesData, parameterIds);
 
     // Update index
-    await updateIndex(uploadId, {
-      dataKey: metadata.dataKey,
-      plant: metadata.plant,
+    const uploadInfo = {
+      uploadId: uploadId,
+      uploadDate: new Date().toISOString(),
+      plantNm: metadata.plant,
       machineNo: metadata.machineNo,
       label: metadata.label,
-      dataStartTime: metadata.dataStartTime,
-      dataEndTime: metadata.dataEndTime,
+      startTime: metadata.dataStartTime || metadata.startTime,
+      endTime: metadata.dataEndTime || metadata.endTime,
       parameterCount: parameters.length,
       recordCount: timeSeriesData.length
-    });
+    };
+    
+    console.log('Updating index with:', uploadInfo);
+    
+    await updateIndex(uploadId, uploadInfo);
 
     // Generate response
     return NextResponse.json({
@@ -62,8 +114,16 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Upload error:', error);
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    
     return NextResponse.json(
-      { error: 'Failed to upload data' },
+      { 
+        error: 'Failed to upload data',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

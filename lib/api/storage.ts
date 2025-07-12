@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { nanoid } from 'nanoid';
+import { readTimeSeriesFromParquet } from './parquet';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 
@@ -32,6 +33,16 @@ export async function loadMetadata(uploadId: string) {
   const metadataPath = path.join(getUploadPath(uploadId), 'metadata.json');
   const content = await fs.readFile(metadataPath, 'utf-8');
   return JSON.parse(content);
+}
+
+export async function loadTimeSeriesData(uploadId: string, options?: { limit?: number }) {
+  const data = await readTimeSeriesFromParquet(uploadId);
+  
+  if (options?.limit) {
+    return data.slice(0, options.limit);
+  }
+  
+  return data;
 }
 
 

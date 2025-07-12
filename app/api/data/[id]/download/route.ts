@@ -44,7 +44,10 @@ export async function GET(
   } catch (error) {
     console.error('Download error:', error);
     return NextResponse.json(
-      { error: 'Failed to download data' },
+      { 
+        error: 'Failed to download data',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
