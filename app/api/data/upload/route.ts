@@ -47,8 +47,9 @@ export async function POST(request: NextRequest) {
     console.log('Checking for duplicate with key:', dataKey);
     
     // Check if data with same key already exists
-    const duplicateEntry = Object.entries(existingIndex).find(([_, data]: [string, any]) => {
-      const existingKey = `${data.plantNm}_${data.machineNo}_${data.label || 'no-label'}_${data.startTime}_${data.endTime}`;
+    const duplicateEntry = Object.entries(existingIndex).find(([, data]) => {
+      const uploadData = data as Record<string, unknown>;
+      const existingKey = `${uploadData.plantNm}_${uploadData.machineNo}_${uploadData.label || 'no-label'}_${uploadData.startTime}_${uploadData.endTime}`;
       return existingKey === dataKey;
     });
     
@@ -65,7 +66,14 @@ export async function POST(request: NextRequest) {
     const uploadId = generateUploadId();
 
     // Extract parameters from time series data if not provided
-    let parameters = [];
+    let parameters: Array<{
+      parameterId: string;
+      parameterName: string;
+      unit: string;
+      plant: string;
+      machineNo: string;
+    }> = [];
+    
     if (timeSeriesData.length > 0) {
       const firstRow = timeSeriesData[0];
       const dataKeys = Object.keys(firstRow.data || {});

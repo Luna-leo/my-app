@@ -34,17 +34,17 @@ export async function GET(request: NextRequest) {
     // Transform uploads to match the expected UploadedData structure
     const data = uploads.map(upload => {
       // Ensure we have consistent field names
-      const transformed: any = {
+      const transformed = {
         id: upload.uploadId,
         uploadId: upload.uploadId,
-        plantNm: upload.plantNm,
-        machineNo: upload.machineNo,
-        label: upload.label,
-        startTime: upload.startTime,
-        endTime: upload.endTime,
-        uploadDate: upload.uploadDate || upload.uploadedAt, // Use uploadDate if available, fallback to uploadedAt
-        parameterCount: upload.parameterCount,
-        recordCount: upload.recordCount
+        plantNm: upload.plantNm as string,
+        machineNo: upload.machineNo as string,
+        label: upload.label as string | undefined,
+        startTime: upload.startTime as string,
+        endTime: upload.endTime as string,
+        uploadDate: (upload.uploadDate || upload.uploadedAt) as string,
+        parameterCount: upload.parameterCount as number,
+        recordCount: upload.recordCount as number
       };
       
       return transformed;
