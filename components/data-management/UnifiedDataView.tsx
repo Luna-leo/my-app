@@ -359,9 +359,9 @@ export function UnifiedDataView({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Alerts */}
-      <div className="space-y-2 mb-4">
+      <div className="space-y-2 mb-4 flex-shrink-0">
         {importCompleted && (
           <Alert>
             <CheckCircle className="h-4 w-4" />
@@ -391,7 +391,7 @@ export function UnifiedDataView({
       </div>
 
       {/* Search and Filter */}
-      <div className="space-y-4 mb-4">
+      <div className="space-y-4 mb-4 flex-shrink-0">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -430,7 +430,7 @@ export function UnifiedDataView({
       </div>
 
       {/* Selection controls */}
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 flex-shrink-0">
         <span className="text-sm text-muted-foreground">
           {selectedItems.size} of {filteredData.length} selected
         </span>
@@ -455,8 +455,8 @@ export function UnifiedDataView({
       </div>
 
       {/* Data list */}
-      <ScrollArea className="flex-1">
-        <div className="space-y-2 pr-4">
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="space-y-2 pr-4 pb-4">
           {filteredData.map(item => {
             const progress = uploadProgress[item.id] || downloadProgress[item.id]
             
