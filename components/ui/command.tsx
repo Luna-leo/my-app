@@ -59,23 +59,70 @@ CommandInput.displayName = CommandPrimitive.Input.displayName;
 const CommandList = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.List
-    ref={ref}
-    className={cn(
-      'max-h-[400px] overflow-y-auto overflow-x-hidden',
-      // Custom scrollbar styling
-      '[&::-webkit-scrollbar]:w-2',
-      '[&::-webkit-scrollbar-track]:bg-gray-100',
-      '[&::-webkit-scrollbar-thumb]:bg-gray-400',
-      '[&::-webkit-scrollbar-thumb]:rounded-full',
-      'dark:[&::-webkit-scrollbar-track]:bg-gray-800',
-      'dark:[&::-webkit-scrollbar-thumb]:bg-gray-600',
-      className
-    )}
-    {...props}
-  />
-));
+>(({ className, ...props }, ref) => {
+  const listRef = React.useRef<HTMLDivElement>(null);
+  
+  // Combine refs
+  React.useImperativeHandle(ref, () => listRef.current as HTMLDivElement);
+  
+  // Handle wheel events to ensure proper scrolling
+  React.useEffect(() => {
+    const element = listRef.current;
+    if (!element) return;
+    
+    const handleWheel = (e: WheelEvent) => {
+      // Stop propagation to prevent parent elements from interfering
+      e.stopPropagation();
+      
+      const { scrollTop, scrollHeight, clientHeight } = element;
+      const maxScroll = scrollHeight - clientHeight;
+      
+      // Check if the element can scroll
+      if (maxScroll > 0) {
+        // Calculate new scroll position
+        const newScrollTop = scrollTop + e.deltaY;
+        
+        // Clamp the scroll position
+        if (newScrollTop < 0) {
+          element.scrollTop = 0;
+          e.preventDefault();
+        } else if (newScrollTop > maxScroll) {
+          element.scrollTop = maxScroll;
+          e.preventDefault();
+        } else {
+          // Allow natural scrolling
+          element.scrollTop = newScrollTop;
+          e.preventDefault();
+        }
+      }
+    };
+    
+    // Add wheel event listener with passive: false to allow preventDefault
+    element.addEventListener('wheel', handleWheel, { passive: false });
+    
+    return () => {
+      element.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
+  
+  return (
+    <CommandPrimitive.List
+      ref={listRef}
+      className={cn(
+        'max-h-[400px] overflow-y-auto overflow-x-hidden',
+        // Custom scrollbar styling
+        '[&::-webkit-scrollbar]:w-2',
+        '[&::-webkit-scrollbar-track]:bg-gray-100',
+        '[&::-webkit-scrollbar-thumb]:bg-gray-400',
+        '[&::-webkit-scrollbar-thumb]:rounded-full',
+        'dark:[&::-webkit-scrollbar-track]:bg-gray-800',
+        'dark:[&::-webkit-scrollbar-thumb]:bg-gray-600',
+        className
+      )}
+      {...props}
+    />
+  );
+});
 
 CommandList.displayName = CommandPrimitive.List.displayName;
 
