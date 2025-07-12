@@ -328,9 +328,9 @@ export function DataSelectionContent({
               Are you sure you want to delete this data? This will permanently delete all associated time series data.
               {deleteMetadata && (
                 <div className="mt-4 p-3 bg-gray-50 rounded-md">
-                  <p className="font-medium">{deleteMetadata.plant} - {deleteMetadata.machineNo}</p>
-                  {deleteMetadata.label && <p className="text-sm text-gray-600">Label: {deleteMetadata.label}</p>}
-                  {deleteMetadata.event && <p className="text-sm text-gray-600">Event: {deleteMetadata.event}</p>}
+                  <span className="block font-medium">{deleteMetadata.plant} - {deleteMetadata.machineNo}</span>
+                  {deleteMetadata.label && <span className="block text-sm text-gray-600">Label: {deleteMetadata.label}</span>}
+                  {deleteMetadata.event && <span className="block text-sm text-gray-600">Event: {deleteMetadata.event}</span>}
                 </div>
               )}
             </AlertDialogDescription>
