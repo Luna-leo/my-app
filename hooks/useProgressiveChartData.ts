@@ -63,6 +63,7 @@ export function useProgressiveChartData(
   const upgradeTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const isMountedRef = useRef(true);
   const currentResolutionRef = useRef(initialResolution);
+  const isManualChangeRef = useRef(false);
 
   // Load data at specific resolution
   const loadDataAtResolution = useCallback(async (resolution: DataResolution) => {
@@ -166,9 +167,13 @@ export function useProgressiveChartData(
 
   // Manual resolution change
   const setResolution = useCallback((resolution: DataResolution) => {
+    // Mark as manual change
+    isManualChangeRef.current = true;
+    
     // Cancel any pending upgrades
     if (upgradeTimeoutRef.current) {
       clearTimeout(upgradeTimeoutRef.current);
+      upgradeTimeoutRef.current = undefined;
     }
 
     // Only load if resolution actually changed
@@ -198,7 +203,7 @@ export function useProgressiveChartData(
   return {
     ...state,
     setResolution,
-    isUpgrading: state.resolution !== 'full' && state.resolution !== 'high' && autoUpgrade
+    isUpgrading: state.resolution !== 'full' && state.resolution !== 'high' && autoUpgrade && !isManualChangeRef.current
   };
 }
 

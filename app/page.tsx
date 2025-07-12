@@ -206,7 +206,14 @@ function HomeContent() {
         
         // Set up waterfall loading progress
         if (convertedCharts.length > 0) {
-          setTotalChartsToLoad(convertedCharts.length)
+          // Calculate visible charts based on pagination
+          const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : convertedCharts.length
+          const startIndex = (currentPage - 1) * chartsPerPage
+          const visibleChartCount = paginationEnabled && layoutOption 
+            ? Math.min(chartsPerPage, Math.max(0, convertedCharts.length - startIndex))
+            : convertedCharts.length
+          
+          setTotalChartsToLoad(visibleChartCount)
           setWaterfallLoadedCharts(0)
           setShowLoadingProgress(true)
         }
@@ -313,6 +320,18 @@ function HomeContent() {
     }
     fetchLabelsAndColors()
   }, [selectedDataIds])
+  
+  // Reset waterfall loading when page changes
+  useEffect(() => {
+    if (paginationEnabled && charts.length > 0) {
+      setWaterfallLoadedCharts(0)
+      const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
+      const startIndex = (currentPage - 1) * chartsPerPage
+      const visibleChartCount = Math.min(chartsPerPage, Math.max(0, charts.length - startIndex))
+      setTotalChartsToLoad(visibleChartCount)
+      setShowLoadingProgress(true)
+    }
+  }, [currentPage])
 
   // Handle selection change
   const handleSelectionChange = useCallback(async (newIds: number[]) => {
@@ -350,7 +369,12 @@ function HomeContent() {
     setCreateChartOpen(false)
     
     // Update waterfall loading state for the new chart
-    setTotalChartsToLoad(newCharts.length)
+    const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : newCharts.length
+    const startIndex = paginationEnabled && layoutOption ? (currentPage - 1) * chartsPerPage : 0
+    const endIndex = startIndex + chartsPerPage
+    const visibleChartCount = Math.min(chartsPerPage, Math.max(0, newCharts.length - startIndex))
+    
+    setTotalChartsToLoad(visibleChartCount)
     setShowLoadingProgress(true)
     
     // Save to database
@@ -422,7 +446,10 @@ function HomeContent() {
       
       // Update waterfall loading state after deletion
       if (newCharts.length > 0) {
-        setTotalChartsToLoad(newCharts.length)
+        const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : newCharts.length
+        const startIndex = paginationEnabled && layoutOption ? (currentPage - 1) * chartsPerPage : 0
+        const visibleChartCount = Math.min(chartsPerPage, Math.max(0, newCharts.length - startIndex))
+        setTotalChartsToLoad(visibleChartCount)
       } else {
         setTotalChartsToLoad(0)
         setShowLoadingProgress(false)
@@ -739,8 +766,11 @@ function HomeContent() {
                   }}
                   onChartLoaded={(count) => {
                     setWaterfallLoadedCharts(count)
-                    // Update total charts to load dynamically
-                    setTotalChartsToLoad(charts.length)
+                    // Update total charts to load dynamically based on visible charts
+                    const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
+                    const startIndex = paginationEnabled && layoutOption ? (currentPage - 1) * chartsPerPage : 0
+                    const visibleChartCount = Math.min(chartsPerPage, Math.max(0, charts.length - startIndex))
+                    setTotalChartsToLoad(visibleChartCount)
                   }}
                 />
               </div>

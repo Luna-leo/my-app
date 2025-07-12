@@ -53,6 +53,9 @@ export function ChartGrid({
   const [gridHeight, setGridHeight] = useState<string>('100%')
   const [itemHeight, setItemHeight] = useState<string>('auto')
   
+  // Calculate the number of charts per page early
+  const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
+  
   // State to track which charts should be rendered (for old stagger mode)
   const [renderedCharts, setRenderedCharts] = useState<Set<number>>(new Set())
   
@@ -60,11 +63,21 @@ export function ChartGrid({
   const [waterfallLoadedCharts, setWaterfallLoadedCharts] = useState<Set<number>>(new Set())
   const [currentWaterfallIndex, setCurrentWaterfallIndex] = useState(0)
   
+  // Calculate global index for charts when pagination is enabled
+  const getGlobalChartIndex = (localIndex: number) => {
+    if (paginationEnabled && layoutOption) {
+      const chartsPerPage = layoutOption.rows * layoutOption.cols
+      return (currentPage - 1) * chartsPerPage + localIndex
+    }
+    return localIndex
+  }
+  
   // Waterfall loading callback
-  const handleWaterfallLoadComplete = useCallback((index: number) => {
+  const handleWaterfallLoadComplete = useCallback((localIndex: number) => {
+    const globalIndex = getGlobalChartIndex(localIndex)
     setWaterfallLoadedCharts(prev => {
       const newSet = new Set(prev)
-      newSet.add(index)
+      newSet.add(globalIndex)
       return newSet
     })
     
@@ -74,22 +87,37 @@ export function ChartGrid({
         setCurrentWaterfallIndex(prev => prev + 1)
       }, waterfallDelay)
     }
-  }, [enableWaterfall, waterfallDelay])
+  }, [enableWaterfall, waterfallDelay, paginationEnabled, layoutOption, currentPage])
   
   // Notify parent of loading progress
   useEffect(() => {
-    if (onChartLoaded && waterfallLoadedCharts.size > 0) {
-      onChartLoaded(waterfallLoadedCharts.size)
+    if (onChartLoaded) {
+      // Count only the charts loaded on the current page
+      const pageStartIndex = paginationEnabled && layoutOption ? (currentPage - 1) * chartsPerPage : 0
+      const visibleCount = paginationEnabled && layoutOption 
+        ? Math.min(chartsPerPage, charts.length - pageStartIndex)
+        : Math.min(chartsPerPage, charts.length)
+      
+      let loadedOnCurrentPage = 0
+      for (let i = 0; i < visibleCount; i++) {
+        const globalIndex = getGlobalChartIndex(i)
+        if (waterfallLoadedCharts.has(globalIndex)) {
+          loadedOnCurrentPage++
+        }
+      }
+      
+      onChartLoaded(loadedOnCurrentPage)
     }
-  }, [waterfallLoadedCharts.size, onChartLoaded])
+  }, [waterfallLoadedCharts.size, onChartLoaded, layoutOption, paginationEnabled, currentPage, charts.length, chartsPerPage])
   
-  // Reset waterfall loading when charts array changes
+  // Reset waterfall loading when charts array changes or page changes
   useEffect(() => {
     if (enableWaterfall) {
-      // Only reset if we have more charts to load than already loaded
-      if (charts.length > waterfallLoadedCharts.size) {
-        // Don't reset already loaded charts, just continue from current position
-        setCurrentWaterfallIndex(waterfallLoadedCharts.size)
+      // Reset the current waterfall index when page changes
+      setCurrentWaterfallIndex(0)
+      // Clear loaded charts for the current page when page changes
+      if (paginationEnabled) {
+        setWaterfallLoadedCharts(new Set())
       }
     } else {
       // Old stagger mode
@@ -109,7 +137,7 @@ export function ChartGrid({
         timeouts.forEach(clearTimeout)
       }
     }
-  }, [charts.length, enableWaterfall]) // Use charts.length instead of charts to avoid resetting on every change
+  }, [charts.length, enableWaterfall, currentPage]) // Reset when page changes
   
   // Calculate grid height to ensure it fits in the container
   useEffect(() => {
@@ -190,9 +218,6 @@ export function ChartGrid({
     // Default responsive layout
     return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
   }
-
-  // Calculate the number of charts per page
-  const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
   
   // Calculate visible charts based on pagination
   let visibleCharts: (ChartConfiguration & { id: string })[]
@@ -211,12 +236,12 @@ export function ChartGrid({
   // Determine aspect ratio: use dynamic for fixed layouts, default for responsive
   const aspectRatio = layoutOption ? dynamicAspectRatio : 1.5
   
-  // Check if all charts are loaded (for waterfall mode)
+  // Check if all visible charts are loaded (for waterfall mode)
   useEffect(() => {
-    if (enableWaterfall && waterfallLoadedCharts.size === charts.length && charts.length > 0 && onAllChartsLoaded) {
+    if (enableWaterfall && waterfallLoadedCharts.size === visibleCharts.length && visibleCharts.length > 0 && onAllChartsLoaded) {
       onAllChartsLoaded()
     }
-  }, [enableWaterfall, waterfallLoadedCharts.size, charts.length, onAllChartsLoaded])
+  }, [enableWaterfall, waterfallLoadedCharts.size, visibleCharts.length, onAllChartsLoaded])
 
   return (
     <div 

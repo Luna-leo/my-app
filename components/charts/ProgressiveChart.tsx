@@ -7,11 +7,17 @@ import { UplotChart } from './UplotChart'
 import { ChartLoadingState } from './ChartStates'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Trash2, Copy, Edit, Loader2 } from 'lucide-react'
+import { Trash2, Copy, Edit, Loader2, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buildUplotOptions, transformToUplotData } from '@/lib/utils/uplotUtils'
 import { AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
-import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface ProgressiveChartProps {
   config: ChartConfiguration
@@ -113,23 +119,17 @@ function ProgressiveChartComponent({
     });
   }
 
-  // Resolution badge color
-  const getResolutionBadgeVariant = () => {
-    switch (resolution) {
-      case 'preview': return 'secondary';
-      case 'normal': return 'default';
-      case 'high': return 'default';
-      default: return 'default';
-    }
+  // Resolution labels and info
+  const resolutionInfo: Record<DataResolution, { label: string; description: string }> = {
+    preview: { label: 'Preview', description: '500 pts - Fast initial display' },
+    normal: { label: 'Normal', description: '2,000 pts - Balanced quality' },
+    high: { label: 'High-Res', description: '5,000 pts - Detailed view' },
+    full: { label: 'Full', description: 'All points - Maximum detail' }
   };
 
-  // Manual resolution upgrade
-  const handleUpgradeResolution = () => {
-    const resolutionOrder: DataResolution[] = ['preview', 'normal', 'high', 'full'];
-    const currentIndex = resolutionOrder.indexOf(resolution);
-    if (currentIndex < resolutionOrder.length - 1) {
-      setResolution(resolutionOrder[currentIndex + 1]);
-    }
+  // Handle resolution change
+  const handleResolutionChange = (value: string) => {
+    setResolution(value as DataResolution);
   };
 
   if (loadingState.error) {
@@ -158,18 +158,32 @@ function ProgressiveChartComponent({
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <h3 className="font-medium truncate">{config.title}</h3>
           {enableProgressive && (
-            <Badge 
-              variant={getResolutionBadgeVariant()} 
-              className="text-xs"
-              onClick={(!globalResolution && resolution !== 'full') ? handleUpgradeResolution : undefined}
-              style={{ cursor: (!globalResolution && resolution !== 'full') ? 'pointer' : 'default' }}
-            >
-              {resolution === 'preview' && 'Preview'}
-              {resolution === 'normal' && 'Normal'}
-              {resolution === 'high' && 'High-Res'}
-              {resolution === 'full' && 'Full'}
-              {isUpgrading && <Loader2 className="ml-1 h-2 w-2 animate-spin" />}
-            </Badge>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-7 text-xs gap-1"
+                  disabled={!!globalResolution}
+                >
+                  {isUpgrading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : null}
+                  {resolutionInfo[resolution].label}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuRadioGroup value={resolution} onValueChange={handleResolutionChange}>
+                  {Object.entries(resolutionInfo).map(([key, info]) => (
+                    <DropdownMenuRadioItem key={key} value={key} className="flex flex-col items-start py-2">
+                      <span className="font-medium">{info.label}</span>
+                      <span className="text-xs text-muted-foreground">{info.description}</span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
         <div className="flex items-center gap-1">
