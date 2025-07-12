@@ -88,6 +88,7 @@ function ProgressiveChartComponent({
     ),
     chartType: config.chartType,
     isTimeAxis: config.chartType === 'line',
+    showLegend: false,
     xRange: [dataViewport.xMin, dataViewport.xMax],
     yRange: [dataViewport.yMin, dataViewport.yMax]
   }) : null;
