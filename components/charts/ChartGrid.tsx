@@ -64,13 +64,13 @@ export function ChartGrid({
   const [currentWaterfallIndex, setCurrentWaterfallIndex] = useState(0)
   
   // Calculate global index for charts when pagination is enabled
-  const getGlobalChartIndex = (localIndex: number) => {
+  const getGlobalChartIndex = useCallback((localIndex: number) => {
     if (paginationEnabled && layoutOption) {
       const chartsPerPage = layoutOption.rows * layoutOption.cols
       return (currentPage - 1) * chartsPerPage + localIndex
     }
     return localIndex
-  }
+  }, [paginationEnabled, layoutOption, currentPage])
   
   // Waterfall loading callback
   const handleWaterfallLoadComplete = useCallback((localIndex: number) => {
@@ -87,7 +87,7 @@ export function ChartGrid({
         setCurrentWaterfallIndex(prev => prev + 1)
       }, waterfallDelay)
     }
-  }, [enableWaterfall, waterfallDelay, paginationEnabled, layoutOption, currentPage])
+  }, [enableWaterfall, waterfallDelay, getGlobalChartIndex])
   
   // Notify parent of loading progress
   useEffect(() => {
@@ -108,7 +108,7 @@ export function ChartGrid({
       
       onChartLoaded(loadedOnCurrentPage)
     }
-  }, [waterfallLoadedCharts.size, onChartLoaded, layoutOption, paginationEnabled, currentPage, charts.length, chartsPerPage])
+  }, [waterfallLoadedCharts, onChartLoaded, layoutOption, paginationEnabled, currentPage, charts.length, chartsPerPage, getGlobalChartIndex])
   
   // Reset waterfall loading when charts array changes or page changes
   useEffect(() => {
@@ -137,7 +137,7 @@ export function ChartGrid({
         timeouts.forEach(clearTimeout)
       }
     }
-  }, [charts.length, enableWaterfall, currentPage]) // Reset when page changes
+  }, [charts.length, enableWaterfall, currentPage, paginationEnabled]) // Reset when page changes
   
   // Calculate grid height to ensure it fits in the container
   useEffect(() => {

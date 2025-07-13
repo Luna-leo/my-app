@@ -82,6 +82,11 @@ function HomeContent() {
   const [preloadProgress, setPreloadProgress] = useState({ loaded: 0, total: 0 })
   const { preloadChartData, clearCache } = useChartDataContext()
   
+  // Calculate pagination info
+  const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
+  const totalPages = Math.ceil(charts.length / chartsPerPage)
+  const paginationEnabled = layoutOption?.paginationEnabled ?? false
+  
   const loadWorkspaceAndCharts = useCallback(async (startupOptions?: { mode?: 'clean' | 'restore', workspaceId?: string }) => {
     try {
       setLoading(true)
@@ -228,7 +233,7 @@ function HomeContent() {
     } finally {
       setLoading(false)
     }
-  }, [clearCache, preloadChartData])
+  }, [clearCache, preloadChartData, currentPage, layoutOption, paginationEnabled])
   
   useEffect(() => {
     console.log('[Page] useEffect triggered, searchParams:', searchParams?.toString())
@@ -331,7 +336,7 @@ function HomeContent() {
       setTotalChartsToLoad(visibleChartCount)
       setShowLoadingProgress(true)
     }
-  }, [currentPage])
+  }, [currentPage, charts.length, layoutOption, paginationEnabled])
 
   // Handle selection change
   const handleSelectionChange = useCallback(async (newIds: number[]) => {
@@ -371,7 +376,6 @@ function HomeContent() {
     // Update waterfall loading state for the new chart
     const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : newCharts.length
     const startIndex = paginationEnabled && layoutOption ? (currentPage - 1) * chartsPerPage : 0
-    const endIndex = startIndex + chartsPerPage
     const visibleChartCount = Math.min(chartsPerPage, Math.max(0, newCharts.length - startIndex))
     
     setTotalChartsToLoad(visibleChartCount)
@@ -466,11 +470,6 @@ function HomeContent() {
     // Reset to first page when layout changes
     setCurrentPage(1)
   }
-
-  // Calculate pagination info
-  const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
-  const totalPages = Math.ceil(charts.length / chartsPerPage)
-  const paginationEnabled = layoutOption?.paginationEnabled ?? false
 
   // Ensure current page is valid
   if (currentPage > totalPages && totalPages > 0) {
