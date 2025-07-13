@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 export interface ChartConfiguration {
+  id?: string;
   title: string;
   chartType: 'line' | 'scatter';
   xAxisParameter: string;
