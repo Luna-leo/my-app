@@ -197,21 +197,33 @@ export function useProgressiveChartData(
 
   // Initial load and auto-upgrade
   useEffect(() => {
-    console.log('[useProgressiveChartData] Effect triggered for:', config.title);
+    console.log('[useProgressiveChartData] Effect triggered for chart:', config.title, 'ID:', config.id);
     isMountedRef.current = true;
     
-    loadDataAtResolution(initialResolution).then(() => {
-      scheduleUpgrade(initialResolution);
-    });
+    // Load initial data
+    const loadInitialData = async () => {
+      try {
+        await loadDataAtResolution(initialResolution);
+        
+        // Schedule upgrades if enabled
+        if (autoUpgrade && initialResolution !== 'high') {
+          scheduleUpgrade(initialResolution);
+        }
+      } catch (error) {
+        console.error('[useProgressiveChartData] Error loading initial data:', error);
+      }
+    };
+    
+    loadInitialData();
 
     return () => {
-      console.log('[useProgressiveChartData] Cleanup for:', config.title);
+      console.log('[useProgressiveChartData] Cleanup for:', config.title, 'ID:', config.id);
       isMountedRef.current = false;
       if (upgradeTimeoutRef.current) {
         clearTimeout(upgradeTimeoutRef.current);
       }
     };
-  }, [config.id, config.title, selectedDataIds.join(','), initialResolution, loadDataAtResolution, scheduleUpgrade]); // Use stable dependencies
+  }, [config.id, config.title, selectedDataIds.join(','), initialResolution, loadDataAtResolution, scheduleUpgrade, autoUpgrade]); // Include all dependencies
 
   return {
     ...state,
