@@ -67,20 +67,6 @@ function ProgressiveChartComponent({
     }
   }, [globalResolution, resolution, setResolution]);
 
-  // Debug logging
-  console.log('[ProgressiveChart] Render:', {
-    title: config.title,
-    resolution,
-    hasPlotData: !!plotData,
-    seriesCount: plotData?.series?.length || 0,
-    firstSeriesData: plotData?.series?.[0] ? {
-      xValuesLength: plotData.series[0].xValues?.length || 0,
-      yValuesLength: plotData.series[0].yValues?.length || 0,
-      parameterId: plotData.series[0].parameterId
-    } : null,
-    hasDataViewport: !!dataViewport,
-    loadingState
-  });
 
   // Create uPlot options
   let aspectRatioValue = 1.5;
@@ -91,33 +77,32 @@ function ProgressiveChartComponent({
     aspectRatioValue = aspectRatio;
   }
   
-  const uplotOptions = plotData && dataViewport && plotData.series.length > 0 ? buildUplotOptions({
-    width: 800, // Default width, will be adjusted by ResizeObserver
-    height: Math.round(800 / aspectRatioValue),
-    xLabel: plotData.xParameterInfo 
-      ? `${plotData.xParameterInfo.parameterName} [${plotData.xParameterInfo.unit || ''}]`
-      : 'Time',
-    yLabel: plotData.series.length > 0
-      ? `${plotData.series[0].parameterInfo.parameterName}${plotData.series[0].parameterInfo.unit ? ` [${plotData.series[0].parameterInfo.unit}]` : ''}`
-      : 'Value',
-    seriesNames: plotData.series.map(series => 
-      `${series.metadataLabel} - ${series.parameterInfo.parameterName}`
-    ),
-    chartType: config.chartType,
-    isTimeAxis: config.chartType === 'line',
-    showLegend: false,
-    xRange: [dataViewport.xMin, dataViewport.xMax],
-    yRange: [dataViewport.yMin, dataViewport.yMax]
-  }) : null;
-
-  // Debug uplot options
-  if (plotData && plotData.series.length > 0) {
-    console.log('[ProgressiveChart] Data check:', {
-      firstSeriesXValues: plotData.series[0]?.xValues?.length || 0,
-      firstSeriesYValues: plotData.series[0]?.yValues?.length || 0,
-      hasUplotOptions: !!uplotOptions
+  const uplotOptions = plotData && dataViewport && plotData.series.length > 0 ? (() => {
+    // For time-based charts, convert viewport x values to seconds
+    const xRange = config.xAxisParameter === 'timestamp' 
+      ? [dataViewport.xMin / 1000, dataViewport.xMax / 1000]
+      : [dataViewport.xMin, dataViewport.xMax];
+    
+    return buildUplotOptions({
+      width: 800, // Default width, will be adjusted by ResizeObserver
+      height: Math.round(800 / aspectRatioValue),
+      xLabel: plotData.xParameterInfo 
+        ? `${plotData.xParameterInfo.parameterName} [${plotData.xParameterInfo.unit || ''}]`
+        : 'Time',
+      yLabel: plotData.series.length > 0
+        ? `${plotData.series[0].parameterInfo.parameterName}${plotData.series[0].parameterInfo.unit ? ` [${plotData.series[0].parameterInfo.unit}]` : ''}`
+        : 'Value',
+      seriesNames: plotData.series.map(series => 
+        `${series.metadataLabel} - ${series.parameterInfo.parameterName}`
+      ),
+      chartType: config.chartType,
+      isTimeAxis: config.xAxisParameter === 'timestamp',
+      showLegend: false,
+      xRange: xRange,
+      yRange: [dataViewport.yMin, dataViewport.yMax]
     });
-  }
+  })() : null;
+
 
   // Resolution labels and info
   const resolutionInfo: Record<DataResolution, { label: string; description: string }> = {
@@ -215,12 +200,6 @@ function ProgressiveChartComponent({
                   : (plotData.series[0]?.xValues || []);
                 
                 const ySeriesData = plotData.series.map(s => s.yValues || []);
-                
-                console.log('[ProgressiveChart] Transformed data:', {
-                  xValuesLength: xValues.length,
-                  ySeriesCount: ySeriesData.length,
-                  firstYSeriesLength: ySeriesData[0]?.length || 0
-                });
                 
                 return transformToUplotData(xValues, ySeriesData);
               })()}

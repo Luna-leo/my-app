@@ -10,6 +10,7 @@ export function generateSeriesColors(count: number): string[] {
 
 // Format timestamp for axis labels
 export function formatTimestamp(timestamp: number): string {
+  // uPlot passes timestamps in seconds, convert to milliseconds for Date
   return format(new Date(timestamp * 1000), 'yyyy-MM-dd HH:mm:ss')
 }
 

@@ -128,48 +128,65 @@ export async function transformDataForChart(
         return;
       }
 
-      // Pre-allocate arrays for better performance
-      const timestamps = new Array<number>(dataPoints.length);
-      const values = new Array<number | null>(dataPoints.length);
+      // Collect valid data points only
+      const timestamps: number[] = [];
+      const values: (number | null)[] = [];
       
       // Fill arrays without creating intermediate objects
-      let validPointCount = 0;
+      let invalidTimestampCount = 0;
       for (let i = 0; i < dataPoints.length; i++) {
         const dataPoint = dataPoints[i];
         
         // Validate data point
         if (!dataPoint || !dataPoint.timestamp) {
           console.warn(`[transformDataForChart] Invalid data point at index ${i}:`, dataPoint);
-          timestamps[i] = 0;
-          values[i] = null;
+          invalidTimestampCount++;
           continue;
         }
         
-        validPointCount++;
-        
-        // Safely get timestamp
-        try {
-          timestamps[i] = dataPoint.timestamp.getTime();
-        } catch {
-          console.warn(`[transformDataForChart] Invalid timestamp at index ${i}:`, dataPoint.timestamp);
-          timestamps[i] = 0;
+        // Validate timestamp is a Date object and has valid value
+        let timestampValue: number;
+        if (dataPoint.timestamp instanceof Date) {
+          timestampValue = dataPoint.timestamp.getTime();
+          // Check if timestamp is valid (not NaN and reasonable date range)
+          if (isNaN(timestampValue) || timestampValue < 946684800000 || timestampValue > 2524608000000) {
+            // 946684800000 = 2000-01-01, 2524608000000 = 2050-01-01
+            console.warn(`[transformDataForChart] Timestamp out of valid range at index ${i}:`, {
+              timestamp: dataPoint.timestamp,
+              value: timestampValue,
+              isoString: dataPoint.timestamp.toISOString()
+            });
+            invalidTimestampCount++;
+            continue;
+          }
+        } else {
+          console.warn(`[transformDataForChart] Timestamp is not a Date object at index ${i}:`, {
+            timestamp: dataPoint.timestamp,
+            type: typeof dataPoint.timestamp,
+            value: dataPoint.timestamp
+          });
+          invalidTimestampCount++;
+          continue;
         }
+        
+        // At this point we have a valid timestamp
+        timestamps.push(timestampValue);
         
         // Safely get value
         if (dataPoint.data && typeof dataPoint.data === 'object') {
           // Check if the parameter exists in the data
           if (parameterId in dataPoint.data) {
-            values[i] = dataPoint.data[parameterId] ?? null;
+            values.push(dataPoint.data[parameterId] ?? null);
           } else {
             // Only log first occurrence to avoid spam
-            if (i === 0) {
+            if (timestamps.length === 1) {
               const dataKeys = Object.keys(dataPoint.data);
               console.warn(`[transformDataForChart] Parameter "${parameterId}" not found in data.`);
               console.warn(`[transformDataForChart] Available keys (first 10):`, dataKeys.slice(0, 10));
               console.warn(`[transformDataForChart] Total keys:`, dataKeys.length);
               console.warn(`[transformDataForChart] Sample key types:`, dataKeys.slice(0, 5).map(k => `${k}: ${typeof dataPoint.data[k]}`));
             }
-            values[i] = null;
+            values.push(null);
           }
         } else {
           // Only log first occurrence to avoid spam
@@ -180,7 +197,12 @@ export async function transformDataForChart(
         }
       }
       
-      console.log(`[transformDataForChart] Processed ${validPointCount}/${dataPoints.length} valid points for parameterId "${parameterId}"`);
+      // Log summary including invalid timestamp count
+      if (invalidTimestampCount > 0) {
+        console.warn(`[transformDataForChart] Skipped ${invalidTimestampCount} points with invalid timestamps`);
+      }
+      console.log(`[transformDataForChart] Processed ${timestamps.length}/${dataPoints.length} valid points for parameterId "${parameterId}"`);
+      
 
       series.push({
         metadataId,
