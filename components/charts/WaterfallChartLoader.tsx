@@ -52,12 +52,16 @@ export function WaterfallChartLoader({
   const [error, setError] = useState<string | null>(null)
   const hasStartedLoading = useRef(false)
   
+  console.log(`[WaterfallChartLoader] Rendering chart ${config.title} (ID: ${config.id}) - index: ${index}, shouldLoad: ${shouldLoad}, status: ${status}`)
+  
   const ChartComponent = getDataChartComponent(enableProgressive || !!globalResolution)
 
   useEffect(() => {
+    console.log('[WaterfallChartLoader] index:', index, 'id:', config.id, 'shouldLoad:', shouldLoad, 'status:', status, 'hasStartedLoading:', hasStartedLoading.current)
     if (shouldLoad && !hasStartedLoading.current && status === 'pending') {
       hasStartedLoading.current = true
       setStatus('loading')
+      console.log('[WaterfallChartLoader] Starting load for chart', index, 'id:', config.id)
       
       // Simulate minimum loading time for better UX
       const minLoadTime = 500
@@ -70,6 +74,7 @@ export function WaterfallChartLoader({
           const remainingTime = Math.max(0, minLoadTime - elapsed)
           
           setTimeout(() => {
+            console.log('[WaterfallChartLoader] Chart', index, 'id:', config.id, 'load complete, calling onLoadComplete')
             setStatus('loaded')
             onLoadComplete?.(index)
           }, remainingTime)
@@ -80,7 +85,7 @@ export function WaterfallChartLoader({
         loadComplete()
       }, 100)
     }
-  }, [shouldLoad, status, index, onLoadComplete])
+  }, [shouldLoad, status, index, onLoadComplete, config.id])
 
   // Retry functionality
   const handleRetry = useCallback(() => {
