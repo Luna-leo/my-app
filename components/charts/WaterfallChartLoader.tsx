@@ -51,13 +51,28 @@ export function WaterfallChartLoader({
   const [status, setStatus] = useState<LoadingStatus>('pending')
   const [error, setError] = useState<string | null>(null)
   const hasStartedLoading = useRef(false)
+  const hasCalledLoadComplete = useRef(false)
   
   console.log(`[WaterfallChartLoader] Rendering chart ${config.title} (ID: ${config.id}) - index: ${index}, shouldLoad: ${shouldLoad}, status: ${status}`)
   
   const ChartComponent = getDataChartComponent(enableProgressive || !!globalResolution)
 
   useEffect(() => {
-    console.log('[WaterfallChartLoader] index:', index, 'id:', config.id, 'shouldLoad:', shouldLoad, 'status:', status, 'hasStartedLoading:', hasStartedLoading.current)
+    console.log('[WaterfallChartLoader] useEffect - index:', index, 'id:', config.id, 'shouldLoad:', shouldLoad, 'status:', status, 'hasStartedLoading:', hasStartedLoading.current)
+    
+    // Reset the flag when shouldLoad changes to false
+    if (!shouldLoad) {
+      hasCalledLoadComplete.current = false
+    }
+    
+    // If already loaded and shouldLoad is true, call onLoadComplete immediately
+    if (shouldLoad && status === 'loaded' && onLoadComplete && !hasCalledLoadComplete.current) {
+      console.log('[WaterfallChartLoader] Chart already loaded, calling onLoadComplete for index:', index)
+      hasCalledLoadComplete.current = true
+      onLoadComplete(index)
+      return
+    }
+    
     if (shouldLoad && !hasStartedLoading.current && status === 'pending') {
       hasStartedLoading.current = true
       setStatus('loading')
@@ -76,6 +91,7 @@ export function WaterfallChartLoader({
           setTimeout(() => {
             console.log('[WaterfallChartLoader] Chart', index, 'id:', config.id, 'load complete, calling onLoadComplete')
             setStatus('loaded')
+            hasCalledLoadComplete.current = true
             onLoadComplete?.(index)
           }, remainingTime)
         }
