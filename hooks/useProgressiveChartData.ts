@@ -45,6 +45,12 @@ export function useProgressiveChartData(
     onResolutionChange
   } = options;
 
+  console.log('[useProgressiveChartData] Hook called with config:', {
+    id: config.id,
+    title: config.title,
+    selectedDataIds
+  });
+
   const [state, setState] = useState<ProgressiveChartDataState>({
     plotData: null,
     dataViewport: null,
@@ -53,6 +59,7 @@ export function useProgressiveChartData(
   });
   
   console.log('[useProgressiveChartData] Hook state:', {
+    id: config.id,
     title: config.title,
     hasPlotData: !!state.plotData,
     resolution: state.resolution,
@@ -83,6 +90,7 @@ export function useProgressiveChartData(
       };
 
       console.log('[useProgressiveChartData] Calling getChartData with:', {
+        id: config.id,
         title: config.title,
         selectedDataIds,
         samplingConfig
@@ -140,7 +148,7 @@ export function useProgressiveChartData(
         }));
       }
     }
-  }, [config.title, config.chartType, config.xAxisParameter, config.yAxisParameters.join(','), selectedDataIds.join(','), getChartData, onResolutionChange]);
+  }, [config.id, config.title, config.chartType, config.xAxisParameter, config.yAxisParameters.join(','), selectedDataIds.join(','), getChartData, onResolutionChange]);
 
   // Schedule resolution upgrade
   const scheduleUpgrade = useCallback((fromResolution: DataResolution) => {
@@ -198,7 +206,7 @@ export function useProgressiveChartData(
         clearTimeout(upgradeTimeoutRef.current);
       }
     };
-  }, [config.title, selectedDataIds.join(',')]); // Use stable dependencies
+  }, [config.id, config.title, selectedDataIds.join(','), initialResolution, loadDataAtResolution, scheduleUpgrade]); // Use stable dependencies
 
   return {
     ...state,

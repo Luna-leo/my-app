@@ -35,13 +35,21 @@ class RequestQueue {
   }> = [];
   private activeRequests = 0;
   private maxConcurrent: number;
+  private inProgressRequests = new Map<string, Promise<any>>();
 
   constructor(maxConcurrent = 2) {
     this.maxConcurrent = maxConcurrent;
   }
 
   async enqueue<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
+    // Check if this request is already in progress
+    const existing = this.inProgressRequests.get(id);
+    if (existing) {
+      console.log(`[RequestQueue] Duplicate request detected for ID: ${id}, returning existing promise`);
+      return existing as Promise<T>;
+    }
+
+    const promise = new Promise<T>((resolve, reject) => {
       this.queue.push({
         id,
         execute: fn,
@@ -50,6 +58,16 @@ class RequestQueue {
       });
       this.processQueue();
     });
+
+    // Track this request as in progress
+    this.inProgressRequests.set(id, promise);
+    
+    // Clean up when done
+    promise.finally(() => {
+      this.inProgressRequests.delete(id);
+    });
+
+    return promise;
   }
 
   private async processQueue() {
@@ -107,13 +125,17 @@ function getConfigHash(config: ChartConfigurationWithData, samplingOption: boole
     ? { enabled: samplingOption }
     : samplingOption;
   
-  return hashChartConfig({
+  const hash = hashChartConfig({
     id: config.id,
     xAxisParameter: config.xAxisParameter,
     yAxisParameters: config.yAxisParameters,
     selectedDataIds: config.selectedDataIds,
     chartType: config.chartType,
   }, samplingConfig);
+  
+  console.log(`[getConfigHash] Generated hash for chart "${config.title}" (ID: ${config.id}): ${hash}`);
+  
+  return hash;
 }
 
 // Generate a cache key for sampled data
