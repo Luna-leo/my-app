@@ -53,13 +53,9 @@ export function WaterfallChartLoader({
   const hasStartedLoading = useRef(false)
   const hasCalledLoadComplete = useRef(false)
   
-  console.log(`[WaterfallChartLoader] Rendering chart ${config.title} (ID: ${config.id}) - index: ${index}, shouldLoad: ${shouldLoad}, status: ${status}`)
-  
   const ChartComponent = getDataChartComponent(enableProgressive || !!globalResolution)
 
   useEffect(() => {
-    console.log('[WaterfallChartLoader] useEffect - index:', index, 'id:', config.id, 'shouldLoad:', shouldLoad, 'status:', status, 'hasStartedLoading:', hasStartedLoading.current)
-    
     // Reset the flag when shouldLoad changes to false
     if (!shouldLoad) {
       hasCalledLoadComplete.current = false
@@ -67,7 +63,6 @@ export function WaterfallChartLoader({
     
     // If already loaded and shouldLoad is true, call onLoadComplete immediately
     if (shouldLoad && status === 'loaded' && onLoadComplete && !hasCalledLoadComplete.current) {
-      console.log('[WaterfallChartLoader] Chart already loaded, calling onLoadComplete for index:', index)
       hasCalledLoadComplete.current = true
       onLoadComplete(index)
       return
@@ -76,7 +71,6 @@ export function WaterfallChartLoader({
     if (shouldLoad && !hasStartedLoading.current && status === 'pending') {
       hasStartedLoading.current = true
       setStatus('loading')
-      console.log('[WaterfallChartLoader] Starting load for chart', index, 'id:', config.id)
       
       // Simulate minimum loading time for better UX
       const minLoadTime = 500
@@ -89,7 +83,6 @@ export function WaterfallChartLoader({
           const remainingTime = Math.max(0, minLoadTime - elapsed)
           
           setTimeout(() => {
-            console.log('[WaterfallChartLoader] Chart', index, 'id:', config.id, 'load complete, calling onLoadComplete')
             setStatus('loaded')
             hasCalledLoadComplete.current = true
             onLoadComplete?.(index)

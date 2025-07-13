@@ -74,24 +74,17 @@ export function ChartGrid({
   
   // Waterfall loading callback
   const handleWaterfallLoadComplete = useCallback((localIndex: number) => {
-    console.log('[ChartGrid] handleWaterfallLoadComplete called for localIndex:', localIndex, 'currentWaterfallIndex:', currentWaterfallIndex)
     const globalIndex = getGlobalChartIndex(localIndex)
     setWaterfallLoadedCharts(prev => {
       const newSet = new Set(prev)
       newSet.add(globalIndex)
-      console.log('[ChartGrid] waterfallLoadedCharts updated:', Array.from(newSet))
       return newSet
     })
     
     // Trigger next chart after delay
     if (enableWaterfall) {
-      console.log('[ChartGrid] Scheduling next chart load after', waterfallDelay, 'ms')
       setTimeout(() => {
-        setCurrentWaterfallIndex(prev => {
-          const next = prev + 1
-          console.log('[ChartGrid] Incrementing waterfall index from', prev, 'to', next)
-          return next
-        })
+        setCurrentWaterfallIndex(prev => prev + 1)
       }, waterfallDelay)
     }
   }, [enableWaterfall, waterfallDelay, getGlobalChartIndex])
@@ -119,14 +112,11 @@ export function ChartGrid({
   
   // Reset waterfall loading when charts array changes or page changes
   useEffect(() => {
-    console.log(`[ChartGrid] Reset effect triggered - enableWaterfall: ${enableWaterfall}, chartsLength: ${charts.length}, currentPage: ${currentPage}`)
     if (enableWaterfall) {
       // Reset the current waterfall index when page changes
-      console.log('[ChartGrid] Resetting waterfall index to 0')
       setCurrentWaterfallIndex(0)
       // Clear loaded charts for the current page when page changes
       if (paginationEnabled) {
-        console.log('[ChartGrid] Clearing waterfall loaded charts')
         setWaterfallLoadedCharts(new Set())
       }
     } else {
@@ -263,7 +253,6 @@ export function ChartGrid({
         if (enableWaterfall) {
           // Waterfall mode: load charts one by one
           const shouldLoad = index <= currentWaterfallIndex
-          console.log('[ChartGrid] Rendering chart', index, 'id:', chart.id, 'shouldLoad:', shouldLoad, 'currentWaterfallIndex:', currentWaterfallIndex)
           return (
             <div key={chart.id} style={{ height: itemHeight }} className="w-full">
               <WaterfallChartLoader

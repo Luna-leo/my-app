@@ -45,25 +45,11 @@ export function useProgressiveChartData(
     onResolutionChange
   } = options;
 
-  console.log('[useProgressiveChartData] Hook called with config:', {
-    id: config.id,
-    title: config.title,
-    selectedDataIds
-  });
-
   const [state, setState] = useState<ProgressiveChartDataState>({
     plotData: null,
     dataViewport: null,
     loadingState: { loading: true, progress: 0, error: null },
     resolution: initialResolution
-  });
-  
-  console.log('[useProgressiveChartData] Hook state:', {
-    id: config.id,
-    title: config.title,
-    hasPlotData: !!state.plotData,
-    resolution: state.resolution,
-    loading: state.loadingState.loading
   });
 
   const { getChartData } = useChartDataContext();
@@ -75,7 +61,6 @@ export function useProgressiveChartData(
   // Load data at specific resolution
   const loadDataAtResolution = useCallback(async (resolution: DataResolution) => {
     try {
-      console.log('[useProgressiveChartData] Loading data at resolution:', resolution, 'for chart:', config.title);
       
       setState(prev => ({
         ...prev,
@@ -89,12 +74,6 @@ export function useProgressiveChartData(
         selectedDataIds
       };
 
-      console.log('[useProgressiveChartData] Calling getChartData with:', {
-        id: config.id,
-        title: config.title,
-        selectedDataIds,
-        samplingConfig
-      });
 
       const { plotData, dataViewport } = await getChartData(
         configWithData,
@@ -109,14 +88,6 @@ export function useProgressiveChartData(
         }
       );
 
-      console.log('[useProgressiveChartData] Data loaded:', {
-        title: config.title,
-        hasPlotData: !!plotData,
-        seriesCount: plotData?.series?.length || 0,
-        firstSeriesLength: plotData?.series?.[0]?.xValues?.length || 0,
-        hasDataViewport: !!dataViewport,
-        viewport: dataViewport
-      });
 
       // Check if we got null data (which might indicate an error)
       if (!plotData && !dataViewport) {
@@ -124,12 +95,6 @@ export function useProgressiveChartData(
       }
 
       if (isMountedRef.current) {
-        console.log('[useProgressiveChartData] Setting state with data:', {
-          hasPlotData: !!plotData,
-          hasDataViewport: !!dataViewport,
-          resolution
-        });
-        
         setState({
           plotData,
           dataViewport,
@@ -141,7 +106,6 @@ export function useProgressiveChartData(
         onResolutionChange?.(resolution);
       }
     } catch (error) {
-      console.error('[useProgressiveChartData] Error loading data:', error);
       if (isMountedRef.current) {
         setState(prev => ({
           ...prev,
@@ -197,7 +161,6 @@ export function useProgressiveChartData(
 
   // Initial load and auto-upgrade
   useEffect(() => {
-    console.log('[useProgressiveChartData] Effect triggered for chart:', config.title, 'ID:', config.id);
     isMountedRef.current = true;
     
     // Load initial data
@@ -210,14 +173,12 @@ export function useProgressiveChartData(
           scheduleUpgrade(initialResolution);
         }
       } catch (error) {
-        console.error('[useProgressiveChartData] Error loading initial data:', error);
       }
     };
     
     loadInitialData();
 
     return () => {
-      console.log('[useProgressiveChartData] Cleanup for:', config.title, 'ID:', config.id);
       isMountedRef.current = false;
       if (upgradeTimeoutRef.current) {
         clearTimeout(upgradeTimeoutRef.current);
