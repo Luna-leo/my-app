@@ -118,6 +118,11 @@ export function useProgressiveChartData(
         viewport: dataViewport
       });
 
+      // Check if we got null data (which might indicate an error)
+      if (!plotData && !dataViewport) {
+        console.warn(`[useProgressiveChartData] Received null data for chart "${config.title}" - this might indicate an error in data fetching`);
+      }
+
       if (isMountedRef.current) {
         console.log('[useProgressiveChartData] Setting state with data:', {
           hasPlotData: !!plotData,

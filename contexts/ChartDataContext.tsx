@@ -49,6 +49,8 @@ class RequestQueue {
       return existing as Promise<T>;
     }
 
+    console.log(`[RequestQueue] Enqueueing new request with ID: ${id}`);
+    
     const promise = new Promise<T>((resolve, reject) => {
       this.queue.push({
         id,
@@ -56,6 +58,7 @@ class RequestQueue {
         resolve,
         reject
       });
+      console.log(`[RequestQueue] Queue length after enqueue: ${this.queue.length}`);
       this.processQueue();
     });
 
@@ -63,29 +66,42 @@ class RequestQueue {
     this.inProgressRequests.set(id, promise);
     
     // Clean up when done
-    promise.finally(() => {
-      this.inProgressRequests.delete(id);
-    });
+    promise
+      .then((result) => {
+        console.log(`[RequestQueue] Request completed successfully for ID: ${id}`);
+        this.inProgressRequests.delete(id);
+        return result;
+      })
+      .catch((error) => {
+        console.error(`[RequestQueue] Request failed for ID: ${id}:`, error);
+        this.inProgressRequests.delete(id);
+        throw error;
+      });
 
     return promise;
   }
 
   private async processQueue() {
     if (this.activeRequests >= this.maxConcurrent || this.queue.length === 0) {
+      console.log(`[RequestQueue] ProcessQueue called - Active: ${this.activeRequests}, Queue length: ${this.queue.length}, Max concurrent: ${this.maxConcurrent}`);
       return;
     }
 
     const request = this.queue.shift();
     if (!request) return;
 
+    console.log(`[RequestQueue] Processing request ID: ${request.id}`);
     this.activeRequests++;
     try {
       const result = await request.execute();
+      console.log(`[RequestQueue] Request ${request.id} completed successfully`);
       request.resolve(result);
     } catch (error) {
+      console.error(`[RequestQueue] Request ${request.id} failed:`, error);
       request.reject(error);
     } finally {
       this.activeRequests--;
+      console.log(`[RequestQueue] Request ${request.id} finished. Active requests now: ${this.activeRequests}`);
       this.processQueue();
     }
   }
@@ -351,7 +367,10 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     }
 
     // Use request queue to limit concurrent data fetches
+    console.log(`[ChartDataContext] Requesting data fetch for chart "${config.title}" (ID: ${config.id}) with hash: ${configHash}`);
+    
     return requestQueue.enqueue(configHash, async () => {
+      console.log(`[ChartDataContext] Executing request for chart "${config.title}" (ID: ${config.id})`);
       console.log(`[ChartDataContext] Queue status - Active: ${requestQueue.getActiveCount()}, Queued: ${requestQueue.getQueueLength()}`);
       
       try {
@@ -586,10 +605,14 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         firstSeriesDataLength: chartData?.series?.[0]?.xValues?.length || 0
       });
 
+      console.log(`[ChartDataContext] Successfully processed data for "${config.title}" (ID: ${config.id})`);
       return { plotData: chartData, dataViewport };
     } catch (error) {
-      console.error('Error in getChartData:', error);
+      console.error(`[ChartDataContext] Error in getChartData for "${config.title}" (ID: ${config.id}):`, error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       return { plotData: null, dataViewport: null };
+    } finally {
+      console.log(`[ChartDataContext] Finished processing for "${config.title}" (ID: ${config.id})`);
     }
     });
   };
