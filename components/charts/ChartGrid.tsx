@@ -252,6 +252,7 @@ export function ChartGrid({
       {visibleCharts.map((chart, index) => {
         if (enableWaterfall) {
           // Waterfall mode: load charts one by one
+          const shouldLoad = index <= currentWaterfallIndex
           return (
             <div key={chart.id} style={{ height: itemHeight }} className="w-full">
               <WaterfallChartLoader
@@ -266,7 +267,7 @@ export function ChartGrid({
                 enableProgressive={enableProgressive}
                 index={index}
                 onLoadComplete={handleWaterfallLoadComplete}
-                shouldLoad={index <= currentWaterfallIndex}
+                shouldLoad={shouldLoad}
                 globalResolution={globalResolution}
                 globalAutoUpgrade={globalAutoUpgrade}
                 showSkeleton={true}

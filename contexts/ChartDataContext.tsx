@@ -35,13 +35,21 @@ class RequestQueue {
   }> = [];
   private activeRequests = 0;
   private maxConcurrent: number;
+  private inProgressRequests = new Map<string, Promise<any>>();
 
   constructor(maxConcurrent = 2) {
     this.maxConcurrent = maxConcurrent;
   }
 
   async enqueue<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
+    // Check if this request is already in progress
+    const existing = this.inProgressRequests.get(id);
+    if (existing) {
+      console.log(`[RequestQueue] Duplicate request detected for ID: ${id}, returning existing promise`);
+      return existing as Promise<T>;
+    }
+
+    const promise = new Promise<T>((resolve, reject) => {
       this.queue.push({
         id,
         execute: fn,
@@ -50,6 +58,22 @@ class RequestQueue {
       });
       this.processQueue();
     });
+
+    // Track this request as in progress
+    this.inProgressRequests.set(id, promise);
+    
+    // Clean up when done
+    promise
+      .then((result) => {
+        this.inProgressRequests.delete(id);
+        return result;
+      })
+      .catch((error) => {
+        this.inProgressRequests.delete(id);
+        throw error;
+      });
+
+    return promise;
   }
 
   private async processQueue() {
@@ -83,6 +107,7 @@ class RequestQueue {
 
 // Extended ChartConfiguration type for internal use
 interface ChartConfigurationWithData extends ChartConfiguration {
+  id?: string;
   selectedDataIds: number[];
 }
 
@@ -106,12 +131,15 @@ function getConfigHash(config: ChartConfigurationWithData, samplingOption: boole
     ? { enabled: samplingOption }
     : samplingOption;
   
-  return hashChartConfig({
+  const hash = hashChartConfig({
+    id: config.id,
     xAxisParameter: config.xAxisParameter,
     yAxisParameters: config.yAxisParameters,
     selectedDataIds: config.selectedDataIds,
     chartType: config.chartType,
   }, samplingConfig);
+  
+  return hash;
 }
 
 // Generate a cache key for sampled data
@@ -328,7 +356,6 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
 
     // Use request queue to limit concurrent data fetches
     return requestQueue.enqueue(configHash, async () => {
-      console.log(`[ChartDataContext] Queue status - Active: ${requestQueue.getActiveCount()}, Queued: ${requestQueue.getQueueLength()}`);
       
       try {
       // Report initial progress

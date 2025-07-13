@@ -51,13 +51,6 @@ export function useProgressiveChartData(
     loadingState: { loading: true, progress: 0, error: null },
     resolution: initialResolution
   });
-  
-  console.log('[useProgressiveChartData] Hook state:', {
-    title: config.title,
-    hasPlotData: !!state.plotData,
-    resolution: state.resolution,
-    loading: state.loadingState.loading
-  });
 
   const { getChartData } = useChartDataContext();
   const upgradeTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
@@ -68,7 +61,6 @@ export function useProgressiveChartData(
   // Load data at specific resolution
   const loadDataAtResolution = useCallback(async (resolution: DataResolution) => {
     try {
-      console.log('[useProgressiveChartData] Loading data at resolution:', resolution, 'for chart:', config.title);
       
       setState(prev => ({
         ...prev,
@@ -82,11 +74,6 @@ export function useProgressiveChartData(
         selectedDataIds
       };
 
-      console.log('[useProgressiveChartData] Calling getChartData with:', {
-        title: config.title,
-        selectedDataIds,
-        samplingConfig
-      });
 
       const { plotData, dataViewport } = await getChartData(
         configWithData,
@@ -101,22 +88,13 @@ export function useProgressiveChartData(
         }
       );
 
-      console.log('[useProgressiveChartData] Data loaded:', {
-        title: config.title,
-        hasPlotData: !!plotData,
-        seriesCount: plotData?.series?.length || 0,
-        firstSeriesLength: plotData?.series?.[0]?.xValues?.length || 0,
-        hasDataViewport: !!dataViewport,
-        viewport: dataViewport
-      });
+
+      // Check if we got null data (which might indicate an error)
+      if (!plotData && !dataViewport) {
+        console.warn(`[useProgressiveChartData] Received null data for chart "${config.title}" - this might indicate an error in data fetching`);
+      }
 
       if (isMountedRef.current) {
-        console.log('[useProgressiveChartData] Setting state with data:', {
-          hasPlotData: !!plotData,
-          hasDataViewport: !!dataViewport,
-          resolution
-        });
-        
         setState({
           plotData,
           dataViewport,
@@ -128,7 +106,6 @@ export function useProgressiveChartData(
         onResolutionChange?.(resolution);
       }
     } catch (error) {
-      console.error('[useProgressiveChartData] Error loading data:', error);
       if (isMountedRef.current) {
         setState(prev => ({
           ...prev,
@@ -140,7 +117,7 @@ export function useProgressiveChartData(
         }));
       }
     }
-  }, [config.title, config.chartType, config.xAxisParameter, config.yAxisParameters.join(','), selectedDataIds.join(','), getChartData, onResolutionChange]);
+  }, [config.id, config.title, config.chartType, config.xAxisParameter, config.yAxisParameters.join(','), selectedDataIds.join(','), getChartData, onResolutionChange]);
 
   // Schedule resolution upgrade
   const scheduleUpgrade = useCallback((fromResolution: DataResolution) => {
@@ -184,21 +161,30 @@ export function useProgressiveChartData(
 
   // Initial load and auto-upgrade
   useEffect(() => {
-    console.log('[useProgressiveChartData] Effect triggered for:', config.title);
     isMountedRef.current = true;
     
-    loadDataAtResolution(initialResolution).then(() => {
-      scheduleUpgrade(initialResolution);
-    });
+    // Load initial data
+    const loadInitialData = async () => {
+      try {
+        await loadDataAtResolution(initialResolution);
+        
+        // Schedule upgrades if enabled
+        if (autoUpgrade && initialResolution !== 'high') {
+          scheduleUpgrade(initialResolution);
+        }
+      } catch (error) {
+      }
+    };
+    
+    loadInitialData();
 
     return () => {
-      console.log('[useProgressiveChartData] Cleanup for:', config.title);
       isMountedRef.current = false;
       if (upgradeTimeoutRef.current) {
         clearTimeout(upgradeTimeoutRef.current);
       }
     };
-  }, [config.title, selectedDataIds.join(',')]); // Use stable dependencies
+  }, [config.id, config.title, selectedDataIds.join(','), initialResolution, loadDataAtResolution, scheduleUpgrade, autoUpgrade]); // Include all dependencies
 
   return {
     ...state,

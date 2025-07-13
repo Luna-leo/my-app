@@ -51,10 +51,23 @@ export function WaterfallChartLoader({
   const [status, setStatus] = useState<LoadingStatus>('pending')
   const [error, setError] = useState<string | null>(null)
   const hasStartedLoading = useRef(false)
+  const hasCalledLoadComplete = useRef(false)
   
   const ChartComponent = getDataChartComponent(enableProgressive || !!globalResolution)
 
   useEffect(() => {
+    // Reset the flag when shouldLoad changes to false
+    if (!shouldLoad) {
+      hasCalledLoadComplete.current = false
+    }
+    
+    // If already loaded and shouldLoad is true, call onLoadComplete immediately
+    if (shouldLoad && status === 'loaded' && onLoadComplete && !hasCalledLoadComplete.current) {
+      hasCalledLoadComplete.current = true
+      onLoadComplete(index)
+      return
+    }
+    
     if (shouldLoad && !hasStartedLoading.current && status === 'pending') {
       hasStartedLoading.current = true
       setStatus('loading')
@@ -71,6 +84,7 @@ export function WaterfallChartLoader({
           
           setTimeout(() => {
             setStatus('loaded')
+            hasCalledLoadComplete.current = true
             onLoadComplete?.(index)
           }, remainingTime)
         }
@@ -80,7 +94,7 @@ export function WaterfallChartLoader({
         loadComplete()
       }, 100)
     }
-  }, [shouldLoad, status, index, onLoadComplete])
+  }, [shouldLoad, status, index, onLoadComplete, config.id])
 
   // Retry functionality
   const handleRetry = useCallback(() => {
