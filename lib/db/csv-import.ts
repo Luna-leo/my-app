@@ -17,6 +17,19 @@ export interface ImportProgress {
   message: string;
 }
 
+export interface ImportResult {
+  success: boolean;
+  metadataId?: number;
+  counts: {
+    parameters: number;
+    timeSeriesTotal: number;
+    timeSeriesImported: number;
+    timeSeriesSkipped: number;
+  };
+  errors: string[];
+  warnings: string[];
+}
+
 export class CsvImporter {
   private onProgress?: (progress: ImportProgress) => void;
   public detectedDataRange?: { startTime: Date; endTime: Date };
@@ -120,7 +133,19 @@ export class CsvImporter {
     files: File[],
     metadata: Omit<Metadata, 'id' | 'importedAt' | 'dataKey'>,
     dataSource: DataSource
-  ): Promise<void> {
+  ): Promise<ImportResult> {
+    const result: ImportResult = {
+      success: false,
+      counts: {
+        parameters: 0,
+        timeSeriesTotal: 0,
+        timeSeriesImported: 0,
+        timeSeriesSkipped: 0
+      },
+      errors: [],
+      warnings: []
+    };
+
     this.updateProgress({
       current: 0,
       total: files.length,
@@ -163,7 +188,14 @@ export class CsvImporter {
       message: 'Saving to database...'
     });
 
-    await this.saveToDatabase(combinedData, metadata);
+    try {
+      await this.saveToDatabase(combinedData, metadata, result);
+    } catch (error) {
+      result.errors.push(`Failed to save to database: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('[CSV Import] Database save error:', error);
+    }
+    
+    return result;
   }
 
   private async parseFile(file: File, dataSource: DataSource): Promise<CsvParseResult> {
@@ -303,7 +335,8 @@ export class CsvImporter {
       timeSeriesData: Map<string, Record<string, number | null>>,
       dataRange?: { startTime: Date, endTime: Date }
     },
-    metadata: Omit<Metadata, 'id' | 'importedAt' | 'dataKey'>
+    metadata: Omit<Metadata, 'id' | 'importedAt' | 'dataKey'>,
+    result: ImportResult
   ): Promise<void> {
     await db.transaction('rw', db.metadata, db.parameters, db.timeSeries, async () => {
       // Generate dataKey for the metadata
@@ -330,11 +363,25 @@ export class CsvImporter {
         importedAt: new Date()
       });
 
-      // Save parameters
+      // Save parameters - use bulkPut to handle duplicates
       const parametersArray = Array.from(combinedData.parameters.values());
-      await db.parameters.bulkAdd(parametersArray);
+      console.log(`[CSV Import] Saving ${parametersArray.length} parameters for ${metadata.plant}-${metadata.machineNo}`);
+      
+      try {
+        // Use bulkPut instead of bulkAdd to update existing parameters
+        await db.parameters.bulkPut(parametersArray);
+        console.log(`[CSV Import] Successfully saved ${parametersArray.length} parameters`);
+        result.counts.parameters = parametersArray.length;
+      } catch (error) {
+        console.error('[CSV Import] Error saving parameters:', error);
+        result.errors.push(`Failed to save parameters: ${error instanceof Error ? error.message : String(error)}`);
+        // Continue with import even if some parameters fail
+      }
 
       // Save time series data with optional filtering
+      const totalTimeSeriesCount = combinedData.timeSeriesData.size;
+      result.counts.timeSeriesTotal = totalTimeSeriesCount;
+      
       let timeSeriesArray = Array.from(combinedData.timeSeriesData.entries())
         .map(([timestamp, data]) => {
           const parsedDate = parseTimestamp(timestamp);
@@ -350,6 +397,8 @@ export class CsvImporter {
       const dataStartTime = (metadata as { dataStartTime?: Date }).dataStartTime;
       const dataEndTime = (metadata as { dataEndTime?: Date }).dataEndTime;
       
+      const beforeFilterCount = timeSeriesArray.length;
+      
       if (dataStartTime || dataEndTime) {
         timeSeriesArray = timeSeriesArray.filter(item => {
           if (dataStartTime && item.timestamp < dataStartTime) return false;
@@ -357,11 +406,21 @@ export class CsvImporter {
           return true;
         });
       }
+      
+      result.counts.timeSeriesSkipped = beforeFilterCount - timeSeriesArray.length;
 
       // Batch insert for better performance
       const batchSize = 1000;
       for (let i = 0; i < timeSeriesArray.length; i += batchSize) {
         await db.timeSeries.bulkAdd(timeSeriesArray.slice(i, i + batchSize));
+      }
+      
+      result.counts.timeSeriesImported = timeSeriesArray.length;
+      result.metadataId = metadataId;
+      result.success = true;
+      
+      if (result.counts.timeSeriesSkipped > 0) {
+        result.warnings.push(`Skipped ${result.counts.timeSeriesSkipped} time series entries outside the specified date range`);
       }
     });
   }

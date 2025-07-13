@@ -79,7 +79,7 @@ function ProgressiveChartComponent({
   
   const uplotOptions = plotData && dataViewport && plotData.series.length > 0 ? (() => {
     // For time-based charts, convert viewport x values to seconds
-    const xRange = config.xAxisParameter === 'timestamp' 
+    const xRange: [number, number] = config.xAxisParameter === 'timestamp' 
       ? [dataViewport.xMin / 1000, dataViewport.xMax / 1000]
       : [dataViewport.xMin, dataViewport.xMax];
     

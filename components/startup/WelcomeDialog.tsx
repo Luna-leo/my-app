@@ -32,7 +32,16 @@ export function WelcomeDialog({ open, onSelectWorkspace, onCreateNew }: WelcomeD
   useEffect(() => {
     const loadWorkspaces = async () => {
       try {
+        setLoading(true)
         const allWorkspaces = await chartConfigService.getAllWorkspaces()
+        
+        // If no workspaces exist, just set empty array and return
+        if (allWorkspaces.length === 0) {
+          setWorkspaces([])
+          setWorkspaceStats({})
+          return
+        }
+        
         // Sort by updatedAt, most recent first
         const sorted = allWorkspaces.sort((a, b) => {
           const dateA = new Date(a.updatedAt).getTime()
@@ -62,6 +71,9 @@ export function WelcomeDialog({ open, onSelectWorkspace, onCreateNew }: WelcomeD
         setWorkspaces(nonEmptyWorkspaces)
       } catch (error) {
         console.error('Failed to load workspaces:', error)
+        // Ensure we have valid state even on error
+        setWorkspaces([])
+        setWorkspaceStats({})
       } finally {
         setLoading(false)
       }

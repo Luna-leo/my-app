@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
+import { useEffect, useState, useCallback, useMemo, Suspense, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { DataManagementDialog } from '@/components/data-management/DataManagementDialog'
 import { CreateChartDialog, ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
@@ -82,12 +82,18 @@ function HomeContent() {
   const [preloadProgress, setPreloadProgress] = useState({ loaded: 0, total: 0 })
   const { preloadChartData, clearCache } = useChartDataContext()
   
+  // Add ref to track last searchParams
+  const lastSearchParamsRef = useRef('')
+  
   // Calculate pagination info
   const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
   const totalPages = Math.ceil(charts.length / chartsPerPage)
   const paginationEnabled = layoutOption?.paginationEnabled ?? false
   
-  const loadWorkspaceAndCharts = useCallback(async (startupOptions?: { mode?: 'clean' | 'restore', workspaceId?: string }) => {
+  const loadWorkspaceAndCharts = async (startupOptions?: { mode?: 'clean' | 'restore', workspaceId?: string }) => {
+    // Don't check isInitializingRef here - let the caller handle it
+    console.log('[loadWorkspaceAndCharts] Starting...')
+    
     try {
       setLoading(true)
       console.log('[loadWorkspaceAndCharts] Starting with options:', startupOptions)
@@ -101,9 +107,14 @@ function HomeContent() {
         console.log('[loadWorkspaceAndCharts] Clean start mode')
         
         // Clean up empty workspaces before creating a new one
-        const deletedCount = await chartConfigService.cleanupEmptyWorkspaces()
-        if (deletedCount > 0) {
-          console.log(`[loadWorkspaceAndCharts] Cleaned up ${deletedCount} empty workspaces`)
+        try {
+          const deletedCount = await chartConfigService.cleanupEmptyWorkspaces()
+          if (deletedCount > 0) {
+            console.log(`[loadWorkspaceAndCharts] Cleaned up ${deletedCount} empty workspaces`)
+          }
+        } catch (error) {
+          console.error('[loadWorkspaceAndCharts] Error cleaning up empty workspaces:', error)
+          // Continue with clean start even if cleanup fails
         }
         
         // Create a new workspace for clean start
@@ -132,6 +143,7 @@ function HomeContent() {
       
       console.log('[loadWorkspaceAndCharts] Loaded workspace:', workspace)
       
+      console.log('[loadWorkspaceAndCharts] Setting workspace state...')
       setWorkspaceId(workspace.id!)
       setWorkspaceName(workspace.name || 'Unnamed Workspace')
       setCurrentWorkspace({ 
@@ -139,6 +151,7 @@ function HomeContent() {
         name: workspace.name || 'Unnamed Workspace',
         description: workspace.description 
       })
+      console.log('[loadWorkspaceAndCharts] Workspace state set')
       
       // Load selected data keys from workspace (skip for clean start)
       let currentSelectedDataIds: number[] = []
@@ -172,7 +185,10 @@ function HomeContent() {
       
       // Load charts (skip for clean start)
       if (startupOptions?.mode !== 'clean') {
+        console.log('[loadWorkspaceAndCharts] Loading charts from workspace...')
         const savedCharts = await chartConfigService.loadChartConfigurations(workspace.id)
+        console.log('[loadWorkspaceAndCharts] Loaded charts:', savedCharts.length)
+        
         const convertedCharts = savedCharts.map(chart => ({
           id: chart.id!,
           title: chart.title,
@@ -183,11 +199,11 @@ function HomeContent() {
         console.log(`[Initial Load] Found ${convertedCharts.length} charts in workspace`)
         
         // Preload data for all charts before displaying them
-        if (convertedCharts.length > 0) {
+        if (convertedCharts.length > 0 && currentSelectedDataIds.length > 0) {
           setIsPreloadingData(true)
           setPreloadProgress({ loaded: 0, total: convertedCharts.length })
           
-          console.log(`[Initial Load] Preloading data for ${convertedCharts.length} charts`)
+          console.log(`[Initial Load] Preloading data for ${convertedCharts.length} charts with ${currentSelectedDataIds.length} data IDs`)
           
           // Prepare chart configurations for preloading
           const chartsWithData = convertedCharts.map(chart => ({
@@ -195,12 +211,17 @@ function HomeContent() {
             selectedDataIds: currentSelectedDataIds
           }))
           
-          await preloadChartData(chartsWithData, {
-            onProgress: (loaded, total) => {
-              console.log(`[Preload Progress] ${loaded}/${total} charts`)
-              setPreloadProgress({ loaded, total })
-            }
-          })
+          try {
+            await preloadChartData(chartsWithData, {
+              onProgress: (loaded, total) => {
+                console.log(`[Preload Progress] ${loaded}/${total} charts`)
+                setPreloadProgress({ loaded, total })
+              }
+            })
+          } catch (preloadError) {
+            console.error('[Initial Load] Error preloading chart data:', preloadError)
+            // Continue without preloading - charts will load individually
+          }
           
           console.log(`[Initial Load] Data preloading complete`)
           setIsPreloadingData(false)
@@ -227,88 +248,140 @@ function HomeContent() {
         console.log(`[Initial Load] Clean start - no charts loaded`)
       }
       
+      console.log('[loadWorkspaceAndCharts] Setting initial load complete')
       setInitialLoadComplete(true)
+      console.log('[loadWorkspaceAndCharts] Function completed successfully')
     } catch (error) {
       console.error('Failed to load charts:', error)
+      // Set some reasonable defaults on error
+      setCharts([])
+      setWorkspaceId('')
+      setWorkspaceName('Default Workspace')
+      setCurrentWorkspace(null)
+      setSelectedDataKeys([])
+      setSelectedDataIds([])
     } finally {
+      // Always ensure loading is set to false
+      console.log('[loadWorkspaceAndCharts] Finally block - cleaning up')
       setLoading(false)
+      setIsPreloadingData(false)
+      setShowLoadingProgress(false)
+      // Don't reset isInitializingRef here - let the caller handle it
+      console.log('[loadWorkspaceAndCharts] Cleanup complete')
     }
-  }, [clearCache, preloadChartData, currentPage, layoutOption, paginationEnabled])
+  }
   
   useEffect(() => {
     console.log('[Page] useEffect triggered, searchParams:', searchParams?.toString())
-    setMounted(true)
     
-    // Determine startup mode from URL parameters
-    const startupOptions = StartupService.getEffectiveMode(searchParams)
-    console.log('[Startup] Mode:', startupOptions)
-    
-    if (startupOptions.mode === 'interactive') {
-      // Show welcome dialog for interactive mode
-      setShowWelcomeDialog(true)
-    } else {
-      // Direct startup for other modes
-      loadWorkspaceAndCharts({
-        mode: startupOptions.mode === 'clean' ? 'clean' : 'restore',
-        workspaceId: startupOptions.workspaceId
-      })
-    }
-    
-    // Load saved layout preference
-    const savedLayout = layoutService.loadLayout()
-    if (savedLayout) {
-      setLayoutOption(savedLayout)
-    }
-    
-    // Debug: Check metadata and fix if needed
-    const checkAndFixMetadata = async () => {
-      const info = await getDatabaseInfo()
-      console.log('[Debug] Database info:', info)
-      
-      // Fix workspace isActive field type
-      const fixedWorkspaces = await fixWorkspaceIsActiveField()
-      if (fixedWorkspaces > 0) {
-        console.log('[Debug] Fixed workspace isActive fields')
-        const startupOptions = StartupService.getEffectiveMode(searchParams)
-        await loadWorkspaceAndCharts({
-          mode: startupOptions.mode === 'clean' ? 'clean' : 'restore',
-          workspaceId: startupOptions.workspaceId
-        })
+    // Skip if already mounted and searchParams haven't changed
+    if (mounted) {
+      const currentParams = searchParams?.toString() || ''
+      if (lastSearchParamsRef.current === currentParams) {
+        console.log('[Page] Already mounted with same params, skipping')
         return
       }
+    }
+    
+    setMounted(true)
+    lastSearchParamsRef.current = searchParams?.toString() || ''
+    
+    // Initialize the app
+    const initializeApp = async () => {
       
-      // DISABLED: This was deleting all saved sessions!
-      // Clean up duplicate workspaces
-      // if (info.workspacesCount > 1) {
-      //   console.log('[Debug] Cleaning up duplicate workspaces...')
-      //   const deleted = await cleanupDuplicateWorkspaces()
-      //   if (deleted > 0) {
-      //     const startupOptions = StartupService.getEffectiveMode(searchParams)
-      //     await loadWorkspaceAndCharts({
-      //       mode: startupOptions.mode === 'clean' ? 'clean' : 'restore',
-      //       workspaceId: startupOptions.workspaceId
-      //     })
-      //     return
-      //   }
-      // }
+      // Set a timeout to prevent infinite loading state
+      const loadingTimeout = setTimeout(() => {
+        console.error('[Page] Initialization timeout - forcing loading to false')
+        setLoading(false)
+      }, 10000) // 10 second timeout
       
-      if (info.metadataCount > 0 && info.metadataWithDataKey === 0) {
-        console.log('[Debug] Fixing metadata without dataKey...')
-        const updated = await ensureMetadataHasDataKeys()
-        console.log('[Debug] Fixed metadata:', updated)
+      try {
+        // Load saved layout preference first
+        const savedLayout = layoutService.loadLayout()
+        if (savedLayout) {
+          setLayoutOption(savedLayout)
+        }
         
-        // Reload after fixing
-        if (updated > 0) {
-          const startupOptions = StartupService.getEffectiveMode(searchParams)
-          loadWorkspaceAndCharts({
+        // Skip database checks if URL parameter is set
+        const skipDbChecks = searchParams?.get('skipDbChecks') === 'true'
+        
+        if (!skipDbChecks) {
+          // Check and fix database issues before proceeding
+          try {
+            console.log('[Page] Starting database checks...')
+            const info = await getDatabaseInfo()
+            console.log('[Debug] Database info:', info)
+            
+            // Fix workspace isActive field type if needed
+            console.log('[Page] Checking workspace isActive fields...')
+            const fixedWorkspaces = await fixWorkspaceIsActiveField()
+            if (fixedWorkspaces > 0) {
+              console.log('[Debug] Fixed workspace isActive fields')
+            }
+            
+            // Fix metadata without dataKey if needed
+            if (info.metadataCount > 0 && info.metadataWithDataKey === 0) {
+              console.log('[Debug] Fixing metadata without dataKey...')
+              const updated = await ensureMetadataHasDataKeys()
+              console.log('[Debug] Fixed metadata:', updated)
+            }
+            
+            console.log('[Page] Database checks completed')
+          } catch (dbError) {
+            console.error('[Page] Database check error:', dbError)
+            console.log('[Page] Continuing without database checks...')
+            // Continue initialization even if database checks fail
+          }
+        } else {
+          console.log('[Page] Skipping database checks (skipDbChecks=true)')
+        }
+        
+        // Now determine startup mode and proceed
+        const startupOptions = StartupService.getEffectiveMode(searchParams)
+        console.log('[Startup] Mode:', startupOptions)
+        
+        if (startupOptions.mode === 'interactive') {
+          // Show welcome dialog for interactive mode
+          // IMPORTANT: Set loading to false when showing the dialog
+          console.log('[Page] Showing welcome dialog, setting loading to false')
+          setLoading(false)
+          setShowWelcomeDialog(true)
+        } else {
+          // Direct startup for other modes
+          console.log('[Page] Starting direct load with options:', {
             mode: startupOptions.mode === 'clean' ? 'clean' : 'restore',
             workspaceId: startupOptions.workspaceId
           })
+          
+          try {
+            await loadWorkspaceAndCharts({
+              mode: startupOptions.mode === 'clean' ? 'clean' : 'restore',
+              workspaceId: startupOptions.workspaceId
+            })
+            console.log('[Page] Direct load completed')
+          } catch (loadError) {
+            console.error('[Page] Error during loadWorkspaceAndCharts:', loadError)
+            // Ensure loading is false on error
+            setLoading(false)
+          }
         }
+      } catch (error) {
+        console.error('[Page] Initialization error:', error)
+        console.error('[Page] Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+        // Ensure loading is false on error
+        setLoading(false)
+      } finally {
+        // Clear the timeout
+        clearTimeout(loadingTimeout)
+        console.log('[Page] Initialization complete')
       }
     }
-    checkAndFixMetadata()
-  }, [loadWorkspaceAndCharts, searchParams])
+    
+    // Run initialization
+    initializeApp()
+    
+    // No cleanup needed
+  }, [searchParams]) // Only re-run if searchParams change
 
   // Fetch labels and colors when selectedDataIds change
   useEffect(() => {
@@ -517,17 +590,31 @@ function HomeContent() {
 
   const handleWelcomeSelectWorkspace = async (workspaceId: string) => {
     setShowWelcomeDialog(false)
-    await loadWorkspaceAndCharts({
-      mode: 'restore',
-      workspaceId
-    })
+    try {
+      await loadWorkspaceAndCharts({
+        mode: 'restore',
+        workspaceId
+      })
+    } catch (error) {
+      console.error('[handleWelcomeSelectWorkspace] Error loading workspace:', error)
+      // Ensure loading is false even on error
+      setLoading(false)
+      // Optionally show error to user or retry
+    }
   }
 
   const handleWelcomeCreateNew = async () => {
     setShowWelcomeDialog(false)
-    await loadWorkspaceAndCharts({
-      mode: 'clean'
-    })
+    try {
+      await loadWorkspaceAndCharts({
+        mode: 'clean'
+      })
+    } catch (error) {
+      console.error('[handleWelcomeCreateNew] Error creating new workspace:', error)
+      // Ensure loading is false even on error
+      setLoading(false)
+      // Optionally show error to user or retry
+    }
   }
 
   const handleSaveSession = async (name: string, description: string, saveAsNew: boolean) => {

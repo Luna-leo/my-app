@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Upload } from 'lucide-react'
 import { FileDropzone } from '../csv-import/FileDropzone'
 import { MetadataForm, MetadataFormData } from '../csv-import/MetadataForm'
 import { ImportProgress } from '../csv-import/ImportProgress'
-import { CsvImporter, ImportProgress as ImportProgressType } from '@/lib/db/csv-import'
+import { CsvImporter, ImportProgress as ImportProgressType, ImportResult } from '@/lib/db/csv-import'
 import { DataSource } from '@/lib/db/schema'
 
 interface CsvImportContentProps {
@@ -28,6 +28,7 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
   const [importProgress, setImportProgress] = useState<ImportProgressType | null>(null)
   const [importError, setImportError] = useState<string>('')
   const [detectingRange, setDetectingRange] = useState(false)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
   const handleFilesSelected = (files: File[]) => {
     setSelectedFiles(files)
@@ -105,7 +106,7 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
     })
 
     try {
-      await importer.importFiles(
+      const result = await importer.importFiles(
         selectedFiles,
         {
           plant: metadata.plant,
@@ -122,9 +123,15 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
       )
 
       setImportProgress(null)
-      setStep('complete')
-      if (onImportComplete) {
-        onImportComplete()
+      setImportResult(result)
+      
+      if (result.success) {
+        setStep('complete')
+        if (onImportComplete) {
+          onImportComplete()
+        }
+      } else {
+        setImportError(result.errors.join(', '))
       }
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'Import failed')
@@ -144,6 +151,7 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
     setImportProgress(null)
     setImportError('')
     setDetectingRange(false)
+    setImportResult(null)
   }
 
   return (
@@ -208,16 +216,43 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
         </div>
       )}
 
-      {step === 'complete' && (
+      {step === 'complete' && importResult && (
         <div className="flex-1 flex flex-col justify-center items-center">
-          <div className="text-center">
+          <div className="text-center max-w-md">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
               <Upload className="h-6 w-6 text-green-600" />
             </div>
             <h3 className="mt-4 text-lg font-medium">Import Complete!</h3>
-            <p className="mt-2 text-sm text-gray-500">
+            
+            <div className="mt-4 text-left space-y-2 bg-gray-50 p-4 rounded-md">
+              <p className="text-sm">
+                <span className="font-medium">Parameters imported:</span> {importResult.counts.parameters}
+              </p>
+              <p className="text-sm">
+                <span className="font-medium">Time series records:</span> {importResult.counts.timeSeriesImported.toLocaleString()} of {importResult.counts.timeSeriesTotal.toLocaleString()}
+              </p>
+              {importResult.counts.timeSeriesSkipped > 0 && (
+                <p className="text-sm text-orange-600">
+                  <span className="font-medium">Records filtered:</span> {importResult.counts.timeSeriesSkipped.toLocaleString()} (outside date range)
+                </p>
+              )}
+            </div>
+            
+            {importResult.warnings.length > 0 && (
+              <div className="mt-4 text-left">
+                <p className="text-sm font-medium text-orange-600 mb-1">Warnings:</p>
+                <ul className="text-sm text-orange-600 list-disc list-inside">
+                  {importResult.warnings.map((warning, index) => (
+                    <li key={index}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
+            <p className="mt-4 text-sm text-gray-500">
               Your CSV data has been successfully imported. You can now select the imported data for visualization.
             </p>
+            
             <Button onClick={handleReset} className="mt-6" variant="outline">
               Import More Data
             </Button>
