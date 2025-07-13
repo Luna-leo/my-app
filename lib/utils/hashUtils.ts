@@ -73,6 +73,7 @@ function hashValue(value: unknown): string {
  * Optimized for the specific shape of chart configs
  */
 export function createChartConfigHash(config: {
+  id?: string;
   xAxisParameter: string;
   yAxisParameters: string[];
   selectedDataIds: number[];
@@ -89,6 +90,11 @@ export function createChartConfigHash(config: {
     `d:${config.selectedDataIds ? config.selectedDataIds.sort().join(',') : ''}`,
     `t:${config.chartType}`
   ];
+  
+  // Include chart ID if provided to ensure unique cache keys for duplicated charts
+  if (config.id) {
+    parts.push(`id:${config.id}`);
+  }
   
   if (samplingConfig) {
     parts.push(`s:${samplingConfig.enabled ? 1 : 0}`);

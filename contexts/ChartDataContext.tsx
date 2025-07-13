@@ -83,6 +83,7 @@ class RequestQueue {
 
 // Extended ChartConfiguration type for internal use
 interface ChartConfigurationWithData extends ChartConfiguration {
+  id?: string;
   selectedDataIds: number[];
 }
 
@@ -107,6 +108,7 @@ function getConfigHash(config: ChartConfigurationWithData, samplingOption: boole
     : samplingOption;
   
   return hashChartConfig({
+    id: config.id,
     xAxisParameter: config.xAxisParameter,
     yAxisParameters: config.yAxisParameters,
     selectedDataIds: config.selectedDataIds,
