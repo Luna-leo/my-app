@@ -80,7 +80,7 @@ function HomeContent() {
   const [showLoadingProgress, setShowLoadingProgress] = useState(false)
   const [isPreloadingData, setIsPreloadingData] = useState(false)
   const [preloadProgress, setPreloadProgress] = useState({ loaded: 0, total: 0 })
-  const { preloadChartData, clearCache } = useChartDataContext()
+  const { preloadChartData, clearCache, clearChartCache } = useChartDataContext()
   
   // Add ref to track last searchParams
   const lastSearchParamsRef = useRef('')
@@ -495,6 +495,13 @@ function HomeContent() {
     setTotalChartsToLoad(visibleChartCount)
     setShowLoadingProgress(true)
     
+    // Reset waterfall loaded count to ensure new chart gets loaded
+    // The ChartGrid will automatically handle the new chart in its waterfall sequence
+    setWaterfallLoadedCharts(prev => {
+      // Keep the count of already loaded charts, but ensure it's not more than the new visible count
+      return Math.min(prev, visibleChartCount - 1)
+    })
+    
     // Save to database
     const dbConfig: DBChartConfiguration = {
       ...newChart,
@@ -539,8 +546,13 @@ function HomeContent() {
       const newCharts = [...charts, duplicatedChart]
       setCharts(newCharts)
       
-      // Don't reset waterfall loading state when duplicating
-      // The ChartGrid will handle the new chart appropriately
+      // Update waterfall loading state to ensure the duplicated chart gets loaded
+      const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : newCharts.length
+      const startIndex = paginationEnabled && layoutOption ? (currentPage - 1) * chartsPerPage : 0
+      const visibleChartCount = Math.min(chartsPerPage, Math.max(0, newCharts.length - startIndex))
+      
+      setTotalChartsToLoad(visibleChartCount)
+      setShowLoadingProgress(true)
       
       // Save to database
       const dbConfig: DBChartConfiguration = {
@@ -559,6 +571,9 @@ function HomeContent() {
 
   const confirmDelete = async () => {
     if (deleteConfirmation.chartId) {
+      // Clear the cache for this chart first
+      clearChartCache(deleteConfirmation.chartId)
+      
       const newCharts = charts.filter(c => c.id !== deleteConfirmation.chartId)
       setCharts(newCharts)
       
@@ -568,9 +583,13 @@ function HomeContent() {
         const startIndex = paginationEnabled && layoutOption ? (currentPage - 1) * chartsPerPage : 0
         const visibleChartCount = Math.min(chartsPerPage, Math.max(0, newCharts.length - startIndex))
         setTotalChartsToLoad(visibleChartCount)
+        // Don't reset waterfall loaded charts count - let ChartGrid handle it
+        // The ChartGrid component will automatically remove the deleted chart from its internal map
+        // and continue loading from where it left off
       } else {
         setTotalChartsToLoad(0)
         setShowLoadingProgress(false)
+        setWaterfallLoadedCharts(0)
       }
       
       await chartConfigService.deleteChartConfiguration(deleteConfirmation.chartId)

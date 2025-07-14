@@ -103,6 +103,25 @@ class RequestQueue {
   getActiveCount() {
     return this.activeRequests;
   }
+
+  // Cancel specific request by ID
+  cancelRequest(id: string) {
+    // Remove from queue if pending
+    this.queue = this.queue.filter(request => request.id !== id);
+    
+    // Remove from in-progress requests
+    if (this.inProgressRequests.has(id)) {
+      console.log(`[RequestQueue] Cancelling in-progress request: ${id}`);
+      this.inProgressRequests.delete(id);
+    }
+  }
+
+  // Clear all requests
+  clearAll() {
+    console.log(`[RequestQueue] Clearing all requests. Queue: ${this.queue.length}, In-progress: ${this.inProgressRequests.size}`);
+    this.queue = [];
+    this.inProgressRequests.clear();
+  }
 }
 
 // Extended ChartConfiguration type for internal use
@@ -121,6 +140,7 @@ interface ChartDataContextType {
     onProgress?: (loaded: number, total: number) => void;
   }) => Promise<void>;
   clearCache: () => void;
+  clearChartCache: (configId: string) => void;
 }
 
 const ChartDataContext = createContext<ChartDataContextType | undefined>(undefined);
@@ -638,11 +658,53 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     dataCache.clear();
   };
 
+  // Clear cache for a specific chart
+  const clearChartCache = (configId: string) => {
+    console.log(`[ChartDataContext] Clearing cache for chart: ${configId}`);
+    
+    // Cancel any pending requests for this chart
+    // We need to iterate through possible cache keys for this chart
+    setState(prev => {
+      const newCache = new Map(prev.chartDataCache);
+      const keysToDelete: string[] = [];
+      
+      // Find all cache keys that contain this chart ID
+      newCache.forEach((_, key) => {
+        if (key.includes(configId)) {
+          keysToDelete.push(key);
+          // Cancel any pending requests
+          requestQueue.cancelRequest(key);
+        }
+      });
+      
+      // Delete the cache entries
+      keysToDelete.forEach(key => {
+        newCache.delete(key);
+        // Also clear from transform cache
+        // TODO: Add delete method to transformCache
+        // transformCache.delete(key);
+      });
+      
+      console.log(`[ChartDataContext] Cleared ${keysToDelete.length} cache entries for chart: ${configId}`);
+      
+      return {
+        ...prev,
+        chartDataCache: newCache
+      };
+    });
+    
+    // Also clear sampling cache entries related to this chart
+    // Note: This is a bit tricky as sampling cache uses metadata IDs, not chart IDs
+    // For now, we'll clear the entire sampling cache on chart deletion to be safe
+    samplingCache.clear();
+  };
+
 
   const value = useMemo(() => ({
     getChartData,
     preloadChartData,
-    clearCache
+    clearCache,
+    clearChartCache
   }), []);
 
   return (

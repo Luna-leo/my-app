@@ -27,6 +27,7 @@ interface WaterfallChartLoaderProps {
   showSkeleton?: boolean
   globalResolution?: DataResolution
   globalAutoUpgrade?: boolean
+  isAlreadyLoaded?: boolean
 }
 
 type LoadingStatus = 'pending' | 'loading' | 'loaded' | 'error'
@@ -46,14 +47,37 @@ export function WaterfallChartLoader({
   shouldLoad,
   showSkeleton = true,
   globalResolution,
-  globalAutoUpgrade
+  globalAutoUpgrade,
+  isAlreadyLoaded = false
 }: WaterfallChartLoaderProps) {
-  const [status, setStatus] = useState<LoadingStatus>('pending')
+  const [status, setStatus] = useState<LoadingStatus>(isAlreadyLoaded ? 'loaded' : 'pending')
   const [error, setError] = useState<string | null>(null)
-  const hasStartedLoading = useRef(false)
+  const hasStartedLoading = useRef(isAlreadyLoaded)
   const hasCalledLoadComplete = useRef(false)
   
   const ChartComponent = getDataChartComponent(enableProgressive || !!globalResolution)
+  
+  // Reset refs when config.id changes, unless already loaded
+  useEffect(() => {
+    if (!isAlreadyLoaded) {
+      hasStartedLoading.current = false
+      hasCalledLoadComplete.current = false
+      setStatus('pending')
+      setError(null)
+    } else {
+      // If already loaded, ensure status is set correctly
+      setStatus('loaded')
+      hasStartedLoading.current = true
+    }
+  }, [config.id, isAlreadyLoaded])
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      hasStartedLoading.current = false
+      hasCalledLoadComplete.current = false
+    }
+  }, [])
 
   useEffect(() => {
     // Reset the flag when shouldLoad changes to false
@@ -62,8 +86,12 @@ export function WaterfallChartLoader({
     }
     
     // If already loaded and shouldLoad is true, call onLoadComplete immediately
-    if (shouldLoad && status === 'loaded' && onLoadComplete && !hasCalledLoadComplete.current) {
+    if (shouldLoad && (status === 'loaded' || isAlreadyLoaded) && onLoadComplete && !hasCalledLoadComplete.current) {
       hasCalledLoadComplete.current = true
+      // If status is not yet 'loaded' but isAlreadyLoaded is true, set it
+      if (isAlreadyLoaded && status !== 'loaded') {
+        setStatus('loaded')
+      }
       onLoadComplete(index)
       return
     }
@@ -94,7 +122,7 @@ export function WaterfallChartLoader({
         loadComplete()
       }, 100)
     }
-  }, [shouldLoad, status, index, onLoadComplete, config.id])
+  }, [shouldLoad, status, index, onLoadComplete, config.id, isAlreadyLoaded])
 
   // Retry functionality
   const handleRetry = useCallback(() => {
