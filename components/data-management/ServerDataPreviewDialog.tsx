@@ -35,7 +35,11 @@ interface ServerDataResponse {
     parameterName: string
     unit?: string
   }>
-  timeSeriesData: Array<Record<string, unknown>>
+  timeSeriesData: Array<{
+    timestamp: string | Date
+    data?: Record<string, unknown>
+    [key: string]: unknown
+  }>
 }
 
 export function ServerDataPreviewDialog({ 
@@ -83,7 +87,7 @@ export function ServerDataPreviewDialog({
 
   // Extract columns from the actual data
   const columns = data && data.timeSeriesData.length > 0 
-    ? Object.keys(data.timeSeriesData[0]).filter(key => key !== 'timestamp' && key !== 'id')
+    ? Object.keys(data.timeSeriesData[0].data || data.timeSeriesData[0]).filter(key => key !== 'timestamp' && key !== 'id')
     : []
 
   const handleExportCSV = async (exportAll: boolean = false) => {
@@ -118,7 +122,7 @@ export function ServerDataPreviewDialog({
       exportData.forEach((row) => {
         const timestamp = new Date(row.timestamp as string).toLocaleString('ja-JP')
         const values = columns.map(col => {
-          const value = row[col]
+          const value = row.data?.[col] ?? row[col]
           return value !== undefined && value !== null ? String(value) : ''
         })
         csvRows.push([timestamp, ...values].join(','))
@@ -224,7 +228,7 @@ export function ServerDataPreviewDialog({
                       </td>
                       {columns.map(col => (
                         <td key={col} className="text-right min-w-[100px] px-2 py-2">
-                          {row[col] !== undefined ? String(row[col]) : '-'}
+                          {(row.data?.[col] ?? row[col]) !== undefined ? String(row.data?.[col] ?? row[col]) : '-'}
                         </td>
                       ))}
                     </tr>
