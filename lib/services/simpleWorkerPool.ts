@@ -31,7 +31,10 @@ export class SimpleWorkerPool {
   
   private initWorker() {
     try {
-      this.worker = new Worker('/dataProcessing.worker.js');
+      this.worker = new Worker(
+        new URL('../../workers/dataProcessing.worker.ts', import.meta.url),
+        { type: 'module' }
+      );
       
       this.worker.addEventListener('message', (event: MessageEvent<SimpleWorkerResponse>) => {
         const { id, type, data, error } = event.data;
