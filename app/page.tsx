@@ -314,9 +314,14 @@ function HomeContent() {
             
             // Fix workspace isActive field type if needed
             console.log('[Page] Checking workspace isActive fields...')
-            const fixedWorkspaces = await fixWorkspaceIsActiveField()
-            if (fixedWorkspaces > 0) {
-              console.log('[Debug] Fixed workspace isActive fields')
+            try {
+              const fixedWorkspaces = await fixWorkspaceIsActiveField()
+              if (fixedWorkspaces > 0) {
+                console.log('[Debug] Fixed workspace isActive fields')
+              }
+            } catch (fixError) {
+              console.error('[Page] Error fixing workspace isActive fields:', fixError)
+              // Continue without fixing - the app should still work
             }
             
             // Fix metadata without dataKey if needed
