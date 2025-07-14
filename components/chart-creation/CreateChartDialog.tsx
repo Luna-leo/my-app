@@ -95,6 +95,14 @@ export function CreateChartDialog({
         for (const pair of plantMachinePairs) {
           const [plant, machineNo] = pair.split('-');
           const params = await db.getParametersByPlantAndMachine(plant, machineNo);
+          console.log(`[CreateChartDialog] Parameters for ${plant}/${machineNo}:`, params.length);
+          if (params.length > 0) {
+            console.log(`[CreateChartDialog] Sample parameters:`, params.slice(0, 3).map(p => ({
+              id: p.parameterId,
+              name: p.parameterName,
+              unit: p.unit
+            })));
+          }
           allParameters.push(...params);
         }
 

@@ -285,21 +285,57 @@ export function UnifiedDataView({
       const downloadedData = await response.json()
       console.log('[Download] Response data:', downloadedData)
       
+      // Check if data already exists in IndexedDB using dataKey
+      if (downloadedData.metadata.dataKey) {
+        const existingMetadata = await db.getMetadataByDataKey(downloadedData.metadata.dataKey)
+        if (existingMetadata) {
+          console.log(`[Download] Data with key ${downloadedData.metadata.dataKey} already exists, skipping`)
+          showAlert('success', `Data already exists locally for ${item.serverData.plantNm} - ${item.serverData.machineNo}`)
+          return
+        }
+      }
+      
       // Save to IndexedDB
       
-      // Create metadata
+      // Create metadata using server's dataKey
       const metadata: Metadata = {
-        dataKey: `${item.serverData.plantNm}_${item.serverData.machineNo}_${Date.now()}`,
+        ...downloadedData.metadata,
+        id: undefined,  // Exclude ID
+        dataKey: downloadedData.metadata.dataKey || `${item.serverData.plantNm}_${item.serverData.machineNo}_${Date.now()}`,
         plant: item.serverData.plantNm,
         machineNo: item.serverData.machineNo,
         label: item.serverData.label,
-        dataStartTime: new Date(item.serverData.startTime),
-        dataEndTime: new Date(item.serverData.endTime),
-        dataSource: 'CASS', // Use CASS as default for server downloads
+        dataStartTime: downloadedData.metadata.dataStartTime ? new Date(downloadedData.metadata.dataStartTime) : new Date(item.serverData.startTime),
+        dataEndTime: downloadedData.metadata.dataEndTime ? new Date(downloadedData.metadata.dataEndTime) : new Date(item.serverData.endTime),
+        dataSource: downloadedData.metadata.dataSource || 'CASS',
         importedAt: new Date()
       }
       
       const metadataId = await db.metadata.add(metadata)
+      
+      // Save parameters
+      if (downloadedData.parameters && Array.isArray(downloadedData.parameters)) {
+        const { plantNm, machineNo } = item.serverData!
+        const parameterPromises = downloadedData.parameters.map(async (param: { parameterId: string; parameterName: string; unit: string }) => {
+          const existingParam = await db.parameters
+            .where('[parameterId+plant+machineNo]')
+            .equals([param.parameterId, plantNm, machineNo])
+            .first()
+          
+          if (!existingParam) {
+            await db.parameters.add({
+              ...param,
+              id: undefined,  // Exclude ID
+              plant: plantNm,
+              machineNo: machineNo
+            })
+          }
+        })
+        await Promise.all(parameterPromises)
+        console.log(`[Download] Saved ${downloadedData.parameters.length} parameters for ${plantNm} - ${machineNo}`)
+      } else {
+        console.warn('[Download] No parameters found in downloaded data')
+      }
       
       // Save time series data
       if (!downloadedData.timeSeriesData || !Array.isArray(downloadedData.timeSeriesData)) {
@@ -321,6 +357,7 @@ export function UnifiedDataView({
     } catch (error) {
       showAlert('error', `Failed to download: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
+      setDownloadConfirm({ item: null, show: false })
       setTimeout(() => {
         setDownloadProgress(prev => {
           const newProgress = { ...prev }
