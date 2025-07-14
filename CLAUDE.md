@@ -1,3 +1,6 @@
+## Conversation Guide lines
+- 常に日本語で会話する
+
 # Claude Development Notes
 
 ## Performance Optimization (2025-07-12)
