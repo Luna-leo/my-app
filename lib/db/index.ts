@@ -121,6 +121,49 @@ export class AppDatabase extends Dexie {
       chartConfigurations: '++id, workspaceId, createdAt, updatedAt',
       workspaces: '++id, name, isActive, createdAt, selectedDataKeys'
     });
+
+    // Clean up duplicate active workspaces before adding any constraints
+    this.version(7).stores({
+      metadata: '++id, &dataKey, plant, machineNo, importedAt, [plant+machineNo+dataStartTime]',
+      parameters: '++id, parameterId, [plant+machineNo], plant, machineNo, [parameterId+plant+machineNo]',
+      timeSeries: '++id, metadataId, timestamp, [metadataId+timestamp]',
+      chartConfigurations: '++id, workspaceId, createdAt, updatedAt',
+      workspaces: '++id, name, isActive, createdAt, selectedDataKeys'
+    }).upgrade(async tx => {
+      // Clean up any duplicate active workspaces
+      const allWorkspaces = await tx.table('workspaces').toArray();
+      console.log('[DB Migration v7] Checking for duplicate active workspaces:', allWorkspaces.length);
+      
+      const activeWorkspaces = allWorkspaces.filter(w => w.isActive === true || w.isActive === 1);
+      console.log('[DB Migration v7] Found active workspaces:', activeWorkspaces.length);
+      
+      if (activeWorkspaces.length > 1) {
+        // Keep the most recently updated one as active
+        const sortedActive = activeWorkspaces.sort((a, b) => {
+          const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return dateB - dateA; // Most recent first
+        });
+        
+        console.log('[DB Migration v7] Keeping workspace as active:', sortedActive[0].id);
+        
+        // Deactivate all except the first one
+        for (let i = 1; i < sortedActive.length; i++) {
+          console.log('[DB Migration v7] Deactivating workspace:', sortedActive[i].id);
+          await tx.table('workspaces').update(sortedActive[i].id, { isActive: false });
+        }
+      }
+      
+      // Also fix any numeric isActive values
+      for (const workspace of allWorkspaces) {
+        if (typeof workspace.isActive === 'number') {
+          const shouldBeActive = workspace.isActive === 1 && 
+            (!activeWorkspaces.length || workspace.id === activeWorkspaces[0].id);
+          console.log(`[DB Migration v7] Converting numeric isActive for workspace ${workspace.id}: ${workspace.isActive} -> ${shouldBeActive}`);
+          await tx.table('workspaces').update(workspace.id, { isActive: shouldBeActive });
+        }
+      }
+    });
   }
 
   async clearAllData() {

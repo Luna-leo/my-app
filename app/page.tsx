@@ -31,7 +31,7 @@ import { useDataPointsInfo } from '@/hooks/useDataPointsInfo'
 import { metadataService } from '@/lib/services/metadataService'
 import { colorService } from '@/lib/services/colorService'
 import { db } from '@/lib/db'
-import { ensureMetadataHasDataKeys, getDatabaseInfo, fixWorkspaceIsActiveField } from '@/lib/utils/dbMigrationUtils'
+import { ensureMetadataHasDataKeys, getDatabaseInfo, fixWorkspaceIsActiveField, cleanupDuplicateActiveWorkspaces } from '@/lib/utils/dbMigrationUtils'
 import DatabaseDebugPanel from '@/components/debug/DatabaseDebugPanel'
 import { StartupService } from '@/lib/services/startupService'
 import { WelcomeDialog } from '@/components/startup/WelcomeDialog'
@@ -312,7 +312,18 @@ function HomeContent() {
             const info = await getDatabaseInfo()
             console.log('[Debug] Database info:', info)
             
-            // Fix workspace isActive field type if needed
+            // First clean up duplicate active workspaces
+            console.log('[Page] Cleaning up duplicate active workspaces...')
+            try {
+              const cleaned = await cleanupDuplicateActiveWorkspaces()
+              if (cleaned > 0) {
+                console.log(`[Debug] Deactivated ${cleaned} duplicate active workspaces`)
+              }
+            } catch (cleanupError) {
+              console.error('[Page] Error cleaning up duplicate active workspaces:', cleanupError)
+            }
+            
+            // Then fix workspace isActive field type if needed
             console.log('[Page] Checking workspace isActive fields...')
             try {
               const fixedWorkspaces = await fixWorkspaceIsActiveField()

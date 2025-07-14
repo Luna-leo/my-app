@@ -123,6 +123,45 @@ export async function cleanupDuplicateWorkspaces() {
 }
 
 /**
+ * Clean up duplicate active workspaces
+ * Ensures only one workspace is active at a time
+ */
+export async function cleanupDuplicateActiveWorkspaces() {
+  try {
+    console.log('[cleanupDuplicateActiveWorkspaces] Starting cleanup...')
+    
+    const workspaces = await db.workspaces.toArray()
+    const activeWorkspaces = workspaces.filter(w => w.isActive === true || w.isActive === 1)
+    
+    console.log(`[cleanupDuplicateActiveWorkspaces] Found ${activeWorkspaces.length} active workspaces`)
+    
+    if (activeWorkspaces.length > 1) {
+      // Keep the most recently updated one as active
+      const sortedActive = activeWorkspaces.sort((a, b) => {
+        const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+        const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+        return dateB - dateA // Most recent first
+      })
+      
+      console.log('[cleanupDuplicateActiveWorkspaces] Keeping workspace as active:', sortedActive[0].id)
+      
+      // Deactivate all except the first one
+      for (let i = 1; i < sortedActive.length; i++) {
+        console.log('[cleanupDuplicateActiveWorkspaces] Deactivating workspace:', sortedActive[i].id)
+        await db.workspaces.update(sortedActive[i].id!, { isActive: false })
+      }
+      
+      return sortedActive.length - 1 // Return number of workspaces deactivated
+    }
+    
+    return 0
+  } catch (error) {
+    console.error('[cleanupDuplicateActiveWorkspaces] Error:', error)
+    return 0
+  }
+}
+
+/**
  * Fix isActive field type in workspaces with timeout
  * Some older data might have isActive as 1/0 instead of true/false
  */
@@ -202,7 +241,22 @@ export async function fixWorkspaceIsActiveField() {
         message: error.message,
         stack: error.stack
       })
+      
+      // Check if it's a Dexie error
+      if (error.name === 'ConstraintError') {
+        console.error('[fixWorkspaceIsActiveField] Constraint error detected. This might be due to:')
+        console.error('1. Multiple workspaces with isActive=true')
+        console.error('2. Database schema mismatch')
+        console.error('3. Corrupted database state')
+        console.error('Consider using ?skipDbChecks=true URL parameter to bypass this check')
+      }
     }
+    
+    // Re-throw the error if it's a constraint error so the caller can handle it
+    if (error instanceof Error && error.name === 'ConstraintError') {
+      throw error
+    }
+    
     return 0
   }
 }
