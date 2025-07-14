@@ -145,10 +145,22 @@ export async function cleanupDuplicateActiveWorkspaces() {
       
       console.log('[cleanupDuplicateActiveWorkspaces] Keeping workspace as active:', sortedActive[0].id)
       
-      // Deactivate all except the first one
-      for (let i = 1; i < sortedActive.length; i++) {
-        console.log('[cleanupDuplicateActiveWorkspaces] Deactivating workspace:', sortedActive[i].id)
-        await db.workspaces.update(sortedActive[i].id!, { isActive: false })
+      // Deactivate all except the first one using modify for better performance
+      const idsToDeactivate = sortedActive.slice(1).map(w => w.id!)
+      try {
+        await db.workspaces.where('id').anyOf(idsToDeactivate).modify({ isActive: false })
+        console.log(`[cleanupDuplicateActiveWorkspaces] Deactivated ${idsToDeactivate.length} workspaces in bulk`)
+      } catch (bulkError) {
+        console.error('[cleanupDuplicateActiveWorkspaces] Bulk deactivation failed, trying one by one:', bulkError)
+        // Fall back to one-by-one updates
+        for (let i = 1; i < sortedActive.length; i++) {
+          try {
+            console.log('[cleanupDuplicateActiveWorkspaces] Deactivating workspace:', sortedActive[i].id)
+            await db.workspaces.update(sortedActive[i].id!, { isActive: false })
+          } catch (updateError) {
+            console.error(`[cleanupDuplicateActiveWorkspaces] Failed to deactivate workspace ${sortedActive[i].id}:`, updateError)
+          }
+        }
       }
       
       return sortedActive.length - 1 // Return number of workspaces deactivated
@@ -157,6 +169,143 @@ export async function cleanupDuplicateActiveWorkspaces() {
     return 0
   } catch (error) {
     console.error('[cleanupDuplicateActiveWorkspaces] Error:', error)
+    return 0
+  }
+}
+
+/**
+ * Simple function to ensure at least one workspace is active
+ * This is a minimal fix that doesn't worry about data types
+ */
+export async function ensureOneWorkspaceActive() {
+  try {
+    console.log('[ensureOneWorkspaceActive] Ensuring one workspace is active...')
+    
+    const workspaces = await db.workspaces.toArray()
+    if (workspaces.length === 0) {
+      console.log('[ensureOneWorkspaceActive] No workspaces found')
+      return false
+    }
+    
+    // Check if any workspace is currently active
+    const hasActive = workspaces.some(w => w.isActive === true || w.isActive === 1)
+    
+    if (!hasActive) {
+      console.log('[ensureOneWorkspaceActive] No active workspace found, activating the most recent one')
+      
+      // Sort by updatedAt to get the most recent
+      const sorted = [...workspaces].sort((a, b) => {
+        const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+        const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+        return dateB - dateA
+      })
+      
+      const workspaceToActivate = sorted[0]
+      
+      try {
+        // Use modify instead of update to avoid some constraints
+        await db.workspaces.where('id').equals(workspaceToActivate.id!).modify({ isActive: true })
+        console.log(`[ensureOneWorkspaceActive] Successfully activated workspace ${workspaceToActivate.id}`)
+        return true
+      } catch (activateError) {
+        console.error('[ensureOneWorkspaceActive] Failed to activate workspace:', activateError)
+        return false
+      }
+    }
+    
+    console.log('[ensureOneWorkspaceActive] Already has an active workspace')
+    return true
+  } catch (error) {
+    console.error('[ensureOneWorkspaceActive] Error:', error)
+    return false
+  }
+}
+
+/**
+ * Emergency fix for workspace table when standard methods fail
+ * This bypasses some Dexie constraints and works directly with the data
+ */
+export async function emergencyFixWorkspaceActive() {
+  try {
+    console.log('[emergencyFixWorkspaceActive] Starting emergency fix...')
+    
+    // Get the raw IndexedDB database
+    const idb = db.backendDB()
+    if (!idb) {
+      console.error('[emergencyFixWorkspaceActive] Could not access backend database')
+      return 0
+    }
+    
+    const transaction = idb.transaction(['workspaces'], 'readwrite')
+    const store = transaction.objectStore('workspaces')
+    
+    // Get all records
+    const getAllRequest = store.getAll()
+    
+    return new Promise<number>((resolve, reject) => {
+      getAllRequest.onsuccess = async () => {
+        const workspaces = getAllRequest.result
+        console.log(`[emergencyFixWorkspaceActive] Found ${workspaces.length} workspaces in raw store`)
+        
+        if (workspaces.length === 0) {
+          resolve(0)
+          return
+        }
+        
+        let fixed = 0
+        let activeWorkspaceId: string | null = null
+        
+        // Find the workspace that should be active
+        for (const workspace of workspaces) {
+          if (workspace.isActive === true || workspace.isActive === 1) {
+            if (!activeWorkspaceId) {
+              activeWorkspaceId = workspace.id
+            }
+          }
+        }
+        
+        // If no active workspace, use the most recent one
+        if (!activeWorkspaceId) {
+          const sorted = workspaces.sort((a: Workspace, b: Workspace) => {
+            const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+            const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+            return dateB - dateA
+          })
+          activeWorkspaceId = sorted[0]?.id
+        }
+        
+        // Update all workspaces
+        for (const workspace of workspaces) {
+          workspace.isActive = workspace.id === activeWorkspaceId
+          
+          const putRequest = store.put(workspace)
+          putRequest.onsuccess = () => {
+            fixed++
+            console.log(`[emergencyFixWorkspaceActive] Updated workspace ${workspace.id}: isActive=${workspace.isActive}`)
+          }
+          putRequest.onerror = (event) => {
+            console.error(`[emergencyFixWorkspaceActive] Failed to update workspace ${workspace.id}:`, event)
+          }
+        }
+        
+        transaction.oncomplete = () => {
+          console.log(`[emergencyFixWorkspaceActive] Emergency fix completed. Fixed ${fixed} workspaces`)
+          resolve(fixed)
+        }
+        
+        transaction.onerror = (event) => {
+          console.error('[emergencyFixWorkspaceActive] Transaction error:', event)
+          reject(new Error('Emergency fix transaction failed'))
+        }
+      }
+      
+      getAllRequest.onerror = (event) => {
+        console.error('[emergencyFixWorkspaceActive] Failed to get workspaces:', event)
+        reject(new Error('Failed to get workspaces'))
+      }
+    })
+  } catch (error) {
+    console.error('[emergencyFixWorkspaceActive] Emergency fix error:', error)
     return 0
   }
 }
@@ -171,6 +320,7 @@ export async function fixWorkspaceIsActiveField() {
   try {
     console.log('[fixWorkspaceIsActiveField] Starting...')
     
+    // First, get all workspaces without using a transaction
     const workspaces = await Promise.race([
       db.workspaces.toArray(),
       new Promise<Workspace[]>((_, reject) => 
@@ -180,59 +330,122 @@ export async function fixWorkspaceIsActiveField() {
     
     console.log(`[fixWorkspaceIsActiveField] Found ${workspaces.length} workspaces`)
     
-    // Use a transaction to ensure atomicity
-    return await db.transaction('rw', db.workspaces, async () => {
-      let fixed = 0
-      let activeWorkspaceId: string | null = null
+    if (workspaces.length === 0) {
+      console.log('[fixWorkspaceIsActiveField] No workspaces found, skipping')
+      return 0
+    }
+    
+    let fixed = 0
+    let needsFix = false
+    let activeWorkspaceId: string | null = null
+    let hasNumericValues = false
+    
+    // Check if we need to fix anything
+    for (const workspace of workspaces) {
+      console.log(`[fixWorkspaceIsActiveField] Workspace ${workspace.id}: isActive=${workspace.isActive} (type: ${typeof workspace.isActive})`)
       
-      // First pass: Fix numeric isActive values and identify which should be active
-      for (const workspace of workspaces) {
-        console.log(`[fixWorkspaceIsActiveField] Checking workspace ${workspace.id}: isActive=${workspace.isActive} (type: ${typeof workspace.isActive})`)
-        
-        // Check if isActive is a number (1 or 0) instead of boolean
-        if (typeof workspace.isActive === 'number') {
-          if (workspace.isActive === 1 && !activeWorkspaceId) {
-            // Remember the first workspace that should be active
-            activeWorkspaceId = workspace.id!
-          }
-          fixed++
-        } else if (workspace.isActive === true && !activeWorkspaceId) {
-          // Remember the first already-active workspace
+      if (typeof workspace.isActive === 'number') {
+        hasNumericValues = true
+        needsFix = true
+        if (workspace.isActive === 1 && !activeWorkspaceId) {
+          activeWorkspaceId = workspace.id!
+        }
+      } else if (workspace.isActive === true) {
+        if (!activeWorkspaceId) {
           activeWorkspaceId = workspace.id!
         }
       }
+    }
+    
+    // Count how many workspaces are currently active
+    const activeCount = workspaces.filter(w => w.isActive === true || w.isActive === 1).length
+    
+    // If there are multiple active workspaces or no active workspace, we need to fix
+    if (activeCount > 1 || activeCount === 0) {
+      needsFix = true
+    }
+    
+    if (!needsFix) {
+      console.log('[fixWorkspaceIsActiveField] No fixes needed')
+      return 0
+    }
+    
+    console.log(`[fixWorkspaceIsActiveField] Needs fix: hasNumericValues=${hasNumericValues}, activeCount=${activeCount}`)
+    
+    // Method 1: Try to fix without a transaction first (safer for constraint issues)
+    try {
+      console.log('[fixWorkspaceIsActiveField] Attempting fix without transaction...')
       
-      // Second pass: Deactivate all workspaces first to avoid constraint violations
-      console.log('[fixWorkspaceIsActiveField] Deactivating all workspaces...')
+      // Step 1: Deactivate all workspaces one by one
       for (const workspace of workspaces) {
         try {
-          await db.workspaces.update(workspace.id!, { isActive: false })
-        } catch (updateError) {
-          console.error(`[fixWorkspaceIsActiveField] Error deactivating workspace ${workspace.id}:`, updateError)
+          await db.workspaces.where('id').equals(workspace.id!).modify({ isActive: false })
+          console.log(`[fixWorkspaceIsActiveField] Deactivated workspace ${workspace.id}`)
+        } catch (modifyError) {
+          console.error(`[fixWorkspaceIsActiveField] Error deactivating workspace ${workspace.id}:`, modifyError)
+          // Try update method as fallback
+          try {
+            await db.workspaces.update(workspace.id!, { isActive: false })
+          } catch (updateError) {
+            console.error(`[fixWorkspaceIsActiveField] Update also failed for workspace ${workspace.id}:`, updateError)
+          }
         }
       }
       
-      // Third pass: Activate the chosen workspace
+      // Small delay to ensure all updates are processed
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Step 2: Choose and activate one workspace
       if (!activeWorkspaceId && workspaces.length > 0) {
-        // No active workspace found, use the first one
-        activeWorkspaceId = workspaces[0].id!
-        fixed++
+        // Sort by updatedAt to get the most recent one
+        const sortedWorkspaces = [...workspaces].sort((a, b) => {
+          const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+          const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+          return dateB - dateA
+        })
+        activeWorkspaceId = sortedWorkspaces[0].id!
       }
       
       if (activeWorkspaceId) {
         console.log(`[fixWorkspaceIsActiveField] Activating workspace ${activeWorkspaceId}`)
         try {
-          await db.workspaces.update(activeWorkspaceId, { isActive: true })
+          await db.workspaces.where('id').equals(activeWorkspaceId).modify({ isActive: true })
           console.log(`[fixWorkspaceIsActiveField] Successfully activated workspace ${activeWorkspaceId}`)
+          fixed = hasNumericValues ? workspaces.filter(w => typeof w.isActive === 'number').length : 1
         } catch (activateError) {
-          console.error(`[fixWorkspaceIsActiveField] Error activating workspace ${activeWorkspaceId}:`, activateError)
-          throw activateError
+          console.error(`[fixWorkspaceIsActiveField] Error activating workspace:`, activateError)
+          // Try update method as fallback
+          try {
+            await db.workspaces.update(activeWorkspaceId, { isActive: true })
+            console.log(`[fixWorkspaceIsActiveField] Successfully activated workspace ${activeWorkspaceId} using update`)
+            fixed = hasNumericValues ? workspaces.filter(w => typeof w.isActive === 'number').length : 1
+          } catch (updateError) {
+            console.error(`[fixWorkspaceIsActiveField] Update also failed:`, updateError)
+            throw updateError
+          }
         }
       }
       
-      console.log(`[fixWorkspaceIsActiveField] Fixed ${fixed} workspaces`)
+      console.log(`[fixWorkspaceIsActiveField] Fixed ${fixed} workspaces without transaction`)
       return fixed
-    })
+      
+    } catch (nonTransactionError) {
+      console.error('[fixWorkspaceIsActiveField] Non-transaction approach failed:', nonTransactionError)
+      
+      // Method 2: Fall back to transaction approach if needed
+      console.log('[fixWorkspaceIsActiveField] Attempting transaction-based fix...')
+      return await db.transaction('rw', db.workspaces, async () => {
+        // Deactivate all
+        await db.workspaces.toCollection().modify({ isActive: false })
+        
+        // Activate one
+        if (activeWorkspaceId) {
+          await db.workspaces.update(activeWorkspaceId, { isActive: true })
+        }
+        
+        return fixed
+      })
+    }
   } catch (error) {
     console.error('[fixWorkspaceIsActiveField] Error:', error)
     if (error instanceof Error) {
@@ -249,6 +462,18 @@ export async function fixWorkspaceIsActiveField() {
         console.error('2. Database schema mismatch')
         console.error('3. Corrupted database state')
         console.error('Consider using ?skipDbChecks=true URL parameter to bypass this check')
+        
+        // Try emergency fix as last resort
+        console.log('[fixWorkspaceIsActiveField] Attempting emergency fix...')
+        try {
+          const emergencyFixed = await emergencyFixWorkspaceActive()
+          if (emergencyFixed > 0) {
+            console.log(`[fixWorkspaceIsActiveField] Emergency fix succeeded, fixed ${emergencyFixed} workspaces`)
+            return emergencyFixed
+          }
+        } catch (emergencyError) {
+          console.error('[fixWorkspaceIsActiveField] Emergency fix also failed:', emergencyError)
+        }
       }
     }
     
