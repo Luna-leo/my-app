@@ -127,7 +127,24 @@ export async function POST(request: NextRequest) {
     const parameterIds = (parametersToSave || []).map((p: { parameterId: string }) => p.parameterId);
 
     // Save time series data as parquet
-    await saveTimeSeriesAsParquet(uploadId, timeSeriesData, parameterIds);
+    // Convert timestamp strings to Date objects before saving
+    console.log('[Upload] Processing timestamps - first record:', {
+      original: timeSeriesData[0]?.timestamp,
+      type: typeof timeSeriesData[0]?.timestamp
+    });
+    
+    const processedTimeSeriesData = timeSeriesData.map((item: { timestamp: string | Date; data: Record<string, number | null> }) => ({
+      ...item,
+      timestamp: new Date(item.timestamp)
+    }));
+    
+    console.log('[Upload] After processing - first record:', {
+      timestamp: processedTimeSeriesData[0]?.timestamp,
+      isDate: processedTimeSeriesData[0]?.timestamp instanceof Date,
+      iso: processedTimeSeriesData[0]?.timestamp?.toISOString()
+    });
+    
+    await saveTimeSeriesAsParquet(uploadId, processedTimeSeriesData, parameterIds);
 
     // Update index
     const uploadInfo = {
