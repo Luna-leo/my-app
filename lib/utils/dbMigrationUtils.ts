@@ -131,7 +131,7 @@ export async function cleanupDuplicateActiveWorkspaces() {
     console.log('[cleanupDuplicateActiveWorkspaces] Starting cleanup...')
     
     const workspaces = await db.workspaces.toArray()
-    const activeWorkspaces = workspaces.filter(w => w.isActive === true || w.isActive === 1)
+    const activeWorkspaces = workspaces.filter(w => w.isActive === true || (w.isActive as unknown) === 1)
     
     console.log(`[cleanupDuplicateActiveWorkspaces] Found ${activeWorkspaces.length} active workspaces`)
     
@@ -188,7 +188,7 @@ export async function ensureOneWorkspaceActive() {
     }
     
     // Check if any workspace is currently active
-    const hasActive = workspaces.some(w => w.isActive === true || w.isActive === 1)
+    const hasActive = workspaces.some(w => w.isActive === true || (w.isActive as unknown) === 1)
     
     if (!hasActive) {
       console.log('[ensureOneWorkspaceActive] No active workspace found, activating the most recent one')
@@ -257,7 +257,7 @@ export async function emergencyFixWorkspaceActive() {
         
         // Find the workspace that should be active
         for (const workspace of workspaces) {
-          if (workspace.isActive === true || workspace.isActive === 1) {
+          if (workspace.isActive === true || (workspace.isActive as unknown) === 1) {
             if (!activeWorkspaceId) {
               activeWorkspaceId = workspace.id
             }
@@ -358,7 +358,7 @@ export async function fixWorkspaceIsActiveField() {
     }
     
     // Count how many workspaces are currently active
-    const activeCount = workspaces.filter(w => w.isActive === true || w.isActive === 1).length
+    const activeCount = workspaces.filter(w => w.isActive === true || (w.isActive as unknown) === 1).length
     
     // If there are multiple active workspaces or no active workspace, we need to fix
     if (activeCount > 1 || activeCount === 0) {
