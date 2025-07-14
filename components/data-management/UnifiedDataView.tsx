@@ -35,7 +35,7 @@ interface UnifiedDataViewProps {
 type DownloadConfirmItem = UnifiedDataItem
 
 export function UnifiedDataView({
-  selectedDataIds: _, // eslint-disable-line @typescript-eslint/no-unused-vars
+  selectedDataIds,
   onSelectionChange,
   importCompleted,
   onImportCompletedReset
@@ -106,6 +106,16 @@ export function UnifiedDataView({
       return true
     })
   }, [data, searchQuery, locationFilter])
+
+  // Initialize selectedItems from selectedDataIds
+  useEffect(() => {
+    if (selectedDataIds.length > 0) {
+      const initialSelection = new Set(
+        selectedDataIds.map(id => `local-${id}`)
+      )
+      setSelectedItems(initialSelection)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync selected items with parent component
   useEffect(() => {
