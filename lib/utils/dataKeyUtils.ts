@@ -15,15 +15,19 @@ export function generateDataKey(metadata: {
   dataStartTime?: Date
   dataEndTime?: Date
   importedAt?: Date
-}): string {
+}, options?: { excludeImportedAt?: boolean }): string {
   const parts = [
     metadata.plant,
     metadata.machineNo,
     metadata.dataSource,
     metadata.dataStartTime ? metadata.dataStartTime.toISOString() : 'null',
-    metadata.dataEndTime ? metadata.dataEndTime.toISOString() : 'null',
-    metadata.importedAt ? metadata.importedAt.toISOString() : new Date().toISOString()
+    metadata.dataEndTime ? metadata.dataEndTime.toISOString() : 'null'
   ]
+  
+  // Only include importedAt if not explicitly excluded
+  if (!options?.excludeImportedAt) {
+    parts.push(metadata.importedAt ? metadata.importedAt.toISOString() : new Date().toISOString())
+  }
   
   return parts.join(':')
 }

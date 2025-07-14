@@ -307,7 +307,8 @@ export function UnifiedDataView({
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i]
           const chunkData = {
-            ...uploadData,
+            metadata: uploadData.metadata,
+            parameters: uploadData.parameters,
             timeSeriesData: chunk.data,
             chunkInfo: {
               index: chunk.index,
@@ -338,7 +339,15 @@ export function UnifiedDataView({
             throw new Error(errorData.details || errorData.error || 'アップロードに失敗しました')
           }
 
+          const result = await response.json()
+          console.log(`Chunk ${i + 1}/${chunks.length} response:`, result)
+
           uploadedRecords += chunk.data.length
+          
+          // Check if this was the final chunk and upload is complete
+          if (result.complete) {
+            showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}のアップロードが完了しました`)
+          }
         }
       } else {
         // Upload all data at once for small datasets
@@ -351,7 +360,8 @@ export function UnifiedDataView({
         }))
 
         const singleChunkData = {
-          ...uploadData,
+          metadata: uploadData.metadata,
+          parameters: uploadData.parameters,
           timeSeriesData: chunks[0].data
         }
 

@@ -21,6 +21,7 @@ export interface UnifiedDataItem {
 export interface UploadedData {
   id: string
   uploadId: string
+  dataKey?: string
   plantNm: string
   machineNo: string
   label?: string
@@ -69,7 +70,18 @@ export function useUnifiedData() {
     console.log('[useUnifiedData] Merging data:', {
       localCount: localData.length,
       serverCount: serverData.length,
-      serverData: serverData
+      localDataKeys: localData.map(l => ({ 
+        id: l.id, 
+        dataKey: l.dataKey,
+        plant: l.plant,
+        machineNo: l.machineNo
+      })),
+      serverDataKeys: serverData.map(s => ({ 
+        uploadId: s.uploadId, 
+        dataKey: s.dataKey,
+        plantNm: s.plantNm,
+        machineNo: s.machineNo
+      }))
     })
     
     // Process local data
@@ -77,14 +89,27 @@ export function useUnifiedData() {
       const key = `${local.plant}-${local.machineNo}-${local.label || ''}`
       processedIds.add(key)
       
-      // Check if this data exists on server
+      // Check if this data exists on server using dataKey
       const serverMatch = serverData.find(s => {
+        // First try to match by dataKey
+        if (local.dataKey && s.dataKey) {
+          const match = s.dataKey === local.dataKey
+          if (match) {
+            console.log('[useUnifiedData] Found match by dataKey:', {
+              local: { dataKey: local.dataKey, plant: local.plant, machineNo: local.machineNo },
+              server: { dataKey: s.dataKey, plantNm: s.plantNm, machineNo: s.machineNo }
+            })
+          }
+          return match
+        }
+        
+        // Fallback to old matching logic
         const match = s.plantNm === local.plant && 
           s.machineNo === local.machineNo &&
           (s.label === local.label || (!s.label && !local.label))
         
         if (match) {
-          console.log('[useUnifiedData] Found match:', {
+          console.log('[useUnifiedData] Found match by plant/machine/label:', {
             local: { plant: local.plant, machineNo: local.machineNo, label: local.label },
             server: { plantNm: s.plantNm, machineNo: s.machineNo, label: s.label }
           })
