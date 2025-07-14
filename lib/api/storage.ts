@@ -121,6 +121,14 @@ export interface ChunkInfo {
   total: number;
 }
 
+// Convert dataKey to filesystem-safe format
+function toFilesystemSafeKey(dataKey: string): string {
+  // Replace characters that are not allowed in Windows file/directory names
+  // : (colon) -> _ (underscore)
+  // < > | " * ? \ / -> _ (underscore)
+  return dataKey.replace(/[<>:"|*?\\/]/g, '_');
+}
+
 export interface ChunkSession {
   uploadId: string;
   metadata: Record<string, unknown>;
@@ -132,7 +140,8 @@ export interface ChunkSession {
 }
 
 export async function getChunkSessionPath(dataKey: string): Promise<string> {
-  return path.join(CHUNKS_DIR, dataKey);
+  const safeKey = toFilesystemSafeKey(dataKey);
+  return path.join(CHUNKS_DIR, safeKey);
 }
 
 export async function saveChunkSession(session: ChunkSession): Promise<void> {
