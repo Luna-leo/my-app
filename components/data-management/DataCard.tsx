@@ -173,14 +173,26 @@ export function DataCard({
         const target = e.target as HTMLElement
         if (target.closest('button')) return
         
-        onSelectionChange(!isSelected)
+        // For server-only data, show download dialog instead of selection
+        if (item.location === 'server' && onDownload) {
+          onDownload()
+        } else {
+          onSelectionChange(!isSelected)
+        }
       }}
     >
       <div className="flex items-start gap-3">
         <Checkbox
           checked={isSelected}
-          onCheckedChange={onSelectionChange}
-          disabled={isLoading}
+          onCheckedChange={(checked) => {
+            // For server-only data, show download dialog instead of selection
+            if (item.location === 'server' && onDownload) {
+              onDownload()
+            } else {
+              onSelectionChange(checked as boolean)
+            }
+          }}
+          disabled={isLoading || item.location === 'server'}
           onClick={(e) => e.stopPropagation()}
         />
         

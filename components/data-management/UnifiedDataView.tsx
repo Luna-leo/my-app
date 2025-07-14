@@ -48,6 +48,7 @@ export function UnifiedDataView({
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({})
   const [deleteProgress, setDeleteProgress] = useState<Record<string, number>>({})
   const [alerts, setAlerts] = useState<{ type: 'success' | 'error', message: string }[]>([])
+  const [pendingAutoSelect, setPendingAutoSelect] = useState<string | null>(null)
   
   // Preview states
   const [previewData, setPreviewData] = useState<Metadata | null>(null)
@@ -65,8 +66,10 @@ export function UnifiedDataView({
   // Download confirmation dialog
   const [downloadConfirm, setDownloadConfirm] = useState<{
     item: DownloadConfirmItem | null,
-    show: boolean
-  }>({ item: null, show: false })
+    show: boolean,
+    isDownloading: boolean,
+    progress: number
+  }>({ item: null, show: false, isDownloading: false, progress: 0 })
   
   // Delete confirmation dialog
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -111,6 +114,23 @@ export function UnifiedDataView({
       .map(id => parseInt(id.replace('local-', '')))
     onSelectionChange(localIds)
   }, [selectedItems, onSelectionChange])
+
+  // Auto-select downloaded data
+  useEffect(() => {
+    if (pendingAutoSelect && data.length > 0) {
+      const downloadedItem = data.find(d => 
+        d.metadata?.dataKey === pendingAutoSelect
+      )
+      if (downloadedItem) {
+        setSelectedItems(prev => {
+          const newSelection = new Set(prev)
+          newSelection.add(downloadedItem.id)
+          return newSelection
+        })
+        setPendingAutoSelect(null)
+      }
+    }
+  }, [data, pendingAutoSelect])
 
   const handleSelectAll = () => {
     const allIds = filteredData.map(item => item.id)
@@ -265,7 +285,7 @@ export function UnifiedDataView({
 
   const handleDownload = async (item: UnifiedDataItem) => {
     if (!item.serverData) return
-    setDownloadConfirm({ item, show: true })
+    setDownloadConfirm({ item, show: true, isDownloading: false, progress: 0 })
   }
 
   const confirmDownload = async () => {
@@ -273,10 +293,15 @@ export function UnifiedDataView({
     if (!item?.serverData) return
 
     try {
+      // Set downloading state
+      setDownloadConfirm(prev => ({ ...prev, isDownloading: true, progress: 0 }))
       setDownloadProgress(prev => ({ ...prev, [item.id]: 0 }))
-      setDownloadConfirm({ item: null, show: false })
 
       const response = await fetch(`/api/data/${item.serverData.uploadId}/download`)
+      
+      // Update progress to 30% after fetch
+      setDownloadConfirm(prev => ({ ...prev, progress: 30 }))
+      setDownloadProgress(prev => ({ ...prev, [item.id]: 30 }))
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -287,15 +312,24 @@ export function UnifiedDataView({
       const downloadedData = await response.json()
       console.log('[Download] Response data:', downloadedData)
       
+      // Update progress to 50% after parsing response
+      setDownloadConfirm(prev => ({ ...prev, progress: 50 }))
+      setDownloadProgress(prev => ({ ...prev, [item.id]: 50 }))
+      
       // Check if data already exists in IndexedDB using dataKey
       if (downloadedData.metadata.dataKey) {
         const existingMetadata = await db.getMetadataByDataKey(downloadedData.metadata.dataKey)
         if (existingMetadata) {
           console.log(`[Download] Data with key ${downloadedData.metadata.dataKey} already exists, skipping`)
           showAlert('success', `Data already exists locally for ${item.serverData.plantNm} - ${item.serverData.machineNo}`)
+          setDownloadConfirm({ item: null, show: false, isDownloading: false, progress: 0 })
           return
         }
       }
+      
+      // Update progress to 60% before saving to IndexedDB
+      setDownloadConfirm(prev => ({ ...prev, progress: 60 }))
+      setDownloadProgress(prev => ({ ...prev, [item.id]: 60 }))
       
       // Save to IndexedDB
       
@@ -350,16 +384,27 @@ export function UnifiedDataView({
         timestamp: new Date(row.timestamp as string)
       }))
       
+      // Update progress to 80% before bulk insert
+      setDownloadConfirm(prev => ({ ...prev, progress: 80 }))
+      setDownloadProgress(prev => ({ ...prev, [item.id]: 80 }))
+      
       await db.timeSeries.bulkAdd(timeSeriesData)
-
+      
+      // Update progress to 100%
+      setDownloadConfirm(prev => ({ ...prev, progress: 100 }))
       setDownloadProgress(prev => ({ ...prev, [item.id]: 100 }))
+      
       showAlert('success', `Successfully downloaded ${item.serverData.plantNm} - ${item.serverData.machineNo}`)
+      
+      // Set pending auto-select for after refresh
+      setPendingAutoSelect(metadata.dataKey)
+      
       await refreshData()
       
-    } catch (error) {
-      showAlert('error', `Failed to download: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
-      setDownloadConfirm({ item: null, show: false })
+      // Close dialog after successful download
+      setDownloadConfirm({ item: null, show: false, isDownloading: false, progress: 0 })
+      
+      // Clear download progress after a short delay
       setTimeout(() => {
         setDownloadProgress(prev => {
           const newProgress = { ...prev }
@@ -367,6 +412,17 @@ export function UnifiedDataView({
           return newProgress
         })
       }, 1000)
+      
+    } catch (error) {
+      showAlert('error', `Failed to download: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setDownloadConfirm(prev => ({ ...prev, isDownloading: false }))
+      
+      // Clear download progress on error
+      setDownloadProgress(prev => {
+        const newProgress = { ...prev }
+        delete newProgress[item.id]
+        return newProgress
+      })
     }
   }
 
@@ -629,12 +685,14 @@ export function UnifiedDataView({
       )}
 
       {/* Download Confirmation Dialog */}
-      <Dialog open={downloadConfirm.show} onOpenChange={(open) => !open && setDownloadConfirm({ item: null, show: false })}>
+      <Dialog open={downloadConfirm.show} onOpenChange={(open) => !open && !downloadConfirm.isDownloading && setDownloadConfirm({ item: null, show: false, isDownloading: false, progress: 0 })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Download Server Data</DialogTitle>
+            <DialogTitle>{downloadConfirm.isDownloading ? 'Downloading Data...' : 'Download Server Data'}</DialogTitle>
             <DialogDescription>
-              This will download the data from the server and save it to your local storage. Do you want to continue?
+              {downloadConfirm.isDownloading 
+                ? 'Please wait while the data is being downloaded...' 
+                : 'This will download the data from the server and save it to your local storage. Do you want to continue?'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -656,16 +714,35 @@ export function UnifiedDataView({
                 </p>
               </>
             )}
+            {downloadConfirm.isDownloading && (
+              <div className="space-y-2 py-4">
+                <Progress value={downloadConfirm.progress} className="w-full" />
+                <p className="text-sm text-center text-muted-foreground">
+                  {downloadConfirm.progress}% complete
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDownloadConfirm({ item: null, show: false })}
+              onClick={() => setDownloadConfirm({ item: null, show: false, isDownloading: false, progress: 0 })}
+              disabled={downloadConfirm.isDownloading}
             >
               Cancel
             </Button>
-            <Button onClick={confirmDownload}>
-              Download
+            <Button 
+              onClick={confirmDownload}
+              disabled={downloadConfirm.isDownloading}
+            >
+              {downloadConfirm.isDownloading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Downloading...
+                </>
+              ) : (
+                'Download'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
