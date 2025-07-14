@@ -31,7 +31,7 @@ import { useDataPointsInfo } from '@/hooks/useDataPointsInfo'
 import { metadataService } from '@/lib/services/metadataService'
 import { colorService } from '@/lib/services/colorService'
 import { db } from '@/lib/db'
-import { ensureMetadataHasDataKeys, getDatabaseInfo, fixWorkspaceIsActiveField } from '@/lib/utils/dbMigrationUtils'
+import { ensureMetadataHasDataKeys, getDatabaseInfo, fixWorkspaceIsActiveField, cleanupDuplicateActiveWorkspaces, ensureOneWorkspaceActive } from '@/lib/utils/dbMigrationUtils'
 import DatabaseDebugPanel from '@/components/debug/DatabaseDebugPanel'
 import { StartupService } from '@/lib/services/startupService'
 import { WelcomeDialog } from '@/components/startup/WelcomeDialog'
@@ -312,11 +312,52 @@ function HomeContent() {
             const info = await getDatabaseInfo()
             console.log('[Debug] Database info:', info)
             
-            // Fix workspace isActive field type if needed
+            // First clean up duplicate active workspaces
+            console.log('[Page] Cleaning up duplicate active workspaces...')
+            try {
+              const cleaned = await cleanupDuplicateActiveWorkspaces()
+              if (cleaned > 0) {
+                console.log(`[Debug] Deactivated ${cleaned} duplicate active workspaces`)
+              }
+            } catch (cleanupError) {
+              console.error('[Page] Error cleaning up duplicate active workspaces:', cleanupError)
+            }
+            
+            // Then fix workspace isActive field type if needed
             console.log('[Page] Checking workspace isActive fields...')
-            const fixedWorkspaces = await fixWorkspaceIsActiveField()
-            if (fixedWorkspaces > 0) {
-              console.log('[Debug] Fixed workspace isActive fields')
+            try {
+              const fixedWorkspaces = await fixWorkspaceIsActiveField()
+              if (fixedWorkspaces > 0) {
+                console.log('[Debug] Fixed workspace isActive fields')
+              }
+            } catch (fixError) {
+              console.error('[Page] Error fixing workspace isActive fields:', fixError)
+              
+              // If it's a constraint error, log more details
+              if (fixError instanceof Error && fixError.name === 'ConstraintError') {
+                console.error('[Page] Constraint error details:', {
+                  message: fixError.message,
+                  stack: fixError.stack
+                })
+                console.log('[Page] This error might be due to database corruption.')
+                console.log('[Page] You can skip database checks by adding ?skipDbChecks=true to the URL')
+                
+                // Try a simpler approach as fallback
+                console.log('[Page] Attempting simpler workspace fix...')
+                try {
+                  const ensured = await ensureOneWorkspaceActive()
+                  if (ensured) {
+                    console.log('[Page] Successfully ensured one workspace is active')
+                  } else {
+                    console.log('[Page] Could not ensure active workspace, but continuing anyway')
+                  }
+                } catch (ensureError) {
+                  console.error('[Page] Even the simple fix failed:', ensureError)
+                }
+              }
+              
+              // Continue without fixing - the app should still work
+              console.log('[Page] Continuing despite the error...')
             }
             
             // Fix metadata without dataKey if needed
