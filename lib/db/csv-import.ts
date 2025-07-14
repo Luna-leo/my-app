@@ -153,6 +153,25 @@ export class CsvImporter {
       message: 'Starting import...'
     });
 
+    // Detect data range if not provided
+    if (!metadata.dataStartTime || !metadata.dataEndTime) {
+      try {
+        const detectedRange = await this.detectDataRange(files, dataSource);
+        if (detectedRange) {
+          if (!metadata.dataStartTime) {
+            metadata = { ...metadata, dataStartTime: detectedRange.startTime };
+            result.warnings.push(`Data start time was not provided. Using detected start time: ${detectedRange.startTime.toISOString()}`);
+          }
+          if (!metadata.dataEndTime) {
+            metadata = { ...metadata, dataEndTime: detectedRange.endTime };
+            result.warnings.push(`Data end time was not provided. Using detected end time: ${detectedRange.endTime.toISOString()}`);
+          }
+        }
+      } catch (error) {
+        result.warnings.push(`Failed to detect data range: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
     // Parse all files
     const parsedFiles: CsvParseResult[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -339,33 +358,47 @@ export class CsvImporter {
     result: ImportResult
   ): Promise<void> {
     await db.transaction('rw', db.metadata, db.parameters, db.timeSeries, async () => {
-      // Generate dataKey for the metadata
+      // Use detected data range if metadata doesn't have start/end times
+      const finalMetadata = { ...metadata };
+      if (combinedData.dataRange) {
+        if (!finalMetadata.dataStartTime) {
+          finalMetadata.dataStartTime = combinedData.dataRange.startTime;
+        }
+        if (!finalMetadata.dataEndTime) {
+          finalMetadata.dataEndTime = combinedData.dataRange.endTime;
+        }
+      }
+
+      // Generate dataKey for the metadata with importedAt timestamp
+      const importedAt = new Date();
       const dataKey = generateDataKey({
-        plant: metadata.plant,
-        machineNo: metadata.machineNo,
-        dataSource: metadata.dataSource,
-        dataStartTime: metadata.dataStartTime,
-        dataEndTime: metadata.dataEndTime
+        plant: finalMetadata.plant,
+        machineNo: finalMetadata.machineNo,
+        dataSource: finalMetadata.dataSource,
+        dataStartTime: finalMetadata.dataStartTime,
+        dataEndTime: finalMetadata.dataEndTime,
+        importedAt: importedAt
       });
 
-      // Check if data with same key already exists
+      // Check if data with same key already exists (now includes importedAt, so duplicates are allowed)
+      // Note: With importedAt in the key, each import will have a unique key
       const existingMetadata = await db.metadata.where('dataKey').equals(dataKey).first();
       
       if (existingMetadata) {
-        // Throw error to prevent duplicate data
-        throw new Error(`Data with same plant, machine, source, and time range already exists (ID: ${existingMetadata.id})`);
+        // This should rarely happen now since importedAt makes keys unique
+        throw new Error(`Data with same key already exists (ID: ${existingMetadata.id})`);
       }
 
       // Save metadata
       const metadataId = await db.metadata.add({
-        ...metadata,
+        ...finalMetadata,
         dataKey,
-        importedAt: new Date()
+        importedAt: importedAt
       });
 
       // Save parameters - use bulkPut to handle duplicates
       const parametersArray = Array.from(combinedData.parameters.values());
-      console.log(`[CSV Import] Saving ${parametersArray.length} parameters for ${metadata.plant}-${metadata.machineNo}`);
+      console.log(`[CSV Import] Saving ${parametersArray.length} parameters for ${finalMetadata.plant}-${finalMetadata.machineNo}`);
       
       try {
         // Use bulkPut instead of bulkAdd to update existing parameters
@@ -394,8 +427,8 @@ export class CsvImporter {
         .filter(item => item !== null) as { metadataId: number; timestamp: Date; data: Record<string, number | null> }[];
 
       // Apply data range filtering if specified
-      const dataStartTime = (metadata as { dataStartTime?: Date }).dataStartTime;
-      const dataEndTime = (metadata as { dataEndTime?: Date }).dataEndTime;
+      const dataStartTime = finalMetadata.dataStartTime;
+      const dataEndTime = finalMetadata.dataEndTime;
       
       const beforeFilterCount = timeSeriesArray.length;
       
