@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useUnifiedData, DataLocation, UnifiedDataItem } from '@/lib/hooks/useUnifiedData'
 import { DataCard } from './DataCard'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,13 @@ import { Label } from '@/components/ui/label'
 import { Search, Filter, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { db } from '@/lib/db'
 import { Metadata } from '@/lib/db/schema'
+import { 
+  UploadState, 
+  createInitialUploadState, 
+  updateUploadState,
+  calculateProgressForStage,
+  createProgressUpdater
+} from '@/lib/utils/uploadUtils'
 import { DataPreviewDialog } from './DataPreviewDialog'
 import { ServerDataPreviewDialog } from './ServerDataPreviewDialog'
 import { EditMetadataDialog } from './EditMetadataDialog'
@@ -45,10 +52,13 @@ export function UnifiedDataView({
   const [locationFilter, setLocationFilter] = useState<DataLocation | 'all'>('all')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
+  const [uploadStates, setUploadStates] = useState<Record<string, UploadState>>({})
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({})
   const [deleteProgress, setDeleteProgress] = useState<Record<string, number>>({})
-  const [alerts, setAlerts] = useState<{ type: 'success' | 'error', message: string }[]>([])
+  const [alerts, setAlerts] = useState<{ type: 'success' | 'error' | 'info', message: string }[]>([])
   const [pendingAutoSelect, setPendingAutoSelect] = useState<string | null>(null)
+  const workersRef = useRef<Map<string, Worker>>(new Map())
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
   
   // Preview states
   const [previewData, setPreviewData] = useState<Metadata | null>(null)
@@ -151,20 +161,37 @@ export function UnifiedDataView({
     setSelectedItems(new Set())
   }
 
-  const showAlert = (type: 'success' | 'error', message: string) => {
+  const showAlert = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     setAlerts(prev => [...prev, { type, message }])
     setTimeout(() => {
       setAlerts(prev => prev.slice(1))
     }, 5000)
-  }
+  }, [])
 
-  const handleUpload = async (item: UnifiedDataItem) => {
-
+  const handleUpload = useCallback(async (item: UnifiedDataItem) => {
     if (!item.metadata) return
 
+    // Create abort controller for this upload
+    const abortController = new AbortController()
+    abortControllersRef.current.set(item.id, abortController)
+
+    // Initialize upload state
+    const initialState = createInitialUploadState()
+    setUploadStates(prev => ({ ...prev, [item.id]: initialState }))
+
+    // Create progress updater with debouncing
+    const updateProgress = createProgressUpdater((state) => {
+      setUploadStates(prev => ({ ...prev, [item.id]: state }))
+    })
+
     try {
-      setUploadProgress(prev => ({ ...prev, [item.id]: 0 }))
-      
+      // Stage 1: Preparing data (0-10%)
+      updateProgress(updateUploadState(initialState, {
+        stage: 'preparing',
+        progress: 0,
+        message: 'データを準備中...'
+      }))
+
       // Get time series data
       const timeSeriesData = await db.timeSeries
         .where('metadataId')
@@ -172,10 +199,16 @@ export function UnifiedDataView({
         .toArray()
       
       if (timeSeriesData.length === 0) {
-        throw new Error('No time series data found')
+        throw new Error('時系列データが見つかりません')
       }
-      
-      // Get parameters - same logic as UploadContent.tsx
+
+      updateProgress(updateUploadState(initialState, {
+        progress: 5,
+        message: 'パラメータ情報を取得中...',
+        totalRecords: timeSeriesData.length
+      }))
+
+      // Get parameters
       let parameters: { parameterId: string; parameterName: string; unit: string }[] = []
       if (timeSeriesData.length > 0) {
         const parameterIds = Object.keys(timeSeriesData[0].data)
@@ -189,109 +222,239 @@ export function UnifiedDataView({
         parameters = allParameters.filter(p => 
           parameterIds.includes(p.parameterId)
         )
-        
-        console.log(`[UnifiedDataView] Found ${parameters.length} parameters for upload`)
       }
       
       if (parameters.length === 0) {
-        throw new Error('No valid parameters found. Please re-import the CSV file with proper headers.')
+        throw new Error('有効なパラメータが見つかりません。CSVファイルをヘッダー情報付きで再インポートしてください。')
       }
 
-      // Calculate data periods
-      const sortedData = timeSeriesData.sort((a, b) => 
-        a.timestamp.getTime() - b.timestamp.getTime()
-      )
-      
-      const dataPeriods: { start: string, end: string }[] = []
-      let currentPeriod: { start: string, end: string } | null = null
-      
-      sortedData.forEach((data, index) => {
-        const timeStr = data.timestamp.toISOString()
-        if (!currentPeriod) {
-          currentPeriod = { start: timeStr, end: timeStr }
-        } else {
-          const currentTime = data.timestamp.getTime()
-          const lastTime = new Date(currentPeriod.end).getTime()
-          const timeDiff = currentTime - lastTime
-          
-          if (timeDiff > 3600000) { // 1 hour gap
-            dataPeriods.push(currentPeriod)
-            currentPeriod = { start: timeStr, end: timeStr }
-          } else {
-            currentPeriod.end = timeStr
+      // Stage 2: Processing data with Web Worker (10-40%)
+      updateProgress(updateUploadState(initialState, {
+        stage: 'processing',
+        progress: 10,
+        message: `データを処理中... (0/${timeSeriesData.length}レコード)`,
+        processedRecords: 0,
+        totalRecords: timeSeriesData.length
+      }))
+
+      // Create and use Web Worker
+      const worker = new Worker('/dataProcessing.worker.js')
+      workersRef.current.set(item.id, worker)
+
+      const workerPromise = new Promise<Record<string, unknown>>((resolve, reject) => {
+        worker.onmessage = (event) => {
+          const { type, data, error, progress } = event.data
+
+          if (type === 'PROGRESS') {
+            const stageProgress = calculateProgressForStage('processing', progress)
+            const processedRecords = Math.floor((progress / 100) * timeSeriesData.length)
+            
+            updateProgress(updateUploadState(initialState, {
+              stage: 'processing',
+              progress: stageProgress,
+              message: `データを処理中... (${processedRecords}/${timeSeriesData.length}レコード)`,
+              processedRecords,
+              totalRecords: timeSeriesData.length
+            }))
+          } else if (type === 'DATA_PROCESSED') {
+            resolve(data)
+          } else if (type === 'ERROR') {
+            reject(new Error(error))
           }
         }
-        
-        if (index === sortedData.length - 1 && currentPeriod) {
-          dataPeriods.push(currentPeriod)
+
+        worker.onerror = (error) => {
+          reject(new Error(`Worker error: ${error.message}`))
         }
+
+        // Send data to worker
+        worker.postMessage({
+          type: 'PREPARE_UPLOAD',
+          data: {
+            id: item.id,
+            timeSeriesData,
+            metadata: item.metadata,
+            parameters
+          }
+        })
       })
 
-      // Upload data
-      const uploadData = {
-        metadata: {
-          ...item.metadata,
-          importedAt: item.metadata.importedAt.toISOString(),
-          dataStartTime: item.metadata.dataStartTime?.toISOString(),
-          dataEndTime: item.metadata.dataEndTime?.toISOString(),
-          startTime: item.metadata.startTime?.toISOString(),
-          endTime: item.metadata.endTime?.toISOString()
-        },
-        parameters: parameters.map(p => ({
-          ...p,
-          id: undefined  // Exclude ID as done in UploadContent.tsx
-        })),
-        timeSeriesData: timeSeriesData.map(ts => ({
-          ...ts,
-          id: undefined,  // Exclude ID
-          timestamp: ts.timestamp.toISOString()
-        })),
-        dataPeriods: dataPeriods
+      // Wait for worker to process data
+      const uploadData = await workerPromise as {
+        chunks: Array<{ index: number; total: number; data: unknown[] }>
+        isChunked: boolean
+        totalRecords: number
+        metadata: Record<string, unknown>
+        parameters: Array<{ parameterId: string; parameterName: string; unit: string }>
+        dataPeriods: Array<{ start: string; end: string }>
       }
 
-      const response = await fetch('/api/data/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'demo-api-key-12345'
-        },
-        body: JSON.stringify(uploadData)
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error('Upload failed:', errorData)
-        throw new Error(errorData.details || errorData.error || 'Upload failed')
+      // Check if aborted
+      if (abortController.signal.aborted) {
+        throw new Error('アップロードがキャンセルされました')
       }
 
-      const result = await response.json()
-      
-      setUploadProgress(prev => ({ ...prev, [item.id]: 100 }))
-      
-      if (result.duplicate) {
-        showAlert('success', `Data already exists on server for ${item.metadata.plant} - ${item.metadata.machineNo}`)
+      // Stage 3: Uploading to server (40-100%)
+      const { chunks, isChunked, totalRecords } = uploadData
+
+      if (isChunked) {
+        // Upload chunks one by one
+        let uploadedRecords = 0
+
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i]
+          const chunkData = {
+            ...uploadData,
+            timeSeriesData: chunk.data,
+            chunkInfo: {
+              index: chunk.index,
+              total: chunk.total
+            }
+          }
+
+          updateProgress(updateUploadState(initialState, {
+            stage: 'uploading',
+            progress: calculateProgressForStage('uploading', (i / chunks.length) * 100),
+            message: `サーバーに送信中... (${uploadedRecords}/${totalRecords}レコード)`,
+            processedRecords: uploadedRecords,
+            totalRecords
+          }))
+
+          const response = await fetch('/api/data/upload', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'demo-api-key-12345'
+            },
+            body: JSON.stringify(chunkData),
+            signal: abortController.signal
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.details || errorData.error || 'アップロードに失敗しました')
+          }
+
+          uploadedRecords += chunk.data.length
+        }
       } else {
-        showAlert('success', `Successfully uploaded ${item.metadata.plant} - ${item.metadata.machineNo}`)
+        // Upload all data at once for small datasets
+        updateProgress(updateUploadState(initialState, {
+          stage: 'uploading',
+          progress: 50,
+          message: 'サーバーに送信中...',
+          processedRecords: 0,
+          totalRecords
+        }))
+
+        const singleChunkData = {
+          ...uploadData,
+          timeSeriesData: chunks[0].data
+        }
+
+        const response = await fetch('/api/data/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'demo-api-key-12345'
+          },
+          body: JSON.stringify(singleChunkData),
+          signal: abortController.signal
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.details || errorData.error || 'アップロードに失敗しました')
+        }
+
+        const result = await response.json()
+        
+        if (result.duplicate) {
+          showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}のデータは既にサーバーに存在します`)
+        } else {
+          showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}のアップロードが完了しました`)
+        }
       }
-      
-      // Wait a bit before refreshing to ensure server has processed the upload
+
+      // Complete
+      updateProgress(updateUploadState(initialState, {
+        stage: 'complete',
+        progress: 100,
+        message: 'アップロード完了'
+      }))
+
+      // Refresh data
       setTimeout(async () => {
-        console.log('[UnifiedDataView] Refreshing data after upload')
         await refreshData()
       }, 500)
-      
+
     } catch (error) {
-      showAlert('error', `Failed to upload: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      if (error instanceof Error && error.name === 'AbortError') {
+        showAlert('info', 'アップロードがキャンセルされました')
+      } else {
+        showAlert('error', `アップロードに失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`)
+        
+        updateProgress(updateUploadState(initialState, {
+          stage: 'error',
+          progress: 0,
+          message: error instanceof Error ? error.message : 'エラーが発生しました'
+        }))
+      }
     } finally {
+      // Cleanup
       setTimeout(() => {
+        setUploadStates(prev => {
+          const newStates = { ...prev }
+          delete newStates[item.id]
+          return newStates
+        })
         setUploadProgress(prev => {
           const newProgress = { ...prev }
           delete newProgress[item.id]
           return newProgress
         })
-      }, 1000)
+        
+        // Clean up worker
+        const worker = workersRef.current.get(item.id)
+        if (worker) {
+          worker.terminate()
+          workersRef.current.delete(item.id)
+        }
+        
+        // Clean up abort controller
+        abortControllersRef.current.delete(item.id)
+      }, 3000)
     }
-  }
+  }, [refreshData, showAlert])
+
+  const handleCancelUpload = useCallback((itemId: string) => {
+    const abortController = abortControllersRef.current.get(itemId)
+    if (abortController) {
+      abortController.abort()
+    }
+    
+    const worker = workersRef.current.get(itemId)
+    if (worker) {
+      worker.terminate()
+      workersRef.current.delete(itemId)
+    }
+    
+    // Clean up states
+    setUploadStates(prev => {
+      const newStates = { ...prev }
+      delete newStates[itemId]
+      return newStates
+    })
+    
+    setUploadProgress(prev => {
+      const newProgress = { ...prev }
+      delete newProgress[itemId]
+      return newProgress
+    })
+    
+    abortControllersRef.current.delete(itemId)
+    showAlert('info', 'アップロードをキャンセルしました')
+  }, [showAlert])
 
   const handleDownload = async (item: UnifiedDataItem) => {
     if (!item.serverData) return
@@ -621,6 +784,7 @@ export function UnifiedDataView({
         <div className="space-y-2 pr-4 pb-4">
           {filteredData.map(item => {
             const progress = uploadProgress[item.id] || downloadProgress[item.id] || deleteProgress[item.id]
+            const uploadState = uploadStates[item.id]
             
             return (
               <div key={item.id}>
@@ -641,9 +805,11 @@ export function UnifiedDataView({
                   onPreview={() => handlePreview(item)}
                   onEdit={() => handleEdit(item)}
                   onDelete={() => handleDelete(item)}
+                  onCancelUpload={() => handleCancelUpload(item.id)}
                   isLoading={progress !== undefined}
+                  uploadState={uploadState}
                 />
-                {progress !== undefined && (
+                {progress !== undefined && !uploadState && (
                   <Progress value={progress} className="mt-2" />
                 )}
               </div>

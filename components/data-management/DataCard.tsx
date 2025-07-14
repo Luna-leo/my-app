@@ -17,9 +17,12 @@ import {
   RefreshCw,
   Loader2,
   Trash2,
-  Edit
+  Edit,
+  X
 } from 'lucide-react'
 import { UnifiedDataItem } from '@/lib/hooks/useUnifiedData'
+import { UploadState, formatTimeRemaining } from '@/lib/utils/uploadUtils'
+import { Progress } from '@/components/ui/progress'
 
 interface DataCardProps {
   item: UnifiedDataItem
@@ -30,7 +33,9 @@ interface DataCardProps {
   onPreview?: () => void
   onEdit?: () => void
   onDelete?: () => void
+  onCancelUpload?: () => void
   isLoading?: boolean
+  uploadState?: UploadState
 }
 
 export function DataCard({
@@ -42,7 +47,9 @@ export function DataCard({
   onPreview,
   onEdit,
   onDelete,
-  isLoading = false
+  onCancelUpload,
+  isLoading = false,
+  uploadState
 }: DataCardProps) {
   const getBorderColor = () => {
     switch (item.location) {
@@ -273,7 +280,7 @@ export function DataCard({
                 </Button>
               )}
               
-              {item.location === 'local' && onUpload && (
+              {item.location === 'local' && onUpload && !uploadState && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -327,6 +334,39 @@ export function DataCard({
           </div>
         </div>
       </div>
+      
+      {/* Upload progress UI */}
+      {uploadState && (
+        <div className="mt-3 space-y-2 border-t pt-3">
+          <div className="flex justify-between items-center text-sm">
+            <span className="font-medium">{uploadState.message}</span>
+            <div className="flex items-center gap-2">
+              {uploadState.stage === 'uploading' && uploadState.estimatedTime && (
+                <span className="text-xs text-muted-foreground">
+                  残り{formatTimeRemaining(uploadState.estimatedTime)}
+                </span>
+              )}
+              <span className="font-medium">{uploadState.progress}%</span>
+              {uploadState.stage !== 'complete' && uploadState.stage !== 'error' && onCancelUpload && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onCancelUpload}
+                  className="h-6 w-6"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          </div>
+          <Progress value={uploadState.progress} className="h-2" />
+          {uploadState.processedRecords !== undefined && uploadState.totalRecords && (
+            <div className="text-xs text-muted-foreground">
+              {uploadState.processedRecords.toLocaleString()} / {uploadState.totalRecords.toLocaleString()} レコード処理済み
+            </div>
+          )}
+        </div>
+      )}
     </Card>
   )
 }
