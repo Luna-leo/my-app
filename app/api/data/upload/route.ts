@@ -9,6 +9,7 @@ import {
 } from '@/lib/api/storage';
 import { saveTimeSeriesAsParquet } from '@/lib/api/parquet';
 import { generateDataKey } from '@/lib/utils/dataKeyUtils';
+import { generateParameterName } from '@/lib/utils/parameterNameUtils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -80,11 +81,16 @@ export async function POST(request: NextRequest) {
       const dataKeys = Object.keys(firstRow.data || {});
       parametersToSave = dataKeys.map(key => ({
         parameterId: key,
-        parameterName: key,
+        parameterName: generateParameterName(key),
         unit: '',
         plant: metadata.plant,
         machineNo: metadata.machineNo
       }));
+      
+      console.log('Generated parameter names:', parametersToSave.map((p: { parameterId: string; parameterName: string }) => ({
+        id: p.parameterId,
+        name: p.parameterName
+      })));
     }
 
     console.log('Parameters to save:', parametersToSave?.length || 0);
