@@ -46,6 +46,7 @@ export function UnifiedDataView({
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({})
+  const [deleteProgress, setDeleteProgress] = useState<Record<string, number>>({})
   const [alerts, setAlerts] = useState<{ type: 'success' | 'error', message: string }[]>([])
   
   // Preview states
@@ -70,8 +71,9 @@ export function UnifiedDataView({
   // Delete confirmation dialog
   const [deleteConfirm, setDeleteConfirm] = useState<{
     item: UnifiedDataItem | null,
-    show: boolean
-  }>({ item: null, show: false })
+    show: boolean,
+    isDeleting: boolean
+  }>({ item: null, show: false, isDeleting: false })
 
   // Filter data based on search and location
   const filteredData = useMemo(() => {
@@ -394,7 +396,7 @@ export function UnifiedDataView({
   
   const handleDelete = (item: UnifiedDataItem) => {
     if (item.metadata) {
-      setDeleteConfirm({ item, show: true })
+      setDeleteConfirm({ item, show: true, isDeleting: false })
     }
   }
   
@@ -403,10 +405,19 @@ export function UnifiedDataView({
     if (!item?.metadata) return
     
     try {
+      // Set deleting state
+      setDeleteConfirm(prev => ({ ...prev, isDeleting: true }))
+      
+      // Set delete progress
+      setDeleteProgress(prev => ({ ...prev, [item.id]: 0 }))
+      
       // Delete time series data
       await db.timeSeries.where('metadataId').equals(item.metadata.id!).delete()
+      setDeleteProgress(prev => ({ ...prev, [item.id]: 50 }))
+      
       // Delete metadata
       await db.metadata.delete(item.metadata.id!)
+      setDeleteProgress(prev => ({ ...prev, [item.id]: 100 }))
       
       showAlert('success', `Successfully deleted ${item.metadata.plant} - ${item.metadata.machineNo}`)
       await refreshData()
@@ -417,10 +428,21 @@ export function UnifiedDataView({
         newSelection.delete(item.id)
         return newSelection
       })
+      
+      // Close dialog after successful deletion
+      setDeleteConfirm({ item: null, show: false, isDeleting: false })
     } catch (error) {
       showAlert('error', `Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setDeleteConfirm(prev => ({ ...prev, isDeleting: false }))
     } finally {
-      setDeleteConfirm({ item: null, show: false })
+      // Clear delete progress after a short delay
+      setTimeout(() => {
+        setDeleteProgress(prev => {
+          const newProgress = { ...prev }
+          delete newProgress[item.id]
+          return newProgress
+        })
+      }, 1000)
     }
   }
 
@@ -532,7 +554,7 @@ export function UnifiedDataView({
       <ScrollArea className="flex-1 min-h-0">
         <div className="space-y-2 pr-4 pb-4">
           {filteredData.map(item => {
-            const progress = uploadProgress[item.id] || downloadProgress[item.id]
+            const progress = uploadProgress[item.id] || downloadProgress[item.id] || deleteProgress[item.id]
             
             return (
               <div key={item.id}>
@@ -650,12 +672,14 @@ export function UnifiedDataView({
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteConfirm.show} onOpenChange={(open) => !open && setDeleteConfirm({ item: null, show: false })}>
+      <Dialog open={deleteConfirm.show} onOpenChange={(open) => !open && !deleteConfirm.isDeleting && setDeleteConfirm({ item: null, show: false, isDeleting: false })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Data</DialogTitle>
+            <DialogTitle>{deleteConfirm.isDeleting ? 'Deleting Data...' : 'Delete Data'}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this data? This action cannot be undone.
+              {deleteConfirm.isDeleting 
+                ? 'Please wait while the data is being deleted...' 
+                : 'Are you sure you want to delete this data? This action cannot be undone.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -679,19 +703,33 @@ export function UnifiedDataView({
                 )}
               </>
             )}
+            {deleteConfirm.isDeleting && (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteConfirm({ item: null, show: false })}
+              onClick={() => setDeleteConfirm({ item: null, show: false, isDeleting: false })}
+              disabled={deleteConfirm.isDeleting}
             >
               Cancel
             </Button>
             <Button 
               variant="destructive"
               onClick={confirmDelete}
+              disabled={deleteConfirm.isDeleting}
             >
-              Delete
+              {deleteConfirm.isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
