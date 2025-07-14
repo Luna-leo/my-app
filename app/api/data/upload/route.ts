@@ -9,7 +9,6 @@ import {
 } from '@/lib/api/storage';
 import { saveTimeSeriesAsParquet } from '@/lib/api/parquet';
 import { generateDataKey } from '@/lib/utils/dataKeyUtils';
-import { generateParameterName } from '@/lib/utils/parameterNameUtils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,10 +29,20 @@ export async function POST(request: NextRequest) {
     console.log('Upload request received:', {
       hasMetadata: !!metadata,
       hasParameters: !!parameters,
+      parametersLength: parameters?.length,
       hasTimeSeriesData: !!timeSeriesData,
       timeSeriesDataLength: timeSeriesData?.length,
       dataPeriods
     });
+    
+    // Debug: Check first few parameters
+    if (parameters && parameters.length > 0) {
+      console.log('First 5 parameters received:', parameters.slice(0, 5).map((p: { parameterId: string; parameterName: string; unit: string }) => ({
+        id: p.parameterId,
+        name: p.parameterName,
+        unit: p.unit
+      })));
+    }
 
     if (!metadata || !timeSeriesData) {
       return NextResponse.json(
@@ -73,25 +82,37 @@ export async function POST(request: NextRequest) {
     // Generate unique upload ID
     const uploadId = generateUploadId();
 
-    // Use provided parameters or extract from time series data
-    let parametersToSave = parameters;
+    // Use provided parameters or error if not available
+    const parametersToSave = parameters;
     
-    if (!parametersToSave && timeSeriesData.length > 0) {
-      const firstRow = timeSeriesData[0];
-      const dataKeys = Object.keys(firstRow.data || {});
-      parametersToSave = dataKeys.map(key => ({
-        parameterId: key,
-        parameterName: generateParameterName(key),
-        unit: '',
-        plant: metadata.plant,
-        machineNo: metadata.machineNo
-      }));
+    if (!parametersToSave || parametersToSave.length === 0) {
+      console.error('No parameters provided for upload:', {
+        metadata,
+        hasTimeSeriesData: !!timeSeriesData && timeSeriesData.length > 0
+      });
       
-      console.log('Generated parameter names:', parametersToSave.map((p: { parameterId: string; parameterName: string }) => ({
-        id: p.parameterId,
-        name: p.parameterName
-      })));
+      return NextResponse.json(
+        { 
+          error: 'Parameters information is required for upload',
+          details: 'CSV header information (parameter names and units) must be provided'
+        },
+        { status: 400 }
+      );
     }
+    
+    // Temporarily disable parameter name validation to allow debugging
+    console.log('Skipping parameter name validation for debugging...')
+    
+    // Log parameter info for debugging
+    console.log('Parameters info:', {
+      total: parametersToSave.length,
+      sample: parametersToSave.slice(0, 3).map((p: { parameterId: string; parameterName: string; unit: string }) => ({
+        id: p.parameterId,
+        name: p.parameterName,
+        unit: p.unit,
+        nameEqualsId: p.parameterName === p.parameterId
+      }))
+    })
 
     console.log('Parameters to save:', parametersToSave?.length || 0);
 

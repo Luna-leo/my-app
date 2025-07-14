@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { db } from '@/lib/db'
-import { Metadata } from '@/lib/db/schema'
+import { Metadata, ParameterInfo } from '@/lib/db/schema'
 import { calculateDataPeriodFromTimeSeries } from '@/lib/db/dataUtils'
 import { Search, Calendar, Factory, Cpu, Eye, Upload, Loader2, CheckCircle } from 'lucide-react'
 import { DataPreviewDialog } from './DataPreviewDialog'
@@ -134,14 +134,67 @@ export function UploadContent() {
 
           setUploadProgress(Math.floor((i / totalItems) * 50))
 
-          // Get parameters
-          const parameters = await db.getParametersByPlantAndMachine(
-            metadata.plant,
-            metadata.machineNo
-          )
-
-          // Get time series data
+          // Get time series data first
           const timeSeriesData = await db.getTimeSeriesData(metadata.id!)
+          
+          console.log(`[Upload Debug] Time series data count: ${timeSeriesData.length}`)
+          
+          // Get parameters using the same method as DataPreviewDialog
+          let parameters: ParameterInfo[] = []
+          
+          if (timeSeriesData.length > 0) {
+            // Extract parameter IDs from actual data
+            const parameterIds = Object.keys(timeSeriesData[0].data)
+            console.log(`[Upload Debug] Parameter IDs in time series data:`, parameterIds)
+            
+            // Get all parameters for this plant/machine
+            const allParameters = await db.parameters
+              .where('plant')
+              .equals(metadata.plant)
+              .and(p => p.machineNo === metadata.machineNo)
+              .toArray()
+            
+            console.log(`[Upload Debug] All parameters for ${metadata.plant}/${metadata.machineNo}:`, 
+              allParameters.map(p => ({
+                id: p.parameterId,
+                name: p.parameterName,
+                unit: p.unit
+              }))
+            )
+            
+            // Filter to only include parameters that exist in the time series data
+            // Remove the valid name check temporarily to see what parameters we have
+            parameters = allParameters.filter(p => {
+              const isInData = parameterIds.includes(p.parameterId)
+              
+              if (!isInData) {
+                console.log(`[Upload Debug] Parameter ${p.parameterId} not in time series data`)
+              }
+              
+              return isInData
+            })
+            
+            console.log(`[Upload Debug] Parameters after filtering by data (no name validation):`, 
+              parameters.map(p => ({
+                id: p.parameterId,
+                name: p.parameterName,
+                unit: p.unit,
+                nameEqualsId: p.parameterName === p.parameterId,
+                isNumeric: /^\d+$/.test(p.parameterName)
+              }))
+            )
+            
+            console.log(`[Upload Debug] Filtered parameters: ${parameters.length} valid out of ${allParameters.length} total`)
+            console.log(`[Upload Debug] Valid parameters:`, 
+              parameters.slice(0, 5).map(p => ({
+                id: p.parameterId,
+                name: p.parameterName,
+                unit: p.unit
+              }))
+            )
+          } else {
+            console.error(`[Upload Debug] No time series data found for metadata ID: ${metadata.id}`)
+          }
 
           setUploadProgress(Math.floor(((i + 0.5) / totalItems) * 100))
 
@@ -165,6 +218,32 @@ export function UploadContent() {
               id: undefined,  // Exclude ID
               timestamp: item.timestamp.toISOString()
             }))
+          }
+          
+          // Debug: Check payload parameters
+          console.log(`[Upload Debug] Payload parameters count: ${payload.parameters.length}`)
+          console.log(`[Upload Debug] Payload parameters (first 5):`, 
+            payload.parameters.slice(0, 5).map(p => ({
+              id: p.parameterId,
+              name: p.parameterName,
+              unit: p.unit
+            }))
+          )
+          
+          // If no valid parameters found, try to get all parameters without filtering
+          if (parameters.length === 0 && timeSeriesData.length > 0) {
+            console.warn(`[Upload Debug] No valid parameters found. Attempting fallback...`)
+            
+            // Get parameter IDs from time series data
+            // const parameterIds = Object.keys(timeSeriesData[0].data)
+            
+            // Create basic parameter info from IDs if no valid parameters exist
+            // This should be reported to user as a data quality issue
+            console.error(`[Upload Debug] CRITICAL: No valid parameter names found in database`)
+            console.error(`[Upload Debug] This data needs to be re-imported with proper CSV headers`)
+            
+            errors.push(`ID ${metadataId}: データベースに有効なパラメータ名が見つかりません。CSVファイルを再インポートしてください。`)
+            continue
           }
 
           // Upload to server

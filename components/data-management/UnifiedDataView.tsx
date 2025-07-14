@@ -142,6 +142,28 @@ export function UnifiedDataView({
       if (timeSeriesData.length === 0) {
         throw new Error('No time series data found')
       }
+      
+      // Get parameters - same logic as UploadContent.tsx
+      let parameters: { parameterId: string; parameterName: string; unit: string }[] = []
+      if (timeSeriesData.length > 0) {
+        const parameterIds = Object.keys(timeSeriesData[0].data)
+        const { plant, machineNo } = item.metadata
+        const allParameters = await db.parameters
+          .where('plant')
+          .equals(plant)
+          .and(p => p.machineNo === machineNo)
+          .toArray()
+        
+        parameters = allParameters.filter(p => 
+          parameterIds.includes(p.parameterId)
+        )
+        
+        console.log(`[UnifiedDataView] Found ${parameters.length} parameters for upload`)
+      }
+      
+      if (parameters.length === 0) {
+        throw new Error('No valid parameters found. Please re-import the CSV file with proper headers.')
+      }
 
       // Calculate data periods
       const sortedData = timeSeriesData.sort((a, b) => 
@@ -183,8 +205,13 @@ export function UnifiedDataView({
           startTime: item.metadata.startTime?.toISOString(),
           endTime: item.metadata.endTime?.toISOString()
         },
+        parameters: parameters.map(p => ({
+          ...p,
+          id: undefined  // Exclude ID as done in UploadContent.tsx
+        })),
         timeSeriesData: timeSeriesData.map(ts => ({
           ...ts,
+          id: undefined,  // Exclude ID
           timestamp: ts.timestamp.toISOString()
         })),
         dataPeriods: dataPeriods
