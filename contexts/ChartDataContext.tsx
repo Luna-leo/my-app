@@ -263,6 +263,8 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     });
 
     // Then fetch time series data with time range filtering
+    console.log(`[ChartDataContext fetchRawData] Called with metadataIds:`, metadataIds, `parameterIds:`, parameterIds);
+    
     const timeSeriesPromises = metadataIds.map(async (metadataId) => {
       const metadata = metadataByIdMap.get(metadataId);
       
@@ -293,6 +295,13 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       // Always use metadataId as the main cache key
       const cachedData = timeSeriesCache.get(metadataId);
       
+      // TEMPORARY: Skip selective loading logic when parameterIds is not provided
+      if (cachedData && !parameterIds) {
+        // No specific parameters requested, return all cached data
+        console.log(`[ChartDataContext] Cache hit (all columns) for metadataId ${metadataId}, data points: ${cachedData.length}`);
+        return { metadataId, data: cachedData };
+      }
+      
       if (cachedData && parameterIds) {
         // Check if cached data has all required parameters
         const missingParams = parameterTracker.getMissingParameters(metadataId, parameterIds);
@@ -304,25 +313,66 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         } else {
           // Some parameters are missing, fetch only the missing ones
           console.log(`[ChartDataContext] Fetching missing parameters for metadataId ${metadataId}:`, missingParams);
+          console.log(`[ChartDataContext] Already loaded parameters:`, Array.from(parameterTracker.getLoadedParameters(metadataId)));
           const additionalData = await db.getTimeSeriesData(metadataId, undefined, undefined, missingParams);
           
           // Merge additional data with cached data
-          const mergedData = cachedData.map((item, index) => ({
-            ...item,
-            data: {
-              ...item.data,
-              ...(additionalData[index]?.data || {})
+          // Create a map for faster lookup by timestamp
+          const additionalDataMap = new Map<number, Record<string, number | null>>();
+          additionalData.forEach(item => {
+            additionalDataMap.set(item.timestamp.getTime(), item.data);
+          });
+          
+          console.log(`[ChartDataContext] Merging data: cached=${cachedData.length}, additional=${additionalData.length}`);
+          
+          // Debug: Check if additional data actually contains the requested parameters
+          if (additionalData.length > 0) {
+            const sampleData = additionalData[0].data;
+            const actualParams = Object.keys(sampleData);
+            console.log(`[ChartDataContext] Additional data sample:`, {
+              requestedParams: missingParams,
+              actualParams: actualParams,
+              matches: missingParams.every(p => actualParams.includes(p))
+            });
+          }
+          
+          const mergedData = cachedData.map(item => {
+            const timestamp = item.timestamp.getTime();
+            const additionalItemData = additionalDataMap.get(timestamp);
+            
+            if (additionalItemData) {
+              return {
+                ...item,
+                data: {
+                  ...item.data,
+                  ...additionalItemData
+                }
+              };
+            } else {
+              // If no matching timestamp found, keep original item
+              // This could happen if the data was updated between requests
+              console.warn(`[ChartDataContext] No matching additional data for timestamp ${item.timestamp.toISOString()}`);
+              return item;
             }
-          }));
+          });
           
           // Update tracker and cache
           parameterTracker.addLoadedParameters(metadataId, missingParams);
           timeSeriesCache.set(metadataId, mergedData);
+          
+          // Debug: Verify merged data contains all parameters
+          if (mergedData.length > 0) {
+            const mergedSample = mergedData[0].data;
+            const mergedKeys = Object.keys(mergedSample);
+            console.log(`[ChartDataContext] Merged data verification:`, {
+              totalKeys: mergedKeys.length,
+              containsRequestedParams: parameterIds.every(p => mergedKeys.includes(p)),
+              sampleKeys: mergedKeys.slice(0, 10)
+            });
+          }
+          
           return { metadataId, data: mergedData };
         }
-      } else if (cachedData && !parameterIds) {
-        // No specific parameters requested, return all cached data
-        return { metadataId, data: cachedData };
       }
       
       // No cache or first time loading
@@ -332,18 +382,19 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       if (data.length > 0) {
         const actualKeys = data[0]?.data ? Object.keys(data[0].data) : [];
         console.log(`[ChartDataContext] Initial data loading for metadataId ${metadataId}:`, {
-          requestedParams: parameterIds?.length || 'all columns',
+          requestedParams: parameterIds || 'all columns',
+          requestedParamsCount: parameterIds?.length || 'all',
           actualKeysCount: actualKeys.length,
-          actualKeys: actualKeys.slice(0, 5), // Show first 5 keys
-          dataPoints: data.length
+          actualKeys: actualKeys.slice(0, 10), // Show first 10 keys
+          dataPoints: data.length,
+          parameterIds: parameterIds
         });
         
-        // Update parameter tracker
-        if (parameterIds) {
-          parameterTracker.addLoadedParameters(metadataId, parameterIds);
-        } else {
-          // If loading all columns, track all loaded parameters
+        // CRITICAL: Update parameter tracker with ACTUAL keys, not requested ones
+        // The database might return different keys than requested
+        if (actualKeys.length > 0) {
           parameterTracker.addLoadedParameters(metadataId, actualKeys);
+          console.log(`[ChartDataContext] Tracked ${actualKeys.length} parameters for metadataId ${metadataId}`);
         }
       }
       
@@ -444,11 +495,17 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         ...config.yAxisParameters,
       ];
       
-      console.log(`[ChartDataContext] Parameter IDs for "${config.title}":`, parameterIds);
+      console.log(`[ChartDataContext] getChartData for "${config.title}":`, {
+        selectedDataIds: config.selectedDataIds,
+        xAxisParameter: config.xAxisParameter,
+        yAxisParameters: config.yAxisParameters,
+        parameterIds: parameterIds
+      });
       
-      // Fetch raw data (with caching) - selective column loading is now properly supported
+      // Fetch raw data (with caching)
+      // TEMPORARY: Disable selective column loading due to multi-chart issue
       const fetchStartTime = performance.now();
-      const rawData = await fetchRawData(config.selectedDataIds, parameterIds);
+      const rawData = await fetchRawData(config.selectedDataIds); // Remove parameterIds to load all columns
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
       if (rawData.timeSeries.length === 0) {

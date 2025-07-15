@@ -178,13 +178,24 @@ export async function transformDataForChart(
           if (parameterId in dataPoint.data) {
             values.push(dataPoint.data[parameterId] ?? null);
           } else {
-            // Only log first occurrence to avoid spam
+            // Log detailed information about missing parameter
             if (timestamps.length === 1) {
               const dataKeys = Object.keys(dataPoint.data);
-              console.warn(`[transformDataForChart] Parameter "${parameterId}" not found in data.`);
-              console.warn(`[transformDataForChart] Available keys (first 10):`, dataKeys.slice(0, 10));
-              console.warn(`[transformDataForChart] Total keys:`, dataKeys.length);
-              console.warn(`[transformDataForChart] Sample key types:`, dataKeys.slice(0, 5).map(k => `${k}: ${typeof dataPoint.data[k]}`));
+              console.error(`[transformDataForChart] CRITICAL: Parameter "${parameterId}" not found in data for metadataId ${metadataId}`);
+              console.error(`[transformDataForChart] Available keys (first 10):`, dataKeys.slice(0, 10));
+              console.error(`[transformDataForChart] Total keys:`, dataKeys.length);
+              console.error(`[transformDataForChart] Looking for exact match: "${parameterId}" (length: ${parameterId.length})`);
+              console.error(`[transformDataForChart] Sample keys with lengths:`, dataKeys.slice(0, 5).map(k => `"${k}" (length: ${k.length})`));
+              
+              // Check for similar keys (case sensitivity, whitespace, etc.)
+              const similarKeys = dataKeys.filter(k => 
+                k.toLowerCase() === parameterId.toLowerCase() || 
+                k.trim() === parameterId.trim() ||
+                k.replace(/\s+/g, '') === parameterId.replace(/\s+/g, '')
+              );
+              if (similarKeys.length > 0) {
+                console.error(`[transformDataForChart] Found similar keys:`, similarKeys);
+              }
             }
             values.push(null);
           }

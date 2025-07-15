@@ -222,7 +222,9 @@ export class AppDatabase extends Dexie {
     
     // If parameterIds are specified, filter the data to include only those parameters
     if (parameterIds && parameterIds.length > 0) {
-      return results.map(item => ({
+      console.log(`[DB] Filtering data for metadataId ${metadataId} with parameterIds:`, parameterIds);
+      
+      const filteredResults = results.map(item => ({
         ...item,
         data: Object.keys(item.data).reduce((filtered, key) => {
           if (parameterIds.includes(key)) {
@@ -231,6 +233,21 @@ export class AppDatabase extends Dexie {
           return filtered;
         }, {} as Record<string, number | null>)
       }));
+      
+      // Debug: Check if filtering worked correctly
+      if (filteredResults.length > 0) {
+        const sampleFilteredData = filteredResults[0].data;
+        const filteredKeys = Object.keys(sampleFilteredData);
+        console.log(`[DB] Filtered data sample:`, {
+          originalKeys: Object.keys(results[0]?.data || {}).length,
+          filteredKeys: filteredKeys.length,
+          requestedParams: parameterIds,
+          actualParams: filteredKeys,
+          allParamsFound: parameterIds.every(p => filteredKeys.includes(p))
+        });
+      }
+      
+      return filteredResults;
     }
     
     return results;
