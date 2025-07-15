@@ -824,7 +824,7 @@ function HomeContent() {
       />
       
       <div className="h-screen flex flex-col">
-        <div className="container mx-auto p-8 pb-0 flex-shrink-0">
+        <div className="container mx-auto p-4 pb-0 flex-shrink-0">
           <AppHeader
           onDataClick={() => setDataManagementOpen(true)}
           onCreateChartClick={() => setCreateChartOpen(true)}
@@ -841,7 +841,7 @@ function HomeContent() {
         
         {mounted && (
           <>
-            <div className="container mx-auto px-8 flex-shrink-0">
+            <div className="container mx-auto px-4 flex-shrink-0">
               <DataSelectionBar
                 selectedDataIds={selectedDataIds}
                 selectedDataLabels={selectedDataLabels}
@@ -860,7 +860,7 @@ function HomeContent() {
               />
             </div>
             {loading || isPreloadingData ? (
-              <div className="container mx-auto p-8 flex-1">
+              <div className="container mx-auto p-4 flex-1">
                 {isPreloadingData ? (
                   <div className="max-w-2xl mx-auto">
                     <div className="text-center mb-4">
@@ -882,7 +882,7 @@ function HomeContent() {
                 )}
               </div>
             ) : charts.length > 0 ? (
-              <div className="container mx-auto px-8 pb-8 flex-1 overflow-hidden">
+              <div className="container mx-auto px-4 pb-4 flex-1 overflow-hidden">
                 {showLoadingProgress && (
                   <div className="mb-4">
                     <ChartLoadingProgress
@@ -921,7 +921,7 @@ function HomeContent() {
                 />
               </div>
             ) : (
-              <div className="container mx-auto p-8 flex-1">
+              <div className="container mx-auto p-4 flex-1">
                 <EmptyState />
               </div>
             )}

@@ -35,7 +35,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="container mx-auto p-8">
+    <div className="container mx-auto p-4">
       <div className="max-w-2xl mx-auto">
         <div className="mb-8">
           <Button
