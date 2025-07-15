@@ -194,10 +194,22 @@ export function useProgressiveChartData(
     };
   }, [config.id, config.title, selectedDataIds.join(','), initialResolution, loadDataAtResolution, scheduleUpgrade, autoUpgrade]); // Include all dependencies
 
+  // Check if we're still upgrading based on max allowed resolution
+  const isStillUpgrading = () => {
+    if (!autoUpgrade || isManualChangeRef.current) return false;
+    
+    const resolutionOrder: DataResolution[] = ['preview', 'normal', 'high', 'full'];
+    const currentIndex = resolutionOrder.indexOf(state.resolution);
+    const maxIndex = resolutionOrder.indexOf(maxAutoUpgradeResolution);
+    
+    // We're upgrading if current resolution is less than max allowed
+    return currentIndex < maxIndex;
+  };
+
   return {
     ...state,
     setResolution,
-    isUpgrading: state.resolution !== 'full' && state.resolution !== 'high' && autoUpgrade && !isManualChangeRef.current
+    isUpgrading: isStillUpgrading()
   };
 }
 
