@@ -42,7 +42,7 @@ export function ChartGrid({
   paginationEnabled = false,
   currentPage = 1,
   samplingConfig,
-  enableProgressive = false,
+  enableProgressive = true,
   enableWaterfall = false,
   waterfallDelay = 500,
   onAllChartsLoaded,
@@ -51,7 +51,7 @@ export function ChartGrid({
   globalAutoUpgrade,
   enableBatchLoading = false
 }: ChartGridProps) {
-  const ChartComponent = getDataChartComponent(enableProgressive)
+  const ChartComponent = getDataChartComponent()
   const containerRef = useRef<HTMLDivElement>(null)
   const [gridHeight, setGridHeight] = useState<string>('100%')
   const [itemHeight, setItemHeight] = useState<string>('auto')

@@ -42,7 +42,7 @@ export function WaterfallChartLoader({
   onDuplicate,
   onDelete,
   samplingConfig,
-  enableProgressive = false,
+  enableProgressive = true,
   index,
   onLoadComplete,
   shouldLoad,
@@ -57,7 +57,7 @@ export function WaterfallChartLoader({
   const hasStartedLoading = useRef(isAlreadyLoaded)
   const hasCalledLoadComplete = useRef(false)
   
-  const ChartComponent = getDataChartComponent(enableProgressive || !!globalResolution)
+  const ChartComponent = getDataChartComponent()
   
   // Reset refs when config.id changes, unless already loaded
   useEffect(() => {

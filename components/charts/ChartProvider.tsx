@@ -2,7 +2,6 @@
 
 import { ComponentType } from 'react'
 // Plotly components have been removed - using only uPlot now
-import { UplotChartWithData } from './UplotChartWithData'
 import { ProgressiveChart } from './ProgressiveChart'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { AspectRatioPreset } from '@/hooks/useChartDimensions'
@@ -35,8 +34,8 @@ export interface DataChartProps {
 
 
 // Factory function to get the appropriate data-driven chart component
-export function getDataChartComponent(progressive: boolean = false): ComponentType<DataChartProps> {
-  return progressive ? ProgressiveChart : UplotChartWithData;
+export function getDataChartComponent(): ComponentType<DataChartProps> {
+  return ProgressiveChart;
 }
 
 // Hook to get current chart engine (client-side only)
