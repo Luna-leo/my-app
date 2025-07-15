@@ -22,13 +22,7 @@ import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig, hashSamplingConfig } from '@/lib/utils/hashUtils';
 import { getSimpleWorkerPool } from '@/lib/services/simpleWorkerPool';
-
-// Database-level sampling configuration
-export const DB_SAMPLING_CONFIG = {
-  preview: 100,   // Fast initial display
-  normal: 500,    // Normal display (per dataset)
-  high: 1000,     // High resolution display
-};
+import { DB_SAMPLING_CONFIG } from '@/lib/constants/samplingConfig';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash

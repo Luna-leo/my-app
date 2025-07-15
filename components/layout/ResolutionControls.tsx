@@ -45,17 +45,17 @@ interface ResolutionControlsProps {
 const RESOLUTION_INFO: Record<DataResolution, { label: string; points: number | null; description: string }> = {
   preview: {
     label: 'Preview',
-    points: 500,
-    description: 'Fast initial display'
+    points: 100,
+    description: 'Ultra fast display'
   },
   normal: {
     label: 'Normal',
-    points: 2000,
+    points: 500,
     description: 'Balanced quality and performance'
   },
   high: {
     label: 'High',
-    points: 5000,
+    points: 1000,
     description: 'Detailed view'
   },
   full: {

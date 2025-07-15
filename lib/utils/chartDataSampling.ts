@@ -5,7 +5,11 @@
 
 import { TimeSeriesData } from '@/lib/db/schema';
 import { sampleData, SamplingOptions, DataPoint } from './dataSamplingUtils';
-
+import { 
+  PREVIEW_SAMPLING_CONFIG as PREVIEW_CONFIG,
+  DEFAULT_SAMPLING_CONFIG as DEFAULT_CONFIG,
+  HIGH_RES_SAMPLING_CONFIG as HIGH_CONFIG
+} from '@/lib/constants/samplingConfig';
 
 // Extended DataPoint type for parameter series with index
 interface IndexedDataPoint extends DataPoint {
@@ -20,29 +24,10 @@ export interface SamplingConfig {
   samplingThreshold: number; // Only sample if data exceeds this threshold
 }
 
-export const DEFAULT_SAMPLING_CONFIG: SamplingConfig = {
-  enabled: true,
-  method: 'lttb',
-  targetPoints: 500, // Match DB_SAMPLING_CONFIG.normal
-  preserveExtremes: true,
-  samplingThreshold: 1000 // Skip sampling if DB already reduced data
-};
-
-export const PREVIEW_SAMPLING_CONFIG: SamplingConfig = {
-  enabled: true,
-  method: 'nth', // Faster sampling for preview
-  targetPoints: 100, // Match DB_SAMPLING_CONFIG.preview
-  preserveExtremes: false, // Skip for speed
-  samplingThreshold: 50 // Always sample for preview
-};
-
-export const HIGH_RES_SAMPLING_CONFIG: SamplingConfig = {
-  enabled: true,
-  method: 'lttb',
-  targetPoints: 1000, // Match DB_SAMPLING_CONFIG.high
-  preserveExtremes: true,
-  samplingThreshold: 2000
-};
+// Re-export configurations from central location
+export const DEFAULT_SAMPLING_CONFIG = DEFAULT_CONFIG;
+export const PREVIEW_SAMPLING_CONFIG = PREVIEW_CONFIG;
+export const HIGH_RES_SAMPLING_CONFIG = HIGH_CONFIG;
 
 /**
  * Sample time series data while preserving all parameters

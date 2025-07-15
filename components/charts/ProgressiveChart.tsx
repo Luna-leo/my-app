@@ -115,9 +115,9 @@ function ProgressiveChartComponent({
 
   // Resolution labels and info
   const resolutionInfo: Record<DataResolution, { label: string; description: string }> = {
-    preview: { label: 'Preview', description: '500 pts - Fast initial display' },
-    normal: { label: 'Normal', description: '2,000 pts - Balanced quality' },
-    high: { label: 'High-Res', description: '5,000 pts - Detailed view' },
+    preview: { label: 'Preview', description: '100 pts - Ultra fast display' },
+    normal: { label: 'Normal', description: '500 pts - Balanced quality' },
+    high: { label: 'High-Res', description: '1,000 pts - Detailed view' },
     full: { label: 'Full', description: 'All points - Maximum detail' }
   };
 
