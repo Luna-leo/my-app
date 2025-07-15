@@ -32,6 +32,7 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
     dataStartTime?: Date;
     dataEndTime?: Date;
   } | null>(null)
+  const [autoSettingTimeRange, setAutoSettingTimeRange] = useState(false)
 
   // Helper function to format Date to local datetime-local input format
   const formatDateForInput = (date: Date | undefined): string => {
@@ -44,6 +45,45 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
     const minutes = String(d.getMinutes()).padStart(2, '0')
     const seconds = String(d.getSeconds()).padStart(2, '0')
     return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+  }
+
+  // 0:00〜翌日5:59の時間範囲を自動設定
+  const handleAutoSetTimeRange = async () => {
+    if (!metadata?.id) return
+    
+    setAutoSettingTimeRange(true)
+    try {
+      // データの実際の開始時刻を取得
+      const dataStart = calculatedDataPeriod?.dataStartTime || metadata.dataStartTime
+      if (!dataStart) {
+        setError('データの時間範囲が見つかりません')
+        return
+      }
+      
+      // 開始日の0:00:00を設定
+      const startDate = new Date(dataStart)
+      startDate.setHours(0, 0, 0, 0)
+      
+      // 翌日の5:59:59を設定
+      const endDate = new Date(startDate)
+      endDate.setDate(endDate.getDate() + 1)
+      endDate.setHours(5, 59, 59, 999)
+      
+      setFormData({
+        ...formData,
+        startTime: formatDateForInput(startDate),
+        endTime: formatDateForInput(endDate)
+      })
+      
+      console.log('[EditMetadataDialog] Auto-set time range:', {
+        startTime: startDate.toLocaleString(),
+        endTime: endDate.toLocaleString()
+      })
+    } catch (err) {
+      setError('時間範囲の設定に失敗しました')
+    } finally {
+      setAutoSettingTimeRange(false)
+    }
   }
 
   useEffect(() => {
@@ -171,11 +211,27 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
             />
           </div>
           <div className="space-y-2">
-            <div>
-              <Label>
-                時間範囲
-              </Label>
-              <p className="text-xs text-gray-500 mt-1">グラフに利用するデータ期間（未入力の場合、保存されているすべてのデータ期間を利用）</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>
+                  時間範囲
+                </Label>
+                <p className="text-xs text-gray-500 mt-1">グラフに利用するデータ期間（未入力の場合、保存されているすべてのデータ期間を利用）</p>
+              </div>
+              {(calculatedDataPeriod || metadata?.dataStartTime) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAutoSetTimeRange}
+                  disabled={autoSettingTimeRange}
+                >
+                  {autoSettingTimeRange ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : null}
+                  0:00〜翌日5:59に設定
+                </Button>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

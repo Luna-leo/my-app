@@ -306,8 +306,10 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       // If time range is specified, skip cache (for now)
       if (metadata?.startTime || metadata?.endTime) {
         console.log(`[ChartDataContext] Fetching filtered data for metadataId ${metadataId}:`, {
-          startTime: metadata.startTime,
-          endTime: metadata.endTime,
+          startTime: metadata.startTime ? new Date(metadata.startTime).toLocaleString() : 'not set',
+          endTime: metadata.endTime ? new Date(metadata.endTime).toLocaleString() : 'not set',
+          startTimeMs: metadata.startTime,
+          endTimeMs: metadata.endTime,
           parameterIds: parameterIds?.length || 'all'
         });
         // Use database-level sampling for performance

@@ -281,14 +281,77 @@ export class AppDatabase extends Dexie {
     
     // If time filtering is needed, we need to get the count within the time range
     if (options?.startTime || options?.endTime) {
+      console.log(`[DB] Time range filtering:`, {
+        startTime: options.startTime ? new Date(options.startTime).toLocaleString() : 'not set',
+        endTime: options.endTime ? new Date(options.endTime).toLocaleString() : 'not set',
+        startTimeMs: options.startTime,
+        endTimeMs: options.endTime
+      });
       const allData = await query.toArray();
+      
+      // デバッグ: 最初と最後のデータポイントを確認
+      if (allData.length > 0) {
+        console.log(`[DB] Data time range:`, {
+          firstPoint: new Date(allData[0].timestamp).toLocaleString(),
+          lastPoint: new Date(allData[allData.length - 1].timestamp).toLocaleString(),
+          firstTimestamp: allData[0].timestamp,
+          lastTimestamp: allData[allData.length - 1].timestamp,
+          dataCount: allData.length
+        });
+        
+        // デバッグ: 9:00以降のデータが存在するか確認
+        const after9am = allData.filter(item => {
+          const hour = new Date(item.timestamp).getHours();
+          return hour >= 9;
+        });
+        console.log(`[DB] Data after 9:00 AM: ${after9am.length} points`);
+        
+        if (after9am.length > 0) {
+          console.log(`[DB] Sample after 9:00:`, {
+            time: new Date(after9am[0].timestamp).toLocaleString(),
+            timestamp: after9am[0].timestamp
+          });
+        }
+      }
+      
+      // デバッグ: 時間範囲フィルタリングを詳細に確認
       const filteredData = allData.filter(item => {
+        const itemTime = new Date(item.timestamp);
+        const startTime = options.startTime ? new Date(options.startTime) : null;
+        const endTime = options.endTime ? new Date(options.endTime) : null;
+        
+        // デバッグ: 最初の10件のフィルタリング判定をログ出力
+        if (allData.indexOf(item) < 10) {
+          console.log(`[DB] Filter check for item ${allData.indexOf(item)}:`, {
+            itemTime: itemTime.toLocaleString(),
+            startTime: startTime?.toLocaleString() || 'not set',
+            endTime: endTime?.toLocaleString() || 'not set',
+            passesStart: !startTime || item.timestamp >= options.startTime,
+            passesEnd: !endTime || item.timestamp <= options.endTime
+          });
+        }
+        
         if (options.startTime && item.timestamp < options.startTime) return false;
         if (options.endTime && item.timestamp > options.endTime) return false;
         return true;
       });
       totalCount = filteredData.length;
-      console.log(`[DB] Filtered count (time range) for metadataId ${metadataId}: ${totalCount}`);
+      console.log(`[DB] Filtered count (time range) for metadataId ${metadataId}: ${totalCount} from ${allData.length} total`);
+      
+      // デバッグ: フィルタリング後のデータ範囲を確認
+      if (filteredData.length > 0) {
+        console.log(`[DB] Filtered data time range:`, {
+          firstPoint: new Date(filteredData[0].timestamp).toLocaleString(),
+          lastPoint: new Date(filteredData[filteredData.length - 1].timestamp).toLocaleString()
+        });
+        
+        // 9:00以降のデータがフィルタリング後に残っているか確認
+        const after9amFiltered = filteredData.filter(item => {
+          const hour = new Date(item.timestamp).getHours();
+          return hour >= 9;
+        });
+        console.log(`[DB] Filtered data after 9:00 AM: ${after9amFiltered.length} points`);
+      }
       
       // If no maxPoints specified or filtered data is small enough, return it directly
       if (!maxPoints || totalCount <= maxPoints) {
