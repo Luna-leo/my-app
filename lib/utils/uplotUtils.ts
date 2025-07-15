@@ -33,9 +33,9 @@ export function buildAxisOptions(
   const axis: uPlot.Axis = {
     label,
     labelSize: 14,
-    labelGap: 5,
-    size: 50,
-    gap: 5,
+    labelGap: type === 'x' ? 3 : 5, // X軸のラベルギャップを小さく
+    size: type === 'x' ? 35 : 50, // X軸のサイズを小さく
+    gap: type === 'x' ? 2 : 5, // X軸とプロットエリアの間隔を小さく
     stroke: 'rgba(0,0,0,0.6)',
     grid: {
       show: true,
@@ -140,7 +140,7 @@ export function buildUplotOptions({
     height,
     title,
     class: 'uplot-chart',
-    padding: [10, 15, 2, 10], // top, right, bottom, left
+    padding: [10, 15, 5, 10], // top, right, bottom, left
     legend: {
       show: showLegend,
       isolate: true,
