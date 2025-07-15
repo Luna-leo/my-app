@@ -509,9 +509,9 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       });
       
       // Fetch raw data (with caching)
-      // Re-enable selective column loading with improved caching
+      // TEMPORARY: Disable selective column loading until parameter ID mapping is fixed
       const fetchStartTime = performance.now();
-      const rawData = await fetchRawData(config.selectedDataIds, parameterIds);
+      const rawData = await fetchRawData(config.selectedDataIds); // Load all columns for now
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
       if (rawData.timeSeries.length === 0) {
