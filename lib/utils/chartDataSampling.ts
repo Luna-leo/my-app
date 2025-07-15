@@ -23,25 +23,25 @@ export interface SamplingConfig {
 export const DEFAULT_SAMPLING_CONFIG: SamplingConfig = {
   enabled: true,
   method: 'lttb',
-  targetPoints: 2000, // Target for each chart
+  targetPoints: 500, // Match DB_SAMPLING_CONFIG.normal
   preserveExtremes: true,
-  samplingThreshold: 3000 // Sample if data exceeds this threshold
+  samplingThreshold: 1000 // Skip sampling if DB already reduced data
 };
 
 export const PREVIEW_SAMPLING_CONFIG: SamplingConfig = {
   enabled: true,
   method: 'nth', // Faster sampling for preview
-  targetPoints: 500, // Lower resolution for quick display
+  targetPoints: 100, // Match DB_SAMPLING_CONFIG.preview
   preserveExtremes: false, // Skip for speed
-  samplingThreshold: 100 // Always sample for preview
+  samplingThreshold: 50 // Always sample for preview
 };
 
 export const HIGH_RES_SAMPLING_CONFIG: SamplingConfig = {
   enabled: true,
   method: 'lttb',
-  targetPoints: 5000, // Higher resolution for detailed view
+  targetPoints: 1000, // Match DB_SAMPLING_CONFIG.high
   preserveExtremes: true,
-  samplingThreshold: 10000
+  samplingThreshold: 2000
 };
 
 /**

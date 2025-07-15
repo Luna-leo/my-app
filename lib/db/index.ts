@@ -254,6 +254,115 @@ export class AppDatabase extends Dexie {
   }
 
   /**
+   * Get sampled time series data with database-level sampling for performance
+   * @param metadataId - The metadata ID to query
+   * @param options - Query options including sampling configuration
+   */
+  async getTimeSeriesDataSampled(
+    metadataId: number,
+    options?: {
+      startTime?: Date;
+      endTime?: Date;
+      parameterIds?: string[];
+      maxPoints?: number; // Target number of points to return (default: 500)
+    }
+  ): Promise<TimeSeriesData[]> {
+    const maxPoints = options?.maxPoints || 500;
+    console.log(`[DB] getTimeSeriesDataSampled called for metadataId ${metadataId}, maxPoints: ${maxPoints}`);
+    
+    const query = this.timeSeries.where('metadataId').equals(metadataId);
+    
+    // Get total count for this metadata ID
+    let totalCount = await query.count();
+    console.log(`[DB] Total count for metadataId ${metadataId}: ${totalCount}`);
+    
+    // If time filtering is needed, we need to get the count within the time range
+    if (options?.startTime || options?.endTime) {
+      const allData = await query.toArray();
+      const filteredData = allData.filter(item => {
+        if (options.startTime && item.timestamp < options.startTime) return false;
+        if (options.endTime && item.timestamp > options.endTime) return false;
+        return true;
+      });
+      totalCount = filteredData.length;
+      console.log(`[DB] Filtered count (time range) for metadataId ${metadataId}: ${totalCount}`);
+      
+      // If filtered data is small enough, return it directly
+      if (totalCount <= maxPoints) {
+        console.log(`[DB] Returning all ${totalCount} points (below maxPoints threshold)`);
+        return this.filterParameterIds(filteredData, options.parameterIds);
+      }
+      
+      // Sample from filtered data
+      const step = Math.max(1, Math.floor(totalCount / maxPoints));
+      const sampled: TimeSeriesData[] = [];
+      
+      console.log(`[DB] Sampling with step ${step} to get ~${maxPoints} points from ${totalCount} total`);
+      
+      for (let i = 0; i < filteredData.length; i += step) {
+        if (sampled.length >= maxPoints) break;
+        sampled.push(filteredData[i]);
+      }
+      
+      // Always include the last point
+      if (sampled.length > 0 && sampled[sampled.length - 1] !== filteredData[filteredData.length - 1]) {
+        sampled.push(filteredData[filteredData.length - 1]);
+      }
+      
+      console.log(`[DB] Sampled ${sampled.length} points from time-filtered data`);
+      return this.filterParameterIds(sampled, options.parameterIds);
+    }
+    
+    // If data is small enough, return all
+    if (totalCount <= maxPoints) {
+      console.log(`[DB] Returning all ${totalCount} points (below maxPoints threshold)`);
+      const results = await query.toArray();
+      return this.filterParameterIds(results, options?.parameterIds);
+    }
+    
+    // Calculate sampling step
+    const step = Math.max(1, Math.floor(totalCount / maxPoints));
+    console.log(`[DB] Sampling with step ${step} to get ~${maxPoints} points from ${totalCount} total`);
+    
+    // First, get all data sorted by timestamp (more reliable than offset/limit)
+    const allData = await query.sortBy('timestamp');
+    const sampled: TimeSeriesData[] = [];
+    
+    // Sample by taking every nth item
+    for (let i = 0; i < allData.length; i += step) {
+      if (sampled.length >= maxPoints) break;
+      sampled.push(allData[i]);
+    }
+    
+    // Always include the last point for better visualization
+    if (sampled.length > 0 && sampled[sampled.length - 1] !== allData[allData.length - 1]) {
+      sampled.push(allData[allData.length - 1]);
+    }
+    
+    console.log(`[DB] Sampled ${sampled.length} points from ${allData.length} total (step: ${step})`);
+    return this.filterParameterIds(sampled, options?.parameterIds);
+  }
+  
+  /**
+   * Helper method to filter parameter IDs from time series data
+   */
+  private filterParameterIds(data: TimeSeriesData[], parameterIds?: string[]): TimeSeriesData[] {
+    if (!parameterIds || parameterIds.length === 0) {
+      return data;
+    }
+    
+    return data.map(item => ({
+      ...item,
+      data: Object.keys(item.data).reduce((filtered, key) => {
+        if (parameterIds.includes(key)) {
+          filtered[key] = item.data[key];
+        }
+        return filtered;
+      }, {} as Record<string, number | null>)
+    }));
+  }
+
+  /**
    * Stream time series data in chunks for memory-efficient processing
    * @param metadataId - The metadata ID to query
    * @param options - Streaming options including chunk size and time range

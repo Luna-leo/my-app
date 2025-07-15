@@ -233,7 +233,11 @@ function ProgressiveChartComponent({
           </div>
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-muted-foreground">No data to display</p>
+            <p className="text-sm text-muted-foreground">
+              {selectedDataIds.length === 0 
+                ? "No data selected - Please select data from the Data Management dialog"
+                : "No data to display"}
+            </p>
           </div>
         )}
         {/* Overlay menu button for empty state */}

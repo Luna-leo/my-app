@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog';
 import { ChartPlotData, ChartLoadingState, ChartViewport } from '@/lib/types/chart';
-import { useChartDataContext } from '@/contexts/ChartDataContext';
+import { useChartDataContext, DB_SAMPLING_CONFIG } from '@/contexts/ChartDataContext';
 import { 
   SamplingConfig, 
   PREVIEW_SAMPLING_CONFIG, 

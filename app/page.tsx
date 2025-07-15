@@ -157,27 +157,33 @@ function HomeContent() {
       let currentSelectedDataIds: number[] = []
       
       if (startupOptions?.mode !== 'clean' && workspace.selectedDataKeys && workspace.selectedDataKeys.length > 0) {
+        console.log('[loadWorkspaceAndCharts] Loading selected data keys from workspace:', workspace.selectedDataKeys)
         setSelectedDataKeys(workspace.selectedDataKeys)
         
         // Convert data keys to IDs for backward compatibility
         const metadata = await db.getMetadataByDataKeys(workspace.selectedDataKeys)
         const ids = metadata.map(m => m.id!).filter(id => id !== undefined)
+        console.log('[loadWorkspaceAndCharts] Converted data keys to IDs:', ids)
         setSelectedDataIds(ids)
         currentSelectedDataIds = ids
       } else if (startupOptions?.mode !== 'clean') {
         // Migrate from chart-based selection if needed
+        console.log('[loadWorkspaceAndCharts] Attempting to migrate selected data from charts')
         const migratedKeys = await chartConfigService.migrateSelectedDataFromCharts(workspace.id!)
+        console.log('[loadWorkspaceAndCharts] Migrated keys:', migratedKeys)
         setSelectedDataKeys(migratedKeys)
         
         // Convert to IDs
         if (migratedKeys.length > 0) {
           const metadata = await db.getMetadataByDataKeys(migratedKeys)
           const ids = metadata.map(m => m.id!).filter(id => id !== undefined)
+          console.log('[loadWorkspaceAndCharts] Migrated IDs:', ids)
           setSelectedDataIds(ids)
           currentSelectedDataIds = ids
         }
       } else {
         // Clean start - clear selections
+        console.log('[loadWorkspaceAndCharts] Clean start mode - clearing selections')
         setSelectedDataKeys([])
         setSelectedDataIds([])
         currentSelectedDataIds = []

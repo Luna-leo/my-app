@@ -22,6 +22,13 @@ import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig, hashSamplingConfig } from '@/lib/utils/hashUtils';
 import { getSimpleWorkerPool } from '@/lib/services/simpleWorkerPool';
 
+// Database-level sampling configuration
+export const DB_SAMPLING_CONFIG = {
+  preview: 100,   // Fast initial display
+  normal: 500,    // Normal display (per dataset)
+  high: 1000,     // High resolution display
+};
+
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
   chartDataCache: Map<string, {
@@ -227,7 +234,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Fetch and cache raw data for given metadata IDs
-  const fetchRawData = async (metadataIds: number[], parameterIds?: string[]) => {
+  const fetchRawData = async (metadataIds: number[], parameterIds?: string[], maxPointsPerDataset?: number) => {
     // Handle empty data case
     if (!metadataIds || metadataIds.length === 0) {
       return {
@@ -282,8 +289,14 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           endTime: metadata.endTime,
           parameterIds: parameterIds?.length || 'all'
         });
-        const data = await db.getTimeSeriesData(metadataId, metadata.startTime, metadata.endTime, parameterIds);
-        console.log(`[ChartDataContext] Filtered data count: ${data.length}`);
+        // Use database-level sampling for performance
+        const data = await db.getTimeSeriesDataSampled(metadataId, {
+          startTime: metadata.startTime,
+          endTime: metadata.endTime,
+          parameterIds: parameterIds,
+          maxPoints: maxPointsPerDataset || DB_SAMPLING_CONFIG.normal
+        });
+        console.log(`[ChartDataContext] DB-sampled data count: ${data.length} (max: ${maxPointsPerDataset || DB_SAMPLING_CONFIG.normal})`);
         
         // Update parameter tracker even for time-filtered data
         if (data.length > 0) {
@@ -403,8 +416,15 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       }*/
       
       // No cache or first time loading
+      console.log(`[ChartDataContext] No cache for metadataId ${metadataId}, calling getTimeSeriesDataSampled with maxPoints: ${maxPointsPerDataset || DB_SAMPLING_CONFIG.normal}`);
       
-      const data = await db.getTimeSeriesData(metadataId, undefined, undefined, parameterIds);
+      // Use database-level sampling for initial data load
+      const data = await db.getTimeSeriesDataSampled(metadataId, {
+        parameterIds: parameterIds,
+        maxPoints: maxPointsPerDataset || DB_SAMPLING_CONFIG.normal
+      });
+      
+      console.log(`[ChartDataContext] getTimeSeriesDataSampled returned ${data.length} points for metadataId ${metadataId}`);
       
       // Debug: Check data structure
       if (data.length > 0) {
@@ -536,7 +556,21 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       // Fetch raw data (with caching)
       // Re-enable selective column loading with debug mode
       const fetchStartTime = performance.now();
-      const rawData = await fetchRawData(config.selectedDataIds, parameterIds); // Load only required columns
+      
+      // Determine max points based on sampling config
+      let maxPointsPerDataset = DB_SAMPLING_CONFIG.normal;
+      if (enableSampling && typeof enableSampling === 'object') {
+        if (enableSampling.targetPoints <= PREVIEW_SAMPLING_CONFIG.targetPoints) {
+          maxPointsPerDataset = DB_SAMPLING_CONFIG.preview;
+        } else if (enableSampling.targetPoints >= HIGH_RES_SAMPLING_CONFIG.targetPoints) {
+          maxPointsPerDataset = DB_SAMPLING_CONFIG.high;
+        }
+        console.log(`[ChartDataContext] Using sampling config: targetPoints=${enableSampling.targetPoints}, maxPointsPerDataset=${maxPointsPerDataset}`);
+      } else {
+        console.log(`[ChartDataContext] Using default maxPointsPerDataset=${maxPointsPerDataset} (no sampling config)`);
+      }
+      
+      const rawData = await fetchRawData(config.selectedDataIds, parameterIds, maxPointsPerDataset);
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
       if (rawData.timeSeries.length === 0) {

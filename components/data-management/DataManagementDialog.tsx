@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Database, Upload } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { CsvImportContent } from './CsvImportContent'
 import { UnifiedDataView } from './UnifiedDataView'
 
@@ -24,14 +25,21 @@ export function DataManagementDialog({
 }: DataManagementDialogProps) {
   const [activeTab, setActiveTab] = useState('data')
   const [importCompleted, setImportCompleted] = useState(false)
+  // Local state for selection - only commit on Apply
+  const [localSelectedIds, setLocalSelectedIds] = useState<number[]>(selectedDataIds)
 
-  // Reset state when dialog is closed
+  // Reset state when dialog is opened/closed
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      // When opening, sync local state with parent state
+      console.log('[DataManagementDialog] Opening with selectedDataIds:', selectedDataIds)
+      setLocalSelectedIds(selectedDataIds)
+    } else {
+      // When closing, reset states
       setImportCompleted(false)
       setActiveTab('data')
     }
-  }, [open])
+  }, [open, selectedDataIds])
 
   const handleImportComplete = () => {
     setImportCompleted(true)
@@ -41,8 +49,27 @@ export function DataManagementDialog({
     }
   }
 
+  const handleApply = () => {
+    console.log('[DataManagementDialog] Applying selection:', localSelectedIds)
+    onSelectionChange(localSelectedIds)
+    onOpenChange(false)
+  }
+
+  const handleCancel = () => {
+    console.log('[DataManagementDialog] Cancelling, reverting to original selection:', selectedDataIds)
+    setLocalSelectedIds(selectedDataIds)
+    onOpenChange(false)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(newOpen) => {
+      if (!newOpen) {
+        // If closing via ESC or backdrop click, treat as cancel
+        handleCancel()
+      } else {
+        onOpenChange(newOpen)
+      }
+    }}>
       <DialogContent className="sm:max-w-[900px] h-[92vh] flex flex-col p-0">
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>Data Management</DialogTitle>
@@ -66,8 +93,8 @@ export function DataManagementDialog({
           <div className="flex-1 overflow-hidden mt-4">
             <TabsContent value="data" className="h-full data-[state=active]:flex data-[state=active]:flex-col">
               <UnifiedDataView
-                selectedDataIds={selectedDataIds}
-                onSelectionChange={onSelectionChange}
+                selectedDataIds={localSelectedIds}
+                onSelectionChange={setLocalSelectedIds}
                 importCompleted={importCompleted}
                 onImportCompletedReset={() => setImportCompleted(false)}
               />
@@ -80,6 +107,15 @@ export function DataManagementDialog({
             </TabsContent>
           </div>
         </Tabs>
+
+        <DialogFooter className="px-6 py-4 border-t">
+          <Button variant="outline" onClick={handleCancel}>
+            Cancel
+          </Button>
+          <Button onClick={handleApply}>
+            Apply
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
