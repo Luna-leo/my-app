@@ -196,6 +196,20 @@ function UplotChartWithDataComponent({
         const unifiedXValues = Array.from(allTimestamps).sort((a, b) => a - b);
         console.log(`[UplotChartWithData] Created unified x-axis with ${unifiedXValues.length} timestamps`);
         
+        // Debug: Check the time range
+        if (unifiedXValues.length > 0) {
+          const startTime = new Date(unifiedXValues[0]);
+          const endTime = new Date(unifiedXValues[unifiedXValues.length - 1]);
+          console.log(`[UplotChartWithData] Unified time range: ${startTime.toLocaleString()} to ${endTime.toLocaleString()}`);
+          
+          // Check series data
+          plotData.series.forEach((series, idx) => {
+            const seriesStart = series.xValues.length > 0 ? new Date(series.xValues[0]) : null;
+            const seriesEnd = series.xValues.length > 0 ? new Date(series.xValues[series.xValues.length - 1]) : null;
+            console.log(`[UplotChartWithData] Series ${idx} (${series.metadataLabel}): ${seriesStart?.toLocaleString()} to ${seriesEnd?.toLocaleString()}, ${series.xValues.length} points`);
+          });
+        }
+        
         // Convert to seconds for uPlot
         const xValues = unifiedXValues.map(x => x / 1000);
         

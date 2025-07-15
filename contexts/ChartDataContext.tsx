@@ -640,6 +640,25 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       const rawData = await fetchRawData(config.selectedDataIds, parameterIds, maxPointsPerDataset);
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
+      // Debug: Check actual data time ranges from raw data
+      const dataByMetadata = new Map<number, { min: Date, max: Date, count: number }>();
+      rawData.timeSeries.forEach(item => {
+        const existing = dataByMetadata.get(item.metadataId);
+        if (!existing) {
+          dataByMetadata.set(item.metadataId, { min: item.timestamp, max: item.timestamp, count: 1 });
+        } else {
+          if (item.timestamp < existing.min) existing.min = item.timestamp;
+          if (item.timestamp > existing.max) existing.max = item.timestamp;
+          existing.count++;
+        }
+      });
+      
+      console.log('[ChartDataContext] Raw data time ranges by metadata:');
+      dataByMetadata.forEach((range, metadataId) => {
+        const metadata = rawData.metadata.find(m => m.id === metadataId);
+        console.log(`  - ${metadata?.label || `ID: ${metadataId}`}: ${range.min.toLocaleString()} to ${range.max.toLocaleString()} (${range.count} points)`);
+      });
+      
       if (rawData.timeSeries.length === 0) {
         return { plotData: null, dataViewport: null };
       }
@@ -723,6 +742,25 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
             );
             
             console.log(`[ChartDataContext] DuckDB sampling completed in ${performance.now() - samplingStartTime}ms`);
+            
+            // Debug: Check sampled data time ranges
+            const sampledDataByMetadata = new Map<number, { min: Date, max: Date, count: number }>();
+            processedTimeSeries.forEach(item => {
+              const existing = sampledDataByMetadata.get(item.metadataId);
+              if (!existing) {
+                sampledDataByMetadata.set(item.metadataId, { min: item.timestamp, max: item.timestamp, count: 1 });
+              } else {
+                if (item.timestamp < existing.min) existing.min = item.timestamp;
+                if (item.timestamp > existing.max) existing.max = item.timestamp;
+                existing.count++;
+              }
+            });
+            
+            console.log('[ChartDataContext] Sampled data time ranges by metadata:');
+            sampledDataByMetadata.forEach((range, metadataId) => {
+              const metadata = rawData.metadata.find(m => m.id === metadataId);
+              console.log(`  - ${metadata?.label || `ID: ${metadataId}`}: ${range.min.toLocaleString()} to ${range.max.toLocaleString()} (${range.count} points)`);
+            });
           } catch (error) {
             console.error('[ChartDataContext] DuckDB sampling failed, falling back to Worker:', error);
             // Fall through to Worker sampling
