@@ -164,7 +164,10 @@ function ProgressiveChartComponent({
               className="h-full"
             />
             {plotData.samplingInfo && (
-              <div className="absolute top-0 left-0 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded-br">
+              <div className={cn(
+                "absolute top-0 left-0 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded-br transition-opacity",
+                isHovered ? "opacity-100" : "opacity-0"
+              )}>
                 {plotData.samplingInfo.sampledCount.toLocaleString()} / {plotData.samplingInfo.originalCount.toLocaleString()} points
               </div>
             )}
