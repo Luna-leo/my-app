@@ -1,8 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { Metadata, ParameterInfo, TimeSeriesData, ChartConfiguration, Workspace } from './schema';
 import { generateDataKey } from '../utils/dataKeyUtils';
-import { SamplingOptions, estimateTotalPoints } from './sampling';
-import { StreamingSampler } from './streamingSampler';
 
 export class AppDatabase extends Dexie {
   metadata!: Table<Metadata>;
@@ -395,64 +393,6 @@ export class AppDatabase extends Dexie {
       // Allow event loop to process
       await new Promise(resolve => setTimeout(resolve, 0));
     }
-  }
-
-  /**
-   * Stream sampled time series data using database-level sampling
-   * @param metadataId - The metadata ID of the data to stream
-   * @param options - Sampling options
-   * @returns AsyncGenerator that yields sampled chunks of time series data
-   */
-  async *streamSampledTimeSeriesData(
-    metadataId: number,
-    options: SamplingOptions
-  ): AsyncGenerator<TimeSeriesData[], void> {
-    // Estimate total points for efficient sampling
-    const estimatedTotal = await estimateTotalPoints(this, metadataId);
-    
-    // Create streaming sampler
-    const sampler = new StreamingSampler(options, estimatedTotal);
-    
-    // Configure stream options
-    const streamOptions = {
-      chunkSize: 1000, // Process in 1000-point chunks
-      startTime: options.startTime,
-      endTime: options.endTime,
-      parameterIds: options.parameterIds
-    };
-    
-    // Stream and sample data
-    for await (const chunk of this.streamTimeSeriesData(metadataId, streamOptions)) {
-      const sampledChunk = sampler.processChunk(chunk);
-      
-      if (sampledChunk.length > 0) {
-        yield sampledChunk;
-      }
-      
-      // Check if we've collected enough samples
-      if (sampler.isComplete()) {
-        break;
-      }
-    }
-  }
-
-  /**
-   * Get sampled time series data (non-streaming version)
-   * @param metadataId - The metadata ID of the data to fetch
-   * @param options - Sampling options
-   * @returns Promise that resolves to sampled time series data
-   */
-  async getSampledTimeSeriesData(
-    metadataId: number,
-    options: SamplingOptions
-  ): Promise<TimeSeriesData[]> {
-    const sampledData: TimeSeriesData[] = [];
-    
-    for await (const chunk of this.streamSampledTimeSeriesData(metadataId, options)) {
-      sampledData.push(...chunk);
-    }
-    
-    return sampledData;
   }
 }
 
