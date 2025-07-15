@@ -655,7 +655,7 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       
       console.log('[ChartDataContext] Raw data time ranges by metadata:');
       dataByMetadata.forEach((range, metadataId) => {
-        const metadata = rawData.metadata.find(m => m.id === metadataId);
+        const metadata = rawData.metadata.get(metadataId);
         console.log(`  - ${metadata?.label || `ID: ${metadataId}`}: ${range.min.toLocaleString()} to ${range.max.toLocaleString()} (${range.count} points)`);
       });
       
@@ -758,7 +758,7 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
             
             console.log('[ChartDataContext] Sampled data time ranges by metadata:');
             sampledDataByMetadata.forEach((range, metadataId) => {
-              const metadata = rawData.metadata.find(m => m.id === metadataId);
+              const metadata = rawData.metadata.get(metadataId);
               console.log(`  - ${metadata?.label || `ID: ${metadataId}`}: ${range.min.toLocaleString()} to ${range.max.toLocaleString()} (${range.count} points)`);
             });
           } catch (error) {

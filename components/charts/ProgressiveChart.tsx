@@ -154,14 +154,42 @@ function ProgressiveChartComponent({
           <div className="relative h-full w-full">
             <UplotChart
               data={(() => {
-                // Convert timestamps to seconds if this is a time-based chart
-                const xValues = config.xAxisParameter === 'timestamp' 
-                  ? (plotData.series[0]?.xValues || []).map(x => x / 1000)
-                  : (plotData.series[0]?.xValues || []);
-                
-                const ySeriesData = plotData.series.map(s => s.yValues || []);
-                
-                return transformToUplotData(xValues, ySeriesData);
+                // For time series with different time ranges, create unified x-axis
+                if (config.xAxisParameter === 'timestamp') {
+                  // Collect all unique timestamps from all series
+                  const allTimestamps = new Set<number>();
+                  plotData.series.forEach(series => {
+                    series.xValues.forEach(x => allTimestamps.add(x));
+                  });
+                  
+                  // Sort timestamps to create unified x-axis
+                  const unifiedXValues = Array.from(allTimestamps).sort((a, b) => a - b);
+                  
+                  // Convert to seconds for uPlot
+                  const xValues = unifiedXValues.map(x => x / 1000);
+                  
+                  // Map each series to the unified x-axis
+                  const ySeriesData: number[][] = plotData.series.map(series => {
+                    // Create a map for fast lookup
+                    const valueMap = new Map<number, number>();
+                    series.xValues.forEach((x, i) => {
+                      valueMap.set(x, series.yValues[i]);
+                    });
+                    
+                    // Map values to unified x-axis, using NaN for missing data
+                    return unifiedXValues.map(x => {
+                      const value = valueMap.get(x);
+                      return value !== undefined ? value : NaN;
+                    });
+                  });
+                  
+                  return transformToUplotData(xValues, ySeriesData);
+                } else {
+                  // For non-time series (XY charts), use the original logic
+                  const xValues = plotData.series[0]?.xValues || [];
+                  const ySeriesData = plotData.series.map(s => s.yValues || []);
+                  return transformToUplotData(xValues, ySeriesData);
+                }
               })()}
               options={uplotOptions}
               className="h-full"
