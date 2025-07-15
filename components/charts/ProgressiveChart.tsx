@@ -146,7 +146,7 @@ function ProgressiveChartComponent({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <CardContent className="flex-1 p-0 min-h-[200px] relative" ref={containerRef}>
+      <CardContent className="flex-1 p-1 min-h-[200px] relative" ref={containerRef}>
         {plotData && plotData.series.length > 0 && uplotOptions ? (
           <div className="relative h-full w-full">
             <UplotChart
