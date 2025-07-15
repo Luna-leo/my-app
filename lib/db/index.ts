@@ -267,11 +267,11 @@ export class AppDatabase extends Dexie {
       startTime?: Date;
       endTime?: Date;
       parameterIds?: string[];
-      maxPoints?: number; // Target number of points to return (default: 500)
+      maxPoints?: number; // Target number of points to return (undefined = no limit)
     }
   ): Promise<{ data: TimeSeriesData[]; totalCount: number }> {
-    const maxPoints = options?.maxPoints || 500;
-    console.log(`[DB] getTimeSeriesDataSampled called for metadataId ${metadataId}, maxPoints: ${maxPoints}`);
+    const maxPoints = options?.maxPoints;
+    console.log(`[DB] getTimeSeriesDataSampled called for metadataId ${metadataId}, maxPoints: ${maxPoints || 'unlimited'}`);
     
     const query = this.timeSeries.where('metadataId').equals(metadataId);
     
@@ -290,9 +290,9 @@ export class AppDatabase extends Dexie {
       totalCount = filteredData.length;
       console.log(`[DB] Filtered count (time range) for metadataId ${metadataId}: ${totalCount}`);
       
-      // If filtered data is small enough, return it directly
-      if (totalCount <= maxPoints) {
-        console.log(`[DB] Returning all ${totalCount} points (below maxPoints threshold)`);
+      // If no maxPoints specified or filtered data is small enough, return it directly
+      if (!maxPoints || totalCount <= maxPoints) {
+        console.log(`[DB] Returning all ${totalCount} points (${!maxPoints ? 'no limit' : 'below maxPoints threshold'})`);
         return {
           data: this.filterParameterIds(filteredData, options.parameterIds),
           totalCount: totalCount
@@ -322,9 +322,9 @@ export class AppDatabase extends Dexie {
       };
     }
     
-    // If data is small enough, return all
-    if (totalCount <= maxPoints) {
-      console.log(`[DB] Returning all ${totalCount} points (below maxPoints threshold)`);
+    // If no maxPoints specified or data is small enough, return all
+    if (!maxPoints || totalCount <= maxPoints) {
+      console.log(`[DB] Returning all ${totalCount} points (${!maxPoints ? 'no limit' : 'below maxPoints threshold'})`);
       const results = await query.toArray();
       return {
         data: this.filterParameterIds(results, options?.parameterIds),

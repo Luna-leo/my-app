@@ -46,17 +46,17 @@ const RESOLUTION_INFO: Record<DataResolution, { label: string; points: number | 
   preview: {
     label: 'Preview',
     points: 100,
-    description: 'Ultra fast display'
+    description: '100 pts/dataset - Ultra fast'
   },
   normal: {
     label: 'Normal',
     points: 500,
-    description: 'Balanced quality and performance'
+    description: '500 pts/dataset - Balanced'
   },
   high: {
     label: 'High',
     points: 1000,
-    description: 'Detailed view'
+    description: '1,000 pts/dataset - Detailed'
   },
   full: {
     label: 'Full',
