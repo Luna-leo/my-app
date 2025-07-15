@@ -124,8 +124,15 @@ export class HybridDataService {
     const startTime = performance.now();
 
     try {
-      // Create table with dynamic columns based on parameters
-      const columnDefs = parameterIds.map(id => `"${id}" DOUBLE`).join(', ');
+      // Extract all available parameter IDs from the data
+      const allParameterIds = new Set<string>();
+      data.forEach(row => {
+        Object.keys(row.data).forEach(id => allParameterIds.add(id));
+      });
+      const availableParameterIds = Array.from(allParameterIds);
+      
+      // Create table with columns for all available parameters
+      const columnDefs = availableParameterIds.map(id => `"${id}" DOUBLE`).join(', ');
       const createTableSQL = `
         CREATE TABLE IF NOT EXISTS ${tableName} (
           metadata_id INTEGER,
@@ -135,7 +142,7 @@ export class HybridDataService {
       `;
       
       await this.duckDBInstance.connection.query(createTableSQL);
-      console.log(`[HybridDataService] Created table ${tableName}`);
+      console.log(`[HybridDataService] Created table ${tableName} with columns: ${availableParameterIds.join(', ')}`);
 
       // Prepare data for bulk insert
       const batchSize = 10000;
@@ -148,24 +155,24 @@ export class HybridDataService {
         const timestamps: Date[] = [];
         const columnData: { [key: string]: (number | null)[] } = {};
         
-        parameterIds.forEach(id => {
+        availableParameterIds.forEach(id => {
           columnData[id] = [];
         });
 
         batch.forEach(row => {
           timestamps.push(row.timestamp);
-          parameterIds.forEach(id => {
+          availableParameterIds.forEach(id => {
             columnData[id].push(row.data[id] ?? null);
           });
         });
 
         // Build INSERT statement
         const values = batch.map(row => {
-          const params = parameterIds.map(id => row.data[id] ?? 'NULL').join(', ');
+          const params = availableParameterIds.map(id => row.data[id] ?? 'NULL').join(', ');
           return `(${metadataId}, TIMESTAMP '${row.timestamp.toISOString()}', ${params})`;
         }).join(', ');
 
-        const columnNames = ['metadata_id', 'timestamp', ...parameterIds.map(id => `"${id}"`)].join(', ');
+        const columnNames = ['metadata_id', 'timestamp', ...availableParameterIds.map(id => `"${id}"`)].join(', ');
         const insertSQL = `
           INSERT INTO ${tableName} (${columnNames}) VALUES ${values}
         `;
