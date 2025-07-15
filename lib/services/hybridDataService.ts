@@ -206,7 +206,7 @@ export class HybridDataService {
     options?: {
       startTime?: Date;
       endTime?: Date;
-      method?: 'nth' | 'random' | 'lttb';
+      method?: 'nth' | 'nth-fast' | 'random' | 'lttb';
     }
   ): Promise<TimeSeriesData[]> {
     if (!this.duckDBInstance) {
@@ -242,8 +242,8 @@ export class HybridDataService {
              ${whereClause}
              USING SAMPLE ${targetPoints} ROWS)
           `;
-        } else if (method === 'nth') {
-          // Nth-point sampling using row numbers
+        } else if (method === 'nth-fast') {
+          // Fast nth-point sampling (original method, less accurate)
           return `
             (WITH numbered AS (
               SELECT metadata_id, timestamp, ${columns},
@@ -256,6 +256,26 @@ export class HybridDataService {
             FROM numbered
             WHERE MOD(rn, GREATEST(1, CAST(total_count / ${targetPoints} AS INTEGER))) = 0
             LIMIT ${targetPoints})
+          `;
+        } else if (method === 'nth') {
+          // Accurate nth-point sampling using systematic selection
+          return `
+            (WITH numbered AS (
+              SELECT metadata_id, timestamp, ${columns},
+                     ROW_NUMBER() OVER (ORDER BY timestamp) as rn,
+                     COUNT(*) OVER () as total_count
+              FROM ${tableName}
+              ${whereClause}
+            )
+            SELECT metadata_id, timestamp, ${columns}
+            FROM numbered
+            WHERE 
+              -- Select exactly targetPoints rows with even distribution
+              rn IN (
+                SELECT CAST(1 + (i - 1) * (total_count - 1.0) / (${targetPoints} - 1) AS INTEGER) as selected_rn
+                FROM generate_series(1, ${targetPoints}) AS s(i)
+              )
+            ORDER BY timestamp)
           `;
         } else {
           // For LTTB, we'll need a more complex implementation
@@ -301,7 +321,16 @@ export class HybridDataService {
       });
 
       const duration = performance.now() - startTime;
+      
+      // Log detailed sampling results
+      const pointsPerMetadata: { [key: number]: number } = {};
+      data.forEach(point => {
+        pointsPerMetadata[point.metadataId] = (pointsPerMetadata[point.metadataId] || 0) + 1;
+      });
+      
       console.log(`[HybridDataService] Sampled ${data.length} points in ${duration.toFixed(2)}ms`);
+      console.log(`[HybridDataService] Target: ${targetPoints} points per dataset`);
+      console.log(`[HybridDataService] Actual points per metadata:`, pointsPerMetadata);
 
       return data;
 
