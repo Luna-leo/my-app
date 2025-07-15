@@ -183,36 +183,61 @@ function UplotChartWithDataComponent({
     try {
       console.log('[UplotChartWithData] Transforming data for', config.title, plotData)
       
-      // For uPlot, all series must share the same x values
-      // Use the first series as the reference for x values
-      const firstSeries = plotData.series[0]
-      if (!firstSeries || firstSeries.xValues.length === 0) {
-        console.warn('[UplotChartWithData] No data in first series')
-        return null
+      // For time series with different time ranges, we need to handle each series separately
+      // and create a combined view
+      if (config.xAxisParameter === 'timestamp') {
+        // Collect all unique timestamps from all series
+        const allTimestamps = new Set<number>();
+        plotData.series.forEach(series => {
+          series.xValues.forEach(x => allTimestamps.add(x));
+        });
+        
+        // Sort timestamps to create unified x-axis
+        const unifiedXValues = Array.from(allTimestamps).sort((a, b) => a - b);
+        console.log(`[UplotChartWithData] Created unified x-axis with ${unifiedXValues.length} timestamps`);
+        
+        // Convert to seconds for uPlot
+        const xValues = unifiedXValues.map(x => x / 1000);
+        
+        // Map each series to the unified x-axis
+        const ySeriesData: number[][] = plotData.series.map(series => {
+          // Create a map for fast lookup
+          const valueMap = new Map<number, number>();
+          series.xValues.forEach((x, i) => {
+            valueMap.set(x, series.yValues[i]);
+          });
+          
+          // Map values to unified x-axis, using NaN for missing data
+          return unifiedXValues.map(x => {
+            const value = valueMap.get(x);
+            return value !== undefined ? value : NaN;
+          });
+        });
+        
+        const uplotData = transformToUplotData(xValues, ySeriesData);
+        console.log('[UplotChartWithData] Transformed unified data:', {
+          xLength: xValues.length,
+          seriesCount: ySeriesData.length,
+          sample: uplotData[0]?.slice(0, 5)
+        });
+        
+        return uplotData;
+      } else {
+        // For non-time series (XY charts), use the original logic
+        const firstSeries = plotData.series[0];
+        if (!firstSeries || firstSeries.xValues.length === 0) {
+          console.warn('[UplotChartWithData] No data in first series');
+          return null;
+        }
+        
+        const xValues = firstSeries.xValues;
+        const ySeriesData = plotData.series.map(series => series.yValues);
+        
+        const uplotData = transformToUplotData(xValues, ySeriesData);
+        console.log('[UplotChartWithData] Transformed XY data:', uplotData);
+        
+        return uplotData;
       }
-      
-      // Build x values array (convert timestamps to seconds for uPlot)
-      const xValues: number[] = firstSeries.xValues.map(x => 
-        config.xAxisParameter === 'timestamp' ? x / 1000 : x
-      )
-      
-      // Build y values arrays for each series
-      const ySeriesData: number[][] = plotData.series.map(series => {
-        // Create y values array with same length as x values
-        // If series has different x values, we need to interpolate or use null
-        return series.yValues
-      })
-      
-      // Check if we have valid data
-      if (xValues.length === 0) {
-        console.warn('[UplotChartWithData] No x values found')
-        return null
-      }
-      
-      const uplotData = transformToUplotData(xValues, ySeriesData)
-      console.log('[UplotChartWithData] Transformed data:', uplotData)
-      
-      return uplotData
     } catch (err) {
       console.error('[UplotChartWithData] Error transforming data:', err)
       setError(UPLOT_ERROR_MESSAGES.INVALID_DATA)

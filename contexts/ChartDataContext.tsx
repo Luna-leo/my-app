@@ -834,6 +834,21 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
 
         const combinedYRange = { min: combinedYMin, max: combinedYMax };
 
+        // Calculate overall x range from all series
+        let overallXMin = Number.POSITIVE_INFINITY;
+        let overallXMax = Number.NEGATIVE_INFINITY;
+        
+        timeChartData.series.forEach(s => {
+          if (s.timestamps.length > 0) {
+            overallXMin = Math.min(overallXMin, s.timestamps[0]);
+            overallXMax = Math.max(overallXMax, s.timestamps[s.timestamps.length - 1]);
+          }
+        });
+        
+        const overallXRange = overallXMin < overallXMax 
+          ? { min: overallXMin, max: overallXMax }
+          : { min: 0, max: 1 };
+
         chartData = {
           xParameterInfo: null,
           series: timeChartData.series.map(s => {
@@ -845,7 +860,7 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
               parameterInfo: s.parameterInfo,
               xValues: s.timestamps,
               yValues: s.values.map(v => v ?? NaN),
-              xRange,
+              xRange: overallXRange, // Use overall range instead of individual range
               yRange: combinedYRange,
             };
           }),
