@@ -22,6 +22,7 @@ interface LazyChartProps {
   samplingConfig?: SamplingConfig
   globalResolution?: DataResolution
   globalAutoUpgrade?: boolean
+  maxAutoUpgradeResolution?: DataResolution
 }
 
 export function LazyChart({
@@ -36,7 +37,8 @@ export function LazyChart({
   rootMargin = '100px',
   samplingConfig,
   globalResolution,
-  globalAutoUpgrade
+  globalAutoUpgrade,
+  maxAutoUpgradeResolution
 }: LazyChartProps) {
   const [hasBeenVisible, setHasBeenVisible] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -82,6 +84,7 @@ export function LazyChart({
           samplingConfig={samplingConfig}
           globalResolution={globalResolution}
           globalAutoUpgrade={globalAutoUpgrade}
+          maxAutoUpgradeResolution={maxAutoUpgradeResolution}
         />
       ) : (
         <ChartLoadingState

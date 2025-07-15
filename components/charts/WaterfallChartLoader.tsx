@@ -28,6 +28,7 @@ interface WaterfallChartLoaderProps {
   globalResolution?: DataResolution
   globalAutoUpgrade?: boolean
   isAlreadyLoaded?: boolean
+  maxAutoUpgradeResolution?: DataResolution
 }
 
 type LoadingStatus = 'pending' | 'loading' | 'loaded' | 'error'
@@ -48,7 +49,8 @@ export function WaterfallChartLoader({
   showSkeleton = true,
   globalResolution,
   globalAutoUpgrade,
-  isAlreadyLoaded = false
+  isAlreadyLoaded = false,
+  maxAutoUpgradeResolution
 }: WaterfallChartLoaderProps) {
   const [status, setStatus] = useState<LoadingStatus>(isAlreadyLoaded ? 'loaded' : 'pending')
   const [error, setError] = useState<string | null>(null)
@@ -167,6 +169,7 @@ export function WaterfallChartLoader({
               globalResolution={globalResolution}
               globalAutoUpgrade={globalAutoUpgrade}
               enableProgressive={enableProgressive}
+              maxAutoUpgradeResolution={maxAutoUpgradeResolution}
             />
             
           </div>

@@ -11,8 +11,10 @@ import {
   calculateDataRange,
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
-import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache, samplingCache } from '@/lib/services/dataCache';
-import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, SamplingConfig, getMemoryAwareSamplingConfig } from '@/lib/utils/chartDataSampling';
+import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache } from '@/lib/services/dataCache';
+import { hierarchicalSamplingCache } from '@/lib/services/hierarchicalSamplingCache';
+import { incrementalSample } from '@/lib/utils/incrementalSampling';
+import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, SamplingConfig, getMemoryAwareSamplingConfig, PREVIEW_SAMPLING_CONFIG, HIGH_RES_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig, hashSamplingConfig } from '@/lib/utils/hashUtils';
 
@@ -195,7 +197,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         }));
       } else if (stats.pressure === 'high') {
         console.warn('[Memory Monitor] High memory pressure detected, clearing sampling cache');
-        samplingCache.clear();
+        hierarchicalSamplingCache.clear();
         // Clear half of in-memory cache
         setState(prev => {
           const newCache = new Map(prev.chartDataCache);
@@ -424,33 +426,54 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           ? getMemoryAwareSamplingConfig(rawData.timeSeries.length, currentMemoryMB)
           : { ...enableSampling, enabled: true };
         
-        // Check shared sampling cache first
-        const samplingCacheKey = getSamplingCacheKey(config.selectedDataIds, samplingConfig);
-        const cachedSampledData = samplingCache.get<TimeSeriesData[]>(samplingCacheKey);
+        // Check hierarchical sampling cache first
+        const cachedSampledData = hierarchicalSamplingCache.get(config.selectedDataIds, samplingConfig);
         
         if (cachedSampledData) {
           processedTimeSeries = cachedSampledData;
-          console.log(`[ChartDataContext] Sampling cache hit for "${config.title}" (${performance.now() - samplingStartTime}ms)`);
+          console.log(`[ChartDataContext] Hierarchical cache hit for "${config.title}" (${performance.now() - samplingStartTime}ms)`);
         } else {
+          // Try to find existing lower resolution data for incremental sampling
+          const existingData = hierarchicalSamplingCache.getBestAvailableResolution(
+            config.selectedDataIds, 
+            samplingConfig.targetPoints
+          );
+          
           // Use the first Y-axis parameter for sampling to ensure consistency
           const samplingParameter = config.yAxisParameters.length > 0 ? config.yAxisParameters[0] : undefined;
           
-          // Use per-metadata sampling when multiple series are present
-          if (config.selectedDataIds.length > 1) {
-            processedTimeSeries = sampleTimeSeriesDataByMetadata(
-              rawData.dataByMetadata,
+          if (existingData && existingData.data.length > 0) {
+            // Use incremental sampling to generate higher resolution data
+            console.log(`[ChartDataContext] Using incremental sampling from ${existingData.config.targetPoints} to ${samplingConfig.targetPoints} points`);
+            
+            const incrementalResult = incrementalSample(
+              rawData.timeSeries,
+              existingData.data,
+              existingData.config,
               samplingConfig,
               samplingParameter
             );
+            
+            processedTimeSeries = incrementalResult.data;
+            console.log(`[ChartDataContext] Incremental sampling completed: ${incrementalResult.reusedPoints} reused, ${incrementalResult.newPoints} new points`);
           } else {
-            // Single series - use regular sampling
-            processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+            // No existing data, perform full sampling
+            if (config.selectedDataIds.length > 1) {
+              processedTimeSeries = sampleTimeSeriesDataByMetadata(
+                rawData.dataByMetadata,
+                samplingConfig,
+                samplingParameter
+              );
+            } else {
+              // Single series - use regular sampling
+              processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+            }
+            
+            console.log(`[ChartDataContext] Full sampling for "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
           }
           
-          console.log(`[ChartDataContext] Sampling for "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
-          
-          // Cache the sampled data for reuse by other charts
-          samplingCache.set(samplingCacheKey, processedTimeSeries);
+          // Cache the sampled data for reuse by other charts and resolutions
+          hierarchicalSamplingCache.set(config.selectedDataIds, samplingConfig, processedTimeSeries);
         }
         
         // Track sampling info
@@ -696,7 +719,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     // Also clear sampling cache entries related to this chart
     // Note: This is a bit tricky as sampling cache uses metadata IDs, not chart IDs
     // For now, we'll clear the entire sampling cache on chart deletion to be safe
-    samplingCache.clear();
+    hierarchicalSamplingCache.clear();
   };
 
 

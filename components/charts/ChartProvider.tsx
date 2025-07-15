@@ -30,6 +30,7 @@ export interface DataChartProps {
   enableProgressive?: boolean
   globalResolution?: DataResolution
   globalAutoUpgrade?: boolean
+  maxAutoUpgradeResolution?: DataResolution
 }
 
 

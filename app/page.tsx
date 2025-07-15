@@ -90,7 +90,7 @@ function HomeContent() {
   const totalPages = Math.ceil(charts.length / chartsPerPage)
   const paginationEnabled = layoutOption?.paginationEnabled ?? false
   
-  const loadWorkspaceAndCharts = async (startupOptions?: { mode?: 'clean' | 'restore', workspaceId?: string }) => {
+  const loadWorkspaceAndCharts = useCallback(async (startupOptions?: { mode?: 'clean' | 'restore', workspaceId?: string }) => {
     // Don't check isInitializingRef here - let the caller handle it
     console.log('[loadWorkspaceAndCharts] Starting...')
     
@@ -269,7 +269,7 @@ function HomeContent() {
       // Don't reset isInitializingRef here - let the caller handle it
       console.log('[loadWorkspaceAndCharts] Cleanup complete')
     }
-  }
+  }, [setLoading, setWorkspaceId, setWorkspaceName, setCurrentWorkspace, setSelectedDataKeys, setSelectedDataIds, setIsPreloadingData, setPreloadProgress, setShowLoadingProgress, setCharts, preloadChartData, clearCache, currentPage, layoutOption, paginationEnabled])
   
   useEffect(() => {
     console.log('[Page] useEffect triggered, searchParams:', searchParams?.toString())
@@ -422,7 +422,7 @@ function HomeContent() {
     initializeApp()
     
     // No cleanup needed
-  }, [searchParams]) // Only re-run if searchParams change
+  }, [searchParams, loadWorkspaceAndCharts, mounted]) // Only re-run if searchParams change
 
   // Fetch labels and colors when selectedDataIds change
   useEffect(() => {

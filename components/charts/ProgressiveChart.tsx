@@ -36,6 +36,7 @@ interface ProgressiveChartProps {
   onDataLoaded?: () => void
   globalResolution?: DataResolution
   globalAutoUpgrade?: boolean
+  maxAutoUpgradeResolution?: DataResolution
 }
 
 function ProgressiveChartComponent({
@@ -48,7 +49,8 @@ function ProgressiveChartComponent({
   onDelete,
   enableProgressive = true,
   globalResolution,
-  globalAutoUpgrade = true
+  globalAutoUpgrade = true,
+  maxAutoUpgradeResolution
 }: ProgressiveChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isHovered, setIsHovered] = useState(false)
@@ -63,7 +65,8 @@ function ProgressiveChartComponent({
   } = useProgressiveChartData(config, selectedDataIds, {
     initialResolution: globalResolution || (enableProgressive ? 'preview' : 'normal'),
     autoUpgrade: globalResolution ? false : (enableProgressive && globalAutoUpgrade),
-    upgradeDelay: 1000
+    upgradeDelay: 1000,
+    maxAutoUpgradeResolution
   });
 
   // Update resolution when global resolution changes

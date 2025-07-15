@@ -250,6 +250,24 @@ export function ChartGrid({
   // Determine aspect ratio: use dynamic for fixed layouts, default for responsive
   const aspectRatio = layoutOption ? dynamicAspectRatio : 1.5
   
+  // Calculate maximum auto-upgrade resolution based on chart count
+  const calculateMaxAutoUpgradeResolution = useCallback((): DataResolution => {
+    const chartCount = visibleCharts.length;
+    
+    // For 16 or more charts (4x4 grid), limit to 'normal'
+    if (chartCount >= 16) {
+      return 'normal';
+    }
+    // For 9-15 charts (3x3 to 3x5), also limit to 'normal' for better performance
+    if (chartCount >= 9) {
+      return 'normal';
+    }
+    // For 8 or fewer charts, allow up to 'high'
+    return 'high';
+  }, [visibleCharts.length]);
+  
+  const maxAutoUpgradeResolution = calculateMaxAutoUpgradeResolution();
+  
   // Check if all visible charts are loaded (for waterfall mode)
   useEffect(() => {
     if (enableWaterfall && visibleCharts.length > 0 && onAllChartsLoaded) {
@@ -288,6 +306,7 @@ export function ChartGrid({
                 shouldLoad={shouldLoad}
                 globalResolution={globalResolution}
                 globalAutoUpgrade={globalAutoUpgrade}
+                maxAutoUpgradeResolution={maxAutoUpgradeResolution}
                 showSkeleton={true}
                 isAlreadyLoaded={isAlreadyLoaded}
               />
@@ -314,6 +333,7 @@ export function ChartGrid({
                   onDelete={() => onDelete(chart.id)}
                   samplingConfig={samplingConfig}
                   enableProgressive={enableProgressive}
+                  maxAutoUpgradeResolution={maxAutoUpgradeResolution}
                 />
               </div>
             )
@@ -332,6 +352,7 @@ export function ChartGrid({
                   samplingConfig={samplingConfig}
                   globalResolution={globalResolution}
                   globalAutoUpgrade={globalAutoUpgrade}
+                  maxAutoUpgradeResolution={maxAutoUpgradeResolution}
                 />
               </div>
             )

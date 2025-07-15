@@ -23,6 +23,7 @@ interface UseProgressiveChartDataOptions {
   initialResolution?: DataResolution;
   autoUpgrade?: boolean;
   upgradeDelay?: number;
+  maxAutoUpgradeResolution?: DataResolution; // Maximum resolution for auto-upgrade
   onResolutionChange?: (resolution: DataResolution) => void;
 }
 
@@ -42,6 +43,7 @@ export function useProgressiveChartData(
     initialResolution = 'preview',
     autoUpgrade = true,
     upgradeDelay = 1000,
+    maxAutoUpgradeResolution = 'high', // Default to 'high' for backward compatibility
     onResolutionChange
   } = options;
 
@@ -125,22 +127,24 @@ export function useProgressiveChartData(
 
     const resolutionOrder: DataResolution[] = ['preview', 'normal', 'high'];
     const currentIndex = resolutionOrder.indexOf(fromResolution);
+    const maxIndex = resolutionOrder.indexOf(maxAutoUpgradeResolution);
     
-    if (currentIndex < resolutionOrder.length - 1) {
+    // Don't upgrade beyond the maximum allowed resolution
+    if (currentIndex < resolutionOrder.length - 1 && currentIndex < maxIndex) {
       const nextResolution = resolutionOrder[currentIndex + 1];
       
       upgradeTimeoutRef.current = setTimeout(() => {
         if (isMountedRef.current) {
           loadDataAtResolution(nextResolution).then(() => {
-            // Schedule next upgrade if not at highest resolution
-            if (nextResolution !== 'high') {
+            // Schedule next upgrade if not at maximum allowed resolution
+            if (nextResolution !== maxAutoUpgradeResolution) {
               scheduleUpgrade(nextResolution);
             }
           });
         }
       }, upgradeDelay);
     }
-  }, [autoUpgrade, upgradeDelay, loadDataAtResolution]);
+  }, [autoUpgrade, upgradeDelay, loadDataAtResolution, maxAutoUpgradeResolution]);
 
   // Manual resolution change
   const setResolution = useCallback((resolution: DataResolution) => {
@@ -168,8 +172,12 @@ export function useProgressiveChartData(
       try {
         await loadDataAtResolution(initialResolution);
         
-        // Schedule upgrades if enabled
-        if (autoUpgrade && initialResolution !== 'high') {
+        // Schedule upgrades if enabled and not already at max resolution
+        const resolutionOrder: DataResolution[] = ['preview', 'normal', 'high'];
+        const initialIndex = resolutionOrder.indexOf(initialResolution);
+        const maxIndex = resolutionOrder.indexOf(maxAutoUpgradeResolution);
+        
+        if (autoUpgrade && initialIndex < maxIndex) {
           scheduleUpgrade(initialResolution);
         }
       } catch (error) {
