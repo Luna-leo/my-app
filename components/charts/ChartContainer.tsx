@@ -29,7 +29,7 @@ export function ChartContainer({
   
   return (
     <Card 
-      className={cn("h-full flex flex-col border-0 relative", className)}
+      className={cn("h-full flex flex-col border border-gray-200 dark:border-gray-700 rounded-none shadow-none relative", className)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

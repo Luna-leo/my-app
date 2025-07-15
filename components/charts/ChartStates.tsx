@@ -13,7 +13,7 @@ interface ChartLoadingStateProps {
 
 export function ChartLoadingState({ title, progress, className }: ChartLoadingStateProps) {
   return (
-    <Card className={cn("h-full", className)}>
+    <Card className={cn("h-full rounded-none shadow-none border border-gray-200 dark:border-gray-700", className)}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription className="animate-pulse">Loading chart data...</CardDescription>
@@ -54,7 +54,7 @@ export function ChartErrorState({ title, error, className }: ChartErrorStateProp
   // If title is provided, render as a full card (for standalone use)
   if (title) {
     return (
-      <Card className={className}>
+      <Card className={cn("rounded-none shadow-none border border-gray-200 dark:border-gray-700", className)}>
         <CardHeader>
           <CardTitle>{title}</CardTitle>
           <CardDescription>Error loading chart</CardDescription>
@@ -94,7 +94,7 @@ export function ChartEmptyState({ title, className }: ChartEmptyStateProps) {
   // If title is provided, render as a full card (for standalone use)
   if (title) {
     return (
-      <Card className={className}>
+      <Card className={cn("rounded-none shadow-none border border-gray-200 dark:border-gray-700", className)}>
         <CardHeader>
           <CardTitle>{title}</CardTitle>
           <CardDescription>No data available</CardDescription>

@@ -125,7 +125,7 @@ function ProgressiveChartComponent({
 
   if (loadingState.error) {
     return (
-      <Card className={cn("h-full flex flex-col border-0", className)}>
+      <Card className={cn("h-full flex flex-col border border-gray-200 dark:border-gray-700 rounded-none shadow-none", className)}>
         <CardContent className="flex-1 flex items-center justify-center p-0">
           <div className="text-center">
             <p className="text-sm text-muted-foreground mb-2">Failed to load chart</p>
@@ -142,7 +142,7 @@ function ProgressiveChartComponent({
 
   return (
     <Card 
-      className={cn("h-full flex flex-col border-0 relative", className)}
+      className={cn("h-full flex flex-col border border-gray-200 dark:border-gray-700 rounded-none shadow-none relative", className)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

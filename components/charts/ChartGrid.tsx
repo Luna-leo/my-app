@@ -155,7 +155,7 @@ export function ChartGrid({
       if (!container || !container.parentElement) return
       
       const parentHeight = container.parentElement.clientHeight
-      const gridGap = 16 // gap-4
+      const gridGap = 0 // gap-0
       const totalGaps = (layoutOption.rows - 1) * gridGap
       const rowHeight = (parentHeight - totalGaps) / layoutOption.rows
       const totalHeight = rowHeight * layoutOption.rows + totalGaps
@@ -189,9 +189,9 @@ export function ChartGrid({
   const dynamicAspectRatio = useDynamicGridAspectRatio({
     layoutOption: layoutOption || null,
     containerRef: containerRef as RefObject<HTMLElement>,
-    gap: 16,
+    gap: 0,
     minChartHeight: getMinChartHeight(layoutOption?.rows || 1),
-    cardPadding: 52 // Card vertical padding: py-3(24px) + header(12px) + content(12px) + inner div(4px)
+    cardPadding: 0 // No padding with p-0
   })
 
   // Create a mapping for all possible grid layouts to ensure Tailwind includes them
@@ -263,7 +263,7 @@ export function ChartGrid({
   return (
     <div 
       ref={containerRef} 
-      className={cn('grid gap-4', getGridClassName())}
+      className={cn('grid gap-0', getGridClassName())}
       style={{ height: gridHeight }}
     >
       {visibleCharts.map((chart, index) => {
