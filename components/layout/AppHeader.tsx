@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { LineChart, Download, FolderOpen, Settings, Plus, Save, RefreshCw } from 'lucide-react'
+import { LineChart, Download, FolderOpen, Settings, Plus, Save } from 'lucide-react'
 import { DataButton } from './DataButton'
 import {
   DropdownMenu,
@@ -16,10 +16,8 @@ interface AppHeaderProps {
   onImportWorkspaceClick: () => void
   onSaveSessionClick: () => void
   onLoadSessionClick: () => void
-  onRedrawChartsClick?: () => void
   isCreateChartDisabled: boolean
   isExportDisabled: boolean
-  isRedrawChartsDisabled?: boolean
   workspaceName?: string
   hasDataOrCharts?: boolean
 }
@@ -31,10 +29,8 @@ export function AppHeader({
   onImportWorkspaceClick,
   onSaveSessionClick,
   onLoadSessionClick,
-  onRedrawChartsClick,
   isCreateChartDisabled,
   isExportDisabled,
-  isRedrawChartsDisabled = false,
   workspaceName,
   hasDataOrCharts = false
 }: AppHeaderProps) {
@@ -67,16 +63,6 @@ export function AppHeader({
           <LineChart className="mr-2 h-4 w-4" />
           Chart
         </Button>
-        {onRedrawChartsClick && (
-          <Button 
-            onClick={onRedrawChartsClick} 
-            variant="outline"
-            disabled={isRedrawChartsDisabled}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Redraw Charts
-          </Button>
-        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline">

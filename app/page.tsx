@@ -597,24 +597,6 @@ function HomeContent() {
     setDeleteConfirmation({ open: false, chartId: null })
   }
 
-  const handleRedrawCharts = async () => {
-    console.log('[Page] Redrawing all charts')
-    
-    // Clear all chart caches
-    clearCache()
-    
-    // Reset waterfall loading state
-    setWaterfallLoadedCharts(0)
-    const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
-    const startIndex = paginationEnabled && layoutOption ? (currentPage - 1) * chartsPerPage : 0
-    const visibleChartCount = Math.min(chartsPerPage, Math.max(0, charts.length - startIndex))
-    setTotalChartsToLoad(visibleChartCount)
-    setShowLoadingProgress(true)
-    
-    // Force re-render by updating a key or state
-    // This will cause ChartGrid to re-render and reload all charts
-    setCharts(prevCharts => [...prevCharts])
-  }
 
   const handleLayoutChange = (layout: LayoutOption | null) => {
     setLayoutOption(layout)
@@ -851,10 +833,8 @@ function HomeContent() {
           onImportWorkspaceClick={handleImportWorkspace}
           onSaveSessionClick={() => setShowSaveSessionDialog(true)}
           onLoadSessionClick={() => setShowWorkspaceListDialog(true)}
-          onRedrawChartsClick={handleRedrawCharts}
           isCreateChartDisabled={selectedDataIds.length === 0}
           isExportDisabled={charts.length === 0}
-          isRedrawChartsDisabled={charts.length === 0 || selectedDataIds.length === 0}
           workspaceName={workspaceName}
           hasDataOrCharts={selectedDataIds.length > 0 || charts.length > 0}
         />
