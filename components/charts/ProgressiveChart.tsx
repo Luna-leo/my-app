@@ -1,13 +1,13 @@
 'use client'
 
-import { useRef, memo, useEffect } from 'react'
+import { useRef, memo, useEffect, useState } from 'react'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { useProgressiveChartData, DataResolution } from '@/hooks/useProgressiveChartData'
 import { UplotChart } from './UplotChart'
 import { ChartLoadingState } from './ChartStates'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Trash2, Copy, Edit, Loader2, ChevronDown } from 'lucide-react'
+import { Trash2, Copy, Edit, Loader2, MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buildUplotOptions, transformToUplotData } from '@/lib/utils/uplotUtils'
 import { AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
@@ -17,6 +17,11 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu'
 
 interface ProgressiveChartProps {
@@ -46,6 +51,7 @@ function ProgressiveChartComponent({
   globalAutoUpgrade = true
 }: ProgressiveChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [isHovered, setIsHovered] = useState(false)
   
   const {
     plotData,
@@ -119,11 +125,8 @@ function ProgressiveChartComponent({
 
   if (loadingState.error) {
     return (
-      <Card className={cn("h-full flex flex-col", className)}>
-        <div className="flex items-center justify-between p-2 border-b">
-          <h3 className="font-medium truncate flex-1">{config.title}</h3>
-        </div>
-        <CardContent className="flex-1 flex items-center justify-center">
+      <Card className={cn("h-full flex flex-col border-0", className)}>
+        <CardContent className="flex-1 flex items-center justify-center p-0">
           <div className="text-center">
             <p className="text-sm text-muted-foreground mb-2">Failed to load chart</p>
             <p className="text-xs text-destructive">{loadingState.error}</p>
@@ -138,58 +141,12 @@ function ProgressiveChartComponent({
   }
 
   return (
-    <Card className={cn("h-full flex flex-col", className)}>
-      <div className="flex items-center justify-between p-2 border-b">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <h3 className="font-medium truncate">{config.title}</h3>
-          {enableProgressive && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="h-7 text-xs gap-1"
-                  disabled={!!globalResolution}
-                >
-                  {isUpgrading ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : null}
-                  {resolutionInfo[resolution].label}
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuRadioGroup value={resolution} onValueChange={handleResolutionChange}>
-                  {Object.entries(resolutionInfo).map(([key, info]) => (
-                    <DropdownMenuRadioItem key={key} value={key} className="flex flex-col items-start py-2">
-                      <span className="font-medium">{info.label}</span>
-                      <span className="text-xs text-muted-foreground">{info.description}</span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          {onEdit && (
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}>
-              <Edit className="h-4 w-4" />
-            </Button>
-          )}
-          {onDuplicate && (
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onDuplicate}>
-              <Copy className="h-4 w-4" />
-            </Button>
-          )}
-          {onDelete && (
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onDelete}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </div>
-      <CardContent className="flex-1 p-2 min-h-[200px]" ref={containerRef}>
+    <Card 
+      className={cn("h-full flex flex-col border-0 relative", className)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <CardContent className="flex-1 p-0 min-h-[200px] relative" ref={containerRef}>
         {plotData && plotData.series.length > 0 && uplotOptions ? (
           <div className="relative h-full w-full">
             <UplotChart
@@ -207,15 +164,108 @@ function ProgressiveChartComponent({
               className="h-full"
             />
             {plotData.samplingInfo && (
-              <div className="absolute top-0 right-0 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded-bl">
+              <div className="absolute top-0 left-0 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded-br">
                 {plotData.samplingInfo.sampledCount.toLocaleString()} / {plotData.samplingInfo.originalCount.toLocaleString()} points
               </div>
             )}
+            {/* Overlay menu button */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "absolute top-2 right-2 h-8 w-8 transition-opacity",
+                    isHovered ? "opacity-100" : "opacity-30 hover:opacity-100"
+                  )}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {enableProgressive && !globalResolution && (
+                  <>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        {isUpgrading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Resolution: {resolutionInfo[resolution].label}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuRadioGroup value={resolution} onValueChange={handleResolutionChange}>
+                          {Object.entries(resolutionInfo).map(([key, info]) => (
+                            <DropdownMenuRadioItem key={key} value={key} className="flex flex-col items-start py-2">
+                              <span className="font-medium">{info.label}</span>
+                              <span className="text-xs text-muted-foreground">{info.description}</span>
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                {onEdit && (
+                  <DropdownMenuItem onClick={onEdit}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {onDuplicate && (
+                  <DropdownMenuItem onClick={onDuplicate}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Duplicate
+                  </DropdownMenuItem>
+                )}
+                {onDelete && (
+                  <DropdownMenuItem onClick={onDelete} className="text-destructive">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-muted-foreground">No data to display</p>
           </div>
+        )}
+        {/* Overlay menu button for empty state */}
+        {(!plotData || plotData.series.length === 0) && (onEdit || onDuplicate || onDelete) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "absolute top-2 right-2 h-8 w-8 transition-opacity",
+                  isHovered ? "opacity-100" : "opacity-30 hover:opacity-100"
+                )}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onEdit && (
+                <DropdownMenuItem onClick={onEdit}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+              )}
+              {onDuplicate && (
+                <DropdownMenuItem onClick={onDuplicate}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Duplicate
+                </DropdownMenuItem>
+              )}
+              {onDelete && (
+                <DropdownMenuItem onClick={onDelete} className="text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </CardContent>
     </Card>

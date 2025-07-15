@@ -424,10 +424,6 @@ function UplotChartWithDataComponent({
   if (loadingState.error || error) {
     return (
       <ChartContainer
-        title={config.title}
-        chartType={config.chartType}
-        seriesCount={0}
-        pointCount={0}
         className={cn("h-full", className)}
         onEdit={onEdit}
         onDuplicate={onDuplicate}
@@ -456,10 +452,6 @@ function UplotChartWithDataComponent({
     })
     return (
       <ChartContainer
-        title={config.title}
-        chartType={config.chartType}
-        seriesCount={0}
-        pointCount={0}
         className={cn("h-full", className)}
         onEdit={onEdit}
         onDuplicate={onDuplicate}
@@ -480,10 +472,6 @@ function UplotChartWithDataComponent({
   
   return (
     <ChartContainer
-      title={config.title}
-      chartType={config.chartType}
-      seriesCount={plotData.series.length}
-      pointCount={totalPoints}
       className={cn("h-full", className)}
       onEdit={onEdit}
       onDuplicate={onDuplicate}
