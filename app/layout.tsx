@@ -16,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <ChartDataProvider>
+        <ChartDataProvider useDuckDB={true}>
           {children}
         </ChartDataProvider>
       </body>

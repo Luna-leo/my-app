@@ -19,9 +19,20 @@ export function useChartData(config: ChartConfiguration, enableSampling: boolean
     error: null,
   });
 
-  const { getChartData } = useChartDataContext();
+  const { getChartData, isDuckDBReady, useDuckDB } = useChartDataContext();
 
   useEffect(() => {
+    // If DuckDB is enabled but not ready, show a waiting state
+    if (useDuckDB && !isDuckDBReady) {
+      setLoadingState({ 
+        loading: true, 
+        progress: 0, 
+        error: null 
+      });
+      console.log('[useChartData] Waiting for DuckDB to initialize...');
+      return;
+    }
+
     const loadData = async () => {
       try {
         setLoadingState({ loading: true, progress: 0, error: null });
@@ -60,7 +71,7 @@ export function useChartData(config: ChartConfiguration, enableSampling: boolean
     };
 
     loadData();
-  }, [config, getChartData, enableSampling, selectedDataIds]);
+  }, [config, getChartData, enableSampling, selectedDataIds, isDuckDBReady, useDuckDB]);
 
   return { plotData, dataViewport, loadingState };
 }

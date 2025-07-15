@@ -2,6 +2,9 @@ import Dexie, { Table } from 'dexie';
 import { Metadata, ParameterInfo, TimeSeriesData, ChartConfiguration, Workspace } from './schema';
 import { generateDataKey } from '../utils/dataKeyUtils';
 
+// Re-export types for external use
+export type { Metadata, ParameterInfo, TimeSeriesData, ChartConfiguration, Workspace } from './schema';
+
 export class AppDatabase extends Dexie {
   metadata!: Table<Metadata>;
   parameters!: Table<ParameterInfo>;

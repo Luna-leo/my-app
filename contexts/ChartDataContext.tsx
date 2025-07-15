@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef } from 'react';
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog';
 import { ChartPlotData, ChartViewport, SamplingInfo } from '@/lib/types/chart';
 import { TimeSeriesData, ParameterInfo, Metadata } from '@/lib/db/schema';
@@ -13,6 +13,7 @@ import {
 } from '@/lib/utils/chartDataUtils';
 import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache } from '@/lib/services/dataCache';
 import { hierarchicalSamplingCache } from '@/lib/services/hierarchicalSamplingCache';
+import { hybridDataService } from '@/lib/services/hybridDataService';
 import { parameterTracker } from '@/lib/services/parameterTracker';
 import { ChartParameterAggregator } from '@/lib/services/chartParameterAggregator';
 import { batchDataLoader } from '@/lib/services/batchDataLoader';
@@ -158,6 +159,8 @@ interface ChartDataContextType {
   }) => Promise<Map<string, { plotData: ChartPlotData | null; dataViewport: ChartViewport | null }>>;
   clearCache: () => void;
   clearChartCache: (configId: string) => void;
+  isDuckDBReady: boolean;
+  useDuckDB: boolean;
 }
 
 const ChartDataContext = createContext<ChartDataContextType | undefined>(undefined);
@@ -187,11 +190,40 @@ function getSamplingCacheKey(metadataIds: number[], samplingConfig: SamplingConf
 // Create a singleton request queue instance
 const requestQueue = new RequestQueue(2); // Allow max 2 concurrent requests
 
-export function ChartDataProvider({ children }: { children: ReactNode }) {
+export function ChartDataProvider({ children, useDuckDB = false }: { children: ReactNode; useDuckDB?: boolean }) {
   const [state, setState] = useState<ChartDataProviderState>({
     chartDataCache: new Map(),
     isLoading: false
   });
+  const [isDuckDBReady, setIsDuckDBReady] = useState(false);
+  const duckDBLoadedData = useRef(new Set<number>());
+  
+  // Debug state
+  useEffect(() => {
+    console.log(`[ChartDataContext] DuckDB state changed - isDuckDBReady: ${isDuckDBReady}`);
+  }, [isDuckDBReady]);
+
+  // Initialize DuckDB if enabled
+  useEffect(() => {
+    if (useDuckDB) {
+      console.log('[ChartDataContext] Initializing DuckDB...');
+      hybridDataService.initialize()
+        .then(() => {
+          setIsDuckDBReady(true);
+          console.log('[ChartDataContext] DuckDB initialized successfully');
+        })
+        .catch(error => {
+          console.error('[ChartDataContext] Failed to initialize DuckDB:', error);
+          // Continue without DuckDB
+        });
+    }
+
+    return () => {
+      if (useDuckDB) {
+        hybridDataService.dispose();
+      }
+    };
+  }, [useDuckDB]);
 
   // Monitor memory pressure and clear caches when needed
   useEffect(() => {
@@ -593,6 +625,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       const originalCount = rawData.timeSeries.length;
       
       if (shouldSample) {
+        console.log(`[ChartDataContext] Sampling enabled for "${config.title}", originalCount: ${originalCount}`);
         const samplingStartTime = performance.now();
         
         // Get current memory stats for adaptive sampling
@@ -602,6 +635,8 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         const samplingConfig = typeof enableSampling === 'boolean' 
           ? getMemoryAwareSamplingConfig(rawData.timeSeries.length, currentMemoryMB)
           : { ...enableSampling, enabled: true };
+        
+        console.log(`[ChartDataContext] Sampling config:`, samplingConfig);
         
         // Check cache with parameter IDs included
         const samplingParameterIds = [
@@ -614,10 +649,63 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           samplingConfig
         );
         
-        if (cachedSampledData) {
+        // Test DuckDB by skipping cache temporarily
+        const forceDuckDBTest = true;
+        console.log(`[ChartDataContext] forceDuckDBTest: ${forceDuckDBTest}, useDuckDB: ${useDuckDB}, isDuckDBReady: ${isDuckDBReady}, cachedData: ${!!cachedSampledData}`);
+        
+        if (cachedSampledData && !forceDuckDBTest) {
           processedTimeSeries = cachedSampledData;
           console.log(`[ChartDataContext] Hierarchical cache hit for "${config.title}" (${performance.now() - samplingStartTime}ms)`);
-        } else {
+        } else if (useDuckDB && isDuckDBReady && (forceDuckDBTest || !cachedSampledData)) {
+          // Use DuckDB for fast SQL-based sampling
+          try {
+            console.log(`[ChartDataContext] Using DuckDB for sampling "${config.title}"`);
+            
+            // Load data to DuckDB if not already loaded
+            for (const metadataId of config.selectedDataIds) {
+              if (!duckDBLoadedData.current.has(metadataId)) {
+                const dataForMetadata = rawData.dataByMetadata.get(metadataId) || [];
+                if (dataForMetadata.length > 0) {
+                  await hybridDataService.loadTimeSeriesData(
+                    metadataId,
+                    dataForMetadata,
+                    samplingParameterIds
+                  );
+                  duckDBLoadedData.current.add(metadataId);
+                }
+              }
+            }
+            
+            // Perform SQL-based sampling
+            processedTimeSeries = await hybridDataService.sampleData(
+              config.selectedDataIds,
+              samplingParameterIds,
+              samplingConfig.targetPoints,
+              {
+                method: samplingConfig.method === 'lttb' ? 'nth' : samplingConfig.method as 'nth' | 'random'
+              }
+            );
+            
+            // Cache the sampled data
+            hierarchicalSamplingCache.set(
+              config.selectedDataIds, 
+              samplingParameterIds,
+              samplingConfig, 
+              processedTimeSeries
+            );
+            
+            console.log(`[ChartDataContext] DuckDB sampling for "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
+          } catch (error) {
+            console.error('[ChartDataContext] DuckDB sampling failed:', error);
+            // Fall through to Worker/main thread sampling
+          }
+        } else if (useDuckDB && !isDuckDBReady && forceDuckDBTest) {
+          // DuckDB is enabled but not ready yet
+          console.log(`[ChartDataContext] DuckDB not ready yet, falling back to Worker sampling`);
+        } 
+        
+        // If DuckDB sampling wasn't used, fall back to Worker/main thread sampling
+        if (!processedTimeSeries || processedTimeSeries.length === 0) {
           // Try to find existing lower resolution data for incremental sampling
           const existingData = hierarchicalSamplingCache.getBestAvailableResolution(
             config.selectedDataIds, 
@@ -1128,8 +1216,10 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     preloadChartData,
     getChartsDataBatch,
     clearCache,
-    clearChartCache
-  }), []);
+    clearChartCache,
+    isDuckDBReady,
+    useDuckDB
+  }), [isDuckDBReady, useDuckDB]);
 
   return (
     <ChartDataContext.Provider value={value}>
