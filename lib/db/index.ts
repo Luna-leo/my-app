@@ -314,23 +314,7 @@ export class AppDatabase extends Dexie {
         }
       }
       
-      // デバッグ: 時間範囲フィルタリングを詳細に確認
       const filteredData = allData.filter(item => {
-        const itemTime = new Date(item.timestamp);
-        const startTime = options.startTime ? new Date(options.startTime) : null;
-        const endTime = options.endTime ? new Date(options.endTime) : null;
-        
-        // デバッグ: 最初の10件のフィルタリング判定をログ出力
-        if (allData.indexOf(item) < 10) {
-          console.log(`[DB] Filter check for item ${allData.indexOf(item)}:`, {
-            itemTime: itemTime.toLocaleString(),
-            startTime: startTime?.toLocaleString() || 'not set',
-            endTime: endTime?.toLocaleString() || 'not set',
-            passesStart: !startTime || item.timestamp >= options.startTime,
-            passesEnd: !endTime || item.timestamp <= options.endTime
-          });
-        }
-        
         if (options.startTime && item.timestamp < options.startTime) return false;
         if (options.endTime && item.timestamp > options.endTime) return false;
         return true;

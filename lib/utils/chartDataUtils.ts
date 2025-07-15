@@ -214,6 +214,17 @@ export async function transformDataForChart(
       }
       console.log(`[transformDataForChart] Processed ${timestamps.length}/${dataPoints.length} valid points for parameterId "${parameterId}"`);
       
+      // デバッグ: 処理されたデータの時間範囲を確認
+      if (timestamps.length > 0) {
+        const firstTime = new Date(timestamps[0] * 1000);
+        const lastTime = new Date(timestamps[timestamps.length - 1] * 1000);
+        console.log(`[transformDataForChart] Time range for ${metadataLabel}:`, {
+          first: firstTime.toLocaleString(),
+          last: lastTime.toLocaleString(),
+          firstHour: firstTime.getHours(),
+          lastHour: lastTime.getHours()
+        });
+      }
 
       series.push({
         metadataId,
