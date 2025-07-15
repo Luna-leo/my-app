@@ -649,14 +649,12 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
           samplingConfig
         );
         
-        // Test DuckDB by skipping cache temporarily
-        const forceDuckDBTest = true;
-        console.log(`[ChartDataContext] forceDuckDBTest: ${forceDuckDBTest}, useDuckDB: ${useDuckDB}, isDuckDBReady: ${isDuckDBReady}, cachedData: ${!!cachedSampledData}`);
+        console.log(`[ChartDataContext] useDuckDB: ${useDuckDB}, isDuckDBReady: ${isDuckDBReady}, cachedData: ${!!cachedSampledData}`);
         
-        if (cachedSampledData && !forceDuckDBTest) {
+        if (cachedSampledData) {
           processedTimeSeries = cachedSampledData;
           console.log(`[ChartDataContext] Hierarchical cache hit for "${config.title}" (${performance.now() - samplingStartTime}ms)`);
-        } else if (useDuckDB && isDuckDBReady && (forceDuckDBTest || !cachedSampledData)) {
+        } else if (useDuckDB && isDuckDBReady) {
           // Use DuckDB for fast SQL-based sampling
           try {
             console.log(`[ChartDataContext] Using DuckDB for sampling "${config.title}"`);
@@ -699,7 +697,7 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
             console.error('[ChartDataContext] DuckDB sampling failed:', error);
             // Fall through to Worker/main thread sampling
           }
-        } else if (useDuckDB && !isDuckDBReady && forceDuckDBTest) {
+        } else if (useDuckDB && !isDuckDBReady) {
           // DuckDB is enabled but not ready yet
           console.log(`[ChartDataContext] DuckDB not ready yet, falling back to Worker sampling`);
         } 
