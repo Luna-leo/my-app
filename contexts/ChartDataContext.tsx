@@ -218,7 +218,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Fetch and cache raw data for given metadata IDs
-  const fetchRawData = async (metadataIds: number[]) => {
+  const fetchRawData = async (metadataIds: number[], parameterIds?: string[]) => {
     // Handle empty data case
     if (!metadataIds || metadataIds.length === 0) {
       return {
@@ -268,31 +268,36 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       if (metadata?.startTime || metadata?.endTime) {
         console.log(`[ChartDataContext] Fetching filtered data for metadataId ${metadataId}:`, {
           startTime: metadata.startTime,
-          endTime: metadata.endTime
+          endTime: metadata.endTime,
+          parameterIds: parameterIds?.length || 'all'
         });
-        const data = await db.getTimeSeriesData(metadataId, metadata.startTime, metadata.endTime);
+        const data = await db.getTimeSeriesData(metadataId, metadata.startTime, metadata.endTime, parameterIds);
         console.log(`[ChartDataContext] Filtered data count: ${data.length}`);
         return { metadataId, data };
       }
       
       // For data without time range, use cache as before
-      const cachedData = timeSeriesCache.get(metadataId);
+      // Note: With selective column loading, we need a different cache key
+      const cacheKey = parameterIds ? `${metadataId}-${parameterIds.join(',')}` : `${metadataId}`;
+      const cachedData = timeSeriesCache.get(cacheKey);
       if (cachedData) {
         return { metadataId, data: cachedData };
       }
       
-      const data = await db.getTimeSeriesData(metadataId);
+      const data = await db.getTimeSeriesData(metadataId, undefined, undefined, parameterIds);
       
-      // Debug: Check data structure
+      // Debug: Check data structure and selective loading
       if (data.length > 0) {
-        console.log(`[ChartDataContext] Sample data point for metadataId ${metadataId}:`, {
-          firstPoint: data[0],
-          hasData: !!data[0]?.data,
-          dataKeys: data[0]?.data ? Object.keys(data[0].data) : []
+        const actualKeys = data[0]?.data ? Object.keys(data[0].data) : [];
+        console.log(`[ChartDataContext] Selective loading for metadataId ${metadataId}:`, {
+          requestedParams: parameterIds?.length || 'all',
+          actualKeysCount: actualKeys.length,
+          actualKeys: actualKeys.slice(0, 5), // Show first 5 keys
+          dataPoints: data.length
         });
       }
       
-      timeSeriesCache.set(metadataId, data);
+      timeSeriesCache.set(cacheKey, data);
       return { metadataId, data };
     });
 
@@ -383,9 +388,17 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       // Report initial progress
       onProgress?.(10);
       
-      // Fetch raw data (with caching)
+      // Determine required parameter IDs first
+      const parameterIds = [
+        ...(config.xAxisParameter !== 'timestamp' ? [config.xAxisParameter] : []),
+        ...config.yAxisParameters,
+      ];
+      
+      console.log(`[ChartDataContext] Parameter IDs for "${config.title}":`, parameterIds);
+      
+      // Fetch raw data (with caching) - only load required columns
       const fetchStartTime = performance.now();
-      const rawData = await fetchRawData(config.selectedDataIds);
+      const rawData = await fetchRawData(config.selectedDataIds, parameterIds);
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
       if (rawData.timeSeries.length === 0) {
@@ -394,14 +407,6 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       
       // Report progress after data fetch
       onProgress?.(30);
-
-      // Fetch parameters
-      const parameterIds = [
-        ...(config.xAxisParameter !== 'timestamp' ? [config.xAxisParameter] : []),
-        ...config.yAxisParameters,
-      ];
-      
-      console.log(`[ChartDataContext] Parameter IDs for "${config.title}":`, parameterIds);
       
       const parameterInfoMap = await fetchParameters(parameterIds);
       

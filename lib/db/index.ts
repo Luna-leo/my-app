@@ -200,19 +200,40 @@ export class AppDatabase extends Dexie {
       .toArray();
   }
 
-  async getTimeSeriesData(metadataId: number, startTime?: Date, endTime?: Date) {
+  async getTimeSeriesData(
+    metadataId: number, 
+    startTime?: Date, 
+    endTime?: Date,
+    parameterIds?: string[]
+  ) {
     const query = this.timeSeries.where('metadataId').equals(metadataId);
     
+    let results: TimeSeriesData[];
     if (startTime || endTime) {
-      const results = await query.toArray();
-      return results.filter(item => {
+      results = await query.toArray();
+      results = results.filter(item => {
         if (startTime && item.timestamp < startTime) return false;
         if (endTime && item.timestamp > endTime) return false;
         return true;
       });
+    } else {
+      results = await query.toArray();
     }
     
-    return await query.toArray();
+    // If parameterIds are specified, filter the data to include only those parameters
+    if (parameterIds && parameterIds.length > 0) {
+      return results.map(item => ({
+        ...item,
+        data: Object.keys(item.data).reduce((filtered, key) => {
+          if (parameterIds.includes(key)) {
+            filtered[key] = item.data[key];
+          }
+          return filtered;
+        }, {} as Record<string, number | null>)
+      }));
+    }
+    
+    return results;
   }
 
   /**
@@ -227,6 +248,7 @@ export class AppDatabase extends Dexie {
       chunkSize?: number;
       startTime?: Date;
       endTime?: Date;
+      parameterIds?: string[];
     }
   ): AsyncGenerator<TimeSeriesData[], void> {
     const chunkSize = options?.chunkSize || 1000;
@@ -257,6 +279,19 @@ export class AppDatabase extends Dexie {
         });
       }
       
+      // Apply parameter filtering if specified
+      if (options?.parameterIds && options.parameterIds.length > 0) {
+        filteredChunk = filteredChunk.map(item => ({
+          ...item,
+          data: Object.keys(item.data).reduce((filtered, key) => {
+            if (options.parameterIds!.includes(key)) {
+              filtered[key] = item.data[key];
+            }
+            return filtered;
+          }, {} as Record<string, number | null>)
+        }));
+      }
+      
       if (filteredChunk.length > 0) {
         yield filteredChunk;
       }
@@ -280,6 +315,7 @@ export class AppDatabase extends Dexie {
       chunkSize?: number;
       startTime?: Date;
       endTime?: Date;
+      parameterIds?: string[];
     }
   ): AsyncGenerator<TimeSeriesData[], void> {
     const chunkSize = options?.chunkSize || 1000;
