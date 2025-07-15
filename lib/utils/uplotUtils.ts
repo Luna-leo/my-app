@@ -8,10 +8,41 @@ export function generateSeriesColors(count: number): string[] {
   return colorService.generateColors(count)
 }
 
-// Format timestamp for axis labels
-export function formatTimestamp(timestamp: number): string {
+// Format timestamp for axis labels with dynamic formatting based on time range
+export function formatTimestamp(timestamp: number, incr?: number): string {
   // uPlot passes timestamps in seconds, convert to milliseconds for Date
-  return format(new Date(timestamp * 1000), 'yyyy-MM-dd HH:mm:ss')
+  const date = new Date(timestamp * 1000)
+  
+  // If increment is provided, use it to determine format
+  if (incr !== undefined) {
+    // Less than 1 hour - show time only
+    if (incr < 3600) {
+      return format(date, 'HH:mm')
+    }
+    // Less than 1 day - show time with hours
+    else if (incr < 86400) {
+      return format(date, 'HH:mm')
+    }
+    // Less than 7 days - show day and time
+    else if (incr < 604800) {
+      return format(date, 'MM/dd HH:mm')
+    }
+    // Less than 30 days - show month and day
+    else if (incr < 2592000) {
+      return format(date, 'MM/dd')
+    }
+    // Less than 365 days - show year and month
+    else if (incr < 31536000) {
+      return format(date, 'yyyy/MM')
+    }
+    // Default - show year
+    else {
+      return format(date, 'yyyy')
+    }
+  }
+  
+  // Fallback to a reasonable default
+  return format(date, 'MM/dd HH:mm')
 }
 
 // Format number with appropriate precision
@@ -23,6 +54,22 @@ export function formatNumber(value: number, decimals = 2): string {
   }
   return value.toFixed(decimals)
 }
+
+// Time increments for axis (in seconds)
+const timeIncrs = [
+  // seconds
+  1, 5, 10, 15, 30,
+  // minutes
+  60, 60 * 5, 60 * 10, 60 * 15, 60 * 30,
+  // hours
+  3600, 3600 * 3, 3600 * 6, 3600 * 12,
+  // days
+  86400, 86400 * 7, 86400 * 14, 86400 * 30,
+  // months (approx)
+  86400 * 60, 86400 * 90, 86400 * 180,
+  // years
+  86400 * 365
+]
 
 // Build axis options
 export function buildAxisOptions(
@@ -51,8 +98,15 @@ export function buildAxisOptions(
     labelFont: '14px system-ui, -apple-system, sans-serif',
   }
 
+  // Add time-specific settings for x-axis
   if (isTime && type === 'x') {
-    axis.values = (_, splits) => splits.map(v => formatTimestamp(v))
+    axis.space = 60 // Minimum 60px between time labels to prevent overlap
+    axis.incrs = timeIncrs
+    axis.values = (_, splits) => {
+      // Calculate increment between splits to determine format
+      const incr = splits.length > 1 ? splits[1] - splits[0] : undefined
+      return splits.map(v => formatTimestamp(v, incr))
+    }
   } else {
     axis.values = (_, splits) => splits.map(v => formatNumber(v))
   }
