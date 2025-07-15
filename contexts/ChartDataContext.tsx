@@ -438,12 +438,12 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       }*/
       
       // No cache or first time loading
-      console.log(`[ChartDataContext] No cache for metadataId ${metadataId}, calling getTimeSeriesDataSampled with maxPoints: ${maxPointsPerDataset || DB_SAMPLING_CONFIG.normal}`);
+      console.log(`[ChartDataContext] No cache for metadataId ${metadataId}, calling getTimeSeriesDataSampled with maxPoints: ${maxPointsPerDataset}`);
       
       // Use database-level sampling for initial data load
       const result = await db.getTimeSeriesDataSampled(metadataId, {
         parameterIds: parameterIds,
-        maxPoints: maxPointsPerDataset || DB_SAMPLING_CONFIG.normal
+        maxPoints: maxPointsPerDataset // Pass undefined for full data
       });
       const data = result.data;
       
