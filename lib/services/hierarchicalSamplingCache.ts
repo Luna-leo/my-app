@@ -5,7 +5,7 @@
 
 import { TimeSeriesData } from '@/lib/db/schema';
 import { SamplingConfig } from '@/lib/utils/chartDataSampling';
-import { createSamplingCacheKey } from '@/lib/utils/hashUtils';
+import { createSamplingCacheKeyWithParams } from '@/lib/utils/hashUtils';
 import { samplingCache } from './dataCache';
 
 interface CachedSamplingData {
@@ -37,8 +37,8 @@ export class HierarchicalSamplingCache {
   /**
    * Get sampled data, potentially using lower resolution data as a base
    */
-  get(metadataIds: number[], samplingConfig: SamplingConfig): TimeSeriesData[] | null {
-    const directKey = this.createKey(metadataIds, samplingConfig);
+  get(metadataIds: number[], parameterIds: string[], samplingConfig: SamplingConfig): TimeSeriesData[] | null {
+    const directKey = this.createKey(metadataIds, parameterIds, samplingConfig);
     
     // Check direct cache hit
     const directHit = this.cache.get(directKey);
@@ -60,7 +60,7 @@ export class HierarchicalSamplingCache {
     }
 
     // Try to find a higher resolution cache to downsample from
-    const higherResData = this.findHigherResolutionData(metadataIds, samplingConfig);
+    const higherResData = this.findHigherResolutionData(metadataIds, parameterIds, samplingConfig);
     if (higherResData) {
       console.log(`[HierarchicalSamplingCache] Found higher resolution data (${higherResData.config.targetPoints} points) to downsample from`);
       return higherResData.data; // Return the higher res data, sampling will be done by caller if needed
@@ -72,8 +72,8 @@ export class HierarchicalSamplingCache {
   /**
    * Store sampled data with resolution tracking
    */
-  set(metadataIds: number[], samplingConfig: SamplingConfig, data: TimeSeriesData[]): void {
-    const key = this.createKey(metadataIds, samplingConfig);
+  set(metadataIds: number[], parameterIds: string[], samplingConfig: SamplingConfig, data: TimeSeriesData[]): void {
+    const key = this.createKey(metadataIds, parameterIds, samplingConfig);
     
     // Store in memory cache
     this.cache.set(key, {
@@ -85,8 +85,8 @@ export class HierarchicalSamplingCache {
     // Store in persistent cache
     samplingCache.set(key, data);
 
-    // Update resolution index
-    const metadataKey = metadataIds.sort().join(',');
+    // Update resolution index - include parameterIds in the metadata key
+    const metadataKey = `${metadataIds.sort().join(',')}_${parameterIds.sort().join(',')}`;
     if (!this.resolutionIndex.has(metadataKey)) {
       this.resolutionIndex.set(metadataKey, new Map());
     }
@@ -98,8 +98,8 @@ export class HierarchicalSamplingCache {
   /**
    * Find higher resolution cached data that can be downsampled
    */
-  private findHigherResolutionData(metadataIds: number[], targetConfig: SamplingConfig): CachedSamplingData | null {
-    const metadataKey = metadataIds.sort().join(',');
+  private findHigherResolutionData(metadataIds: number[], parameterIds: string[], targetConfig: SamplingConfig): CachedSamplingData | null {
+    const metadataKey = `${metadataIds.sort().join(',')}_${parameterIds.sort().join(',')}`;
     const resolutionMap = this.resolutionIndex.get(metadataKey);
     
     if (!resolutionMap) return null;
@@ -122,8 +122,8 @@ export class HierarchicalSamplingCache {
   /**
    * Get the best available resolution data for incremental loading
    */
-  getBestAvailableResolution(metadataIds: number[], maxTargetPoints: number): CachedSamplingData | null {
-    const metadataKey = metadataIds.sort().join(',');
+  getBestAvailableResolution(metadataIds: number[], parameterIds: string[], maxTargetPoints: number): CachedSamplingData | null {
+    const metadataKey = `${metadataIds.sort().join(',')}_${parameterIds.sort().join(',')}`;
     const resolutionMap = this.resolutionIndex.get(metadataKey);
     
     if (!resolutionMap) return null;
@@ -144,10 +144,30 @@ export class HierarchicalSamplingCache {
   }
 
   /**
-   * Clear cache for specific metadata IDs
+   * Clear cache for specific metadata IDs and parameters
    */
-  clearForMetadata(metadataIds: number[]): void {
-    const metadataKey = metadataIds.sort().join(',');
+  clearForMetadata(metadataIds: number[], parameterIds?: string[]): void {
+    // If parameterIds provided, clear specific combination
+    if (parameterIds) {
+      const metadataKey = `${metadataIds.sort().join(',')}_${parameterIds.sort().join(',')}`;
+      this.clearSpecificKey(metadataKey);
+      return;
+    }
+    
+    // Otherwise, clear all parameter combinations for these metadata IDs
+    const metadataPrefix = `${metadataIds.sort().join(',')}_`;
+    const keysToDelete: string[] = [];
+    
+    for (const key of this.resolutionIndex.keys()) {
+      if (key.startsWith(metadataPrefix)) {
+        keysToDelete.push(key);
+      }
+    }
+    
+    keysToDelete.forEach(key => this.clearSpecificKey(key));
+  }
+  
+  private clearSpecificKey(metadataKey: string): void {
     const resolutionMap = this.resolutionIndex.get(metadataKey);
     
     if (resolutionMap) {
@@ -195,8 +215,8 @@ export class HierarchicalSamplingCache {
     };
   }
 
-  private createKey(metadataIds: number[], samplingConfig: SamplingConfig): string {
-    return createSamplingCacheKey(metadataIds, {
+  private createKey(metadataIds: number[], parameterIds: string[], samplingConfig: SamplingConfig): string {
+    return createSamplingCacheKeyWithParams(metadataIds, parameterIds, {
       method: samplingConfig.method,
       targetPoints: samplingConfig.targetPoints,
       preserveExtremes: samplingConfig.preserveExtremes

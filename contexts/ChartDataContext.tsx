@@ -569,19 +569,27 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           ? getMemoryAwareSamplingConfig(rawData.timeSeries.length, currentMemoryMB)
           : { ...enableSampling, enabled: true };
         
-        // TEMPORARY: Disable hierarchical sampling cache for selective column loading
-        // The cache key doesn't include parameter IDs, causing data mixing issues
-        const cachedSampledData = null; // hierarchicalSamplingCache.get(config.selectedDataIds, samplingConfig);
+        // Check cache with parameter IDs included
+        const samplingParameterIds = [
+          ...(config.xAxisParameter !== 'timestamp' ? [config.xAxisParameter] : []),
+          ...config.yAxisParameters,
+        ];
+        const cachedSampledData = hierarchicalSamplingCache.get(
+          config.selectedDataIds, 
+          samplingParameterIds,
+          samplingConfig
+        );
         
         if (cachedSampledData) {
           processedTimeSeries = cachedSampledData;
           console.log(`[ChartDataContext] Hierarchical cache hit for "${config.title}" (${performance.now() - samplingStartTime}ms)`);
         } else {
           // Try to find existing lower resolution data for incremental sampling
-          const existingData = null; // hierarchicalSamplingCache.getBestAvailableResolution(
-            // config.selectedDataIds, 
-            // samplingConfig.targetPoints
-          // );
+          const existingData = hierarchicalSamplingCache.getBestAvailableResolution(
+            config.selectedDataIds, 
+            samplingParameterIds,
+            samplingConfig.targetPoints
+          );
           
           // Use the first Y-axis parameter for sampling to ensure consistency
           const samplingParameter = config.yAxisParameters.length > 0 ? config.yAxisParameters[0] : undefined;
@@ -647,8 +655,13 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
             }
           }
           
-          // TEMPORARY: Disable caching until parameter IDs are included in cache key
-          // hierarchicalSamplingCache.set(config.selectedDataIds, samplingConfig, processedTimeSeries);
+          // Cache the sampled data with parameter IDs
+          hierarchicalSamplingCache.set(
+            config.selectedDataIds, 
+            samplingParameterIds,
+            samplingConfig, 
+            processedTimeSeries
+          );
         }
         
         // Track sampling info

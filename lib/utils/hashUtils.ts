@@ -125,6 +125,28 @@ export function createSamplingCacheKey(dataIds: number[], samplingConfig: {
 }
 
 /**
+ * Create a cache key for sampling configuration with parameter IDs
+ * This ensures different parameter selections get different cache entries
+ */
+export function createSamplingCacheKeyWithParams(
+  dataIds: number[], 
+  parameterIds: string[],
+  samplingConfig: {
+    method: string;
+    targetPoints: number;
+    preserveExtremes: boolean;
+  }
+): string {
+  return [
+    `ids:${dataIds.sort().join(',')}`,
+    `params:${parameterIds.sort().join(',')}`,
+    `m:${samplingConfig.method}`,
+    `p:${samplingConfig.targetPoints}`,
+    `e:${samplingConfig.preserveExtremes ? 1 : 0}`
+  ].join('|');
+}
+
+/**
  * Shallow compare two objects
  * Returns true if objects have same properties with same values
  */
