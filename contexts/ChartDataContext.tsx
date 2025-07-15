@@ -269,7 +269,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     });
 
     // Then fetch time series data with time range filtering
-    console.log(`[ChartDataContext fetchRawData] Called with metadataIds:`, metadataIds, `parameterIds:`, parameterIds);
+    console.log(`[ChartDataContext] fetchRawData called with metadataIds:`, metadataIds, `parameterIds:`, parameterIds);
     
     const timeSeriesPromises = metadataIds.map(async (metadataId) => {
       const metadata = metadataByIdMap.get(metadataId);
@@ -308,9 +308,25 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         return { metadataId, data: cachedData };
       }
       
+      // TEMPORARY: Disable cache for selective column loading to avoid partial data pollution
       if (cachedData && parameterIds) {
+        // Skip cache when using selective loading
+      }
+      
+      // OLD CODE - temporarily disabled
+      /*if (cachedData && parameterIds) {
         // Check if cached data has all required parameters
+        const loadedParams = Array.from(parameterTracker.getLoadedParameters(metadataId));
         const missingParams = parameterTracker.getMissingParameters(metadataId, parameterIds);
+        
+        console.log(`[ChartDataContext DEBUG] Cache check for metadataId ${metadataId}:`, {
+          cachedDataPoints: cachedData.length,
+          cachedDataKeys: cachedData.length > 0 ? Object.keys(cachedData[0].data).slice(0, 10) : [],
+          requestedParams: parameterIds,
+          loadedParams: loadedParams,
+          missingParams: missingParams,
+          allParamsLoaded: missingParams.length === 0
+        });
         
         if (missingParams.length === 0) {
           // All required parameters are already loaded
@@ -318,8 +334,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           return { metadataId, data: cachedData };
         } else {
           // Some parameters are missing, fetch only the missing ones
-          console.log(`[ChartDataContext] Fetching missing parameters for metadataId ${metadataId}:`, missingParams);
-          console.log(`[ChartDataContext] Already loaded parameters:`, Array.from(parameterTracker.getLoadedParameters(metadataId)));
+          console.log(`[ChartDataContext DEBUG] Fetching missing parameters for metadataId ${metadataId}:`, missingParams);
           const additionalData = await db.getTimeSeriesData(metadataId, undefined, undefined, missingParams);
           
           // Merge additional data with cached data
@@ -370,41 +385,55 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           if (mergedData.length > 0) {
             const mergedSample = mergedData[0].data;
             const mergedKeys = Object.keys(mergedSample);
-            console.log(`[ChartDataContext] Merged data verification:`, {
+            const stillMissing = parameterIds.filter(p => !mergedKeys.includes(p));
+            
+            console.log(`[ChartDataContext DEBUG] Merged data verification:`, {
               totalKeys: mergedKeys.length,
-              containsRequestedParams: parameterIds.every(p => mergedKeys.includes(p)),
-              sampleKeys: mergedKeys.slice(0, 10)
+              containsAllRequestedParams: parameterIds.every(p => mergedKeys.includes(p)),
+              stillMissingParams: stillMissing.length > 0 ? stillMissing : 'none',
+              sampleKeys: mergedKeys.slice(0, 10),
+              cacheSizeBefore: cachedData.length,
+              cacheSizeAfter: mergedData.length
             });
           }
           
           return { metadataId, data: mergedData };
         }
-      }
+      }*/
       
       // No cache or first time loading
+      
       const data = await db.getTimeSeriesData(metadataId, undefined, undefined, parameterIds);
       
       // Debug: Check data structure
       if (data.length > 0) {
         const actualKeys = data[0]?.data ? Object.keys(data[0].data) : [];
-        console.log(`[ChartDataContext] Initial data loading for metadataId ${metadataId}:`, {
-          requestedParams: parameterIds || 'all columns',
-          requestedParamsCount: parameterIds?.length || 'all',
-          actualKeysCount: actualKeys.length,
-          actualKeys: actualKeys.slice(0, 10), // Show first 10 keys
-          dataPoints: data.length,
-          parameterIds: parameterIds
-        });
+        const requestedKeys = parameterIds || [];
+        
+        // Check for mismatches
+        const missingRequested = requestedKeys.filter(id => !actualKeys.includes(id));
+        const unexpectedReturned = actualKeys.filter(key => !requestedKeys.includes(key));
+        
+        if (missingRequested.length > 0 || unexpectedReturned.length > 0) {
+          console.warn(`[ChartDataContext] Parameter mismatch for metadataId ${metadataId}:`, {
+            requested: parameterIds,
+            missing: missingRequested,
+            unexpected: unexpectedReturned.slice(0, 5)
+          });
+        }
         
         // CRITICAL: Update parameter tracker with ACTUAL keys, not requested ones
         // The database might return different keys than requested
         if (actualKeys.length > 0) {
           parameterTracker.addLoadedParameters(metadataId, actualKeys);
-          console.log(`[ChartDataContext] Tracked ${actualKeys.length} parameters for metadataId ${metadataId}`);
         }
       }
       
-      timeSeriesCache.set(metadataId, data);
+      // Only cache full data to prevent partial data pollution
+      if (!parameterIds) {
+        timeSeriesCache.set(metadataId, data);
+      }
+      
       return { metadataId, data };
     });
 
@@ -501,17 +530,12 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         ...config.yAxisParameters,
       ];
       
-      console.log(`[ChartDataContext] getChartData for "${config.title}":`, {
-        selectedDataIds: config.selectedDataIds,
-        xAxisParameter: config.xAxisParameter,
-        yAxisParameters: config.yAxisParameters,
-        parameterIds: parameterIds
-      });
+      console.log(`[ChartDataContext] Loading chart "${config.title}" with ${parameterIds.length} parameters`);
       
       // Fetch raw data (with caching)
-      // TEMPORARY: Disable selective column loading until parameter ID mapping is fixed
+      // Re-enable selective column loading with debug mode
       const fetchStartTime = performance.now();
-      const rawData = await fetchRawData(config.selectedDataIds); // Load all columns for now
+      const rawData = await fetchRawData(config.selectedDataIds, parameterIds); // Load only required columns
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
       if (rawData.timeSeries.length === 0) {
@@ -544,37 +568,30 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           ? getMemoryAwareSamplingConfig(rawData.timeSeries.length, currentMemoryMB)
           : { ...enableSampling, enabled: true };
         
-        // Check hierarchical sampling cache first
-        const cachedSampledData = hierarchicalSamplingCache.get(config.selectedDataIds, samplingConfig);
+        // TEMPORARY: Disable hierarchical sampling cache for selective column loading
+        // The cache key doesn't include parameter IDs, causing data mixing issues
+        const cachedSampledData = null; // hierarchicalSamplingCache.get(config.selectedDataIds, samplingConfig);
         
         if (cachedSampledData) {
           processedTimeSeries = cachedSampledData;
           console.log(`[ChartDataContext] Hierarchical cache hit for "${config.title}" (${performance.now() - samplingStartTime}ms)`);
         } else {
           // Try to find existing lower resolution data for incremental sampling
-          const existingData = hierarchicalSamplingCache.getBestAvailableResolution(
-            config.selectedDataIds, 
-            samplingConfig.targetPoints
-          );
+          const existingData = null; // hierarchicalSamplingCache.getBestAvailableResolution(
+            // config.selectedDataIds, 
+            // samplingConfig.targetPoints
+          // );
           
           // Use the first Y-axis parameter for sampling to ensure consistency
           const samplingParameter = config.yAxisParameters.length > 0 ? config.yAxisParameters[0] : undefined;
           
-          if (existingData && existingData.data.length > 0) {
-            // Use incremental sampling to generate higher resolution data
-            console.log(`[ChartDataContext] Using incremental sampling from ${existingData.config.targetPoints} to ${samplingConfig.targetPoints} points`);
-            
-            const incrementalResult = incrementalSample(
-              rawData.timeSeries,
-              existingData.data,
-              existingData.config,
-              samplingConfig,
-              samplingParameter
-            );
-            
-            processedTimeSeries = incrementalResult.data;
-            console.log(`[ChartDataContext] Incremental sampling completed: ${incrementalResult.reusedPoints} reused, ${incrementalResult.newPoints} new points`);
-          } else {
+          if (existingData) {
+            // Incremental sampling disabled temporarily due to cache issues
+            // Fall through to full sampling
+          }
+          
+          // Always use full sampling for now
+          {
             // No existing data, perform full sampling
             if (config.selectedDataIds.length > 1) {
               processedTimeSeries = sampleTimeSeriesDataByMetadata(
@@ -590,8 +607,8 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
             console.log(`[ChartDataContext] Full sampling for "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
           }
           
-          // Cache the sampled data for reuse by other charts and resolutions
-          hierarchicalSamplingCache.set(config.selectedDataIds, samplingConfig, processedTimeSeries);
+          // TEMPORARY: Disable caching until parameter IDs are included in cache key
+          // hierarchicalSamplingCache.set(config.selectedDataIds, samplingConfig, processedTimeSeries);
         }
         
         // Track sampling info
