@@ -218,12 +218,23 @@ export async function transformDataForChart(
       if (timestamps.length > 0) {
         const firstTime = new Date(timestamps[0] * 1000);
         const lastTime = new Date(timestamps[timestamps.length - 1] * 1000);
-        console.log(`[transformDataForChart] Time range for ${metadataLabel}:`, {
-          first: firstTime.toLocaleString(),
-          last: lastTime.toLocaleString(),
-          firstHour: firstTime.getHours(),
-          lastHour: lastTime.getHours()
-        });
+        
+        // タイムスタンプが異常に大きい場合の警告
+        if (timestamps[0] > 2000000000) { // 2033年以降
+          console.warn(`[transformDataForChart] Abnormally large timestamp detected for ${metadataLabel}:`, {
+            firstTimestamp: timestamps[0],
+            firstDate: firstTime.toISOString(),
+            lastTimestamp: timestamps[timestamps.length - 1],
+            lastDate: lastTime.toISOString()
+          });
+        } else {
+          console.log(`[transformDataForChart] Time range for ${metadataLabel}:`, {
+            first: firstTime.toLocaleString(),
+            last: lastTime.toLocaleString(),
+            firstHour: firstTime.getHours(),
+            lastHour: lastTime.getHours()
+          });
+        }
       }
 
       series.push({

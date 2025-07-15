@@ -312,6 +312,14 @@ export class AppDatabase extends Dexie {
             timestamp: after9am[0].timestamp
           });
         }
+        
+        // デバッグ: 時間ごとのデータ分布を確認
+        const hourDistribution: Record<number, number> = {};
+        allData.forEach(item => {
+          const hour = new Date(item.timestamp).getHours();
+          hourDistribution[hour] = (hourDistribution[hour] || 0) + 1;
+        });
+        console.log(`[DB] Hour distribution:`, hourDistribution);
       }
       
       const filteredData = allData.filter(item => {
