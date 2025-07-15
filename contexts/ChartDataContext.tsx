@@ -13,6 +13,7 @@ import {
 } from '@/lib/utils/chartDataUtils';
 import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache } from '@/lib/services/dataCache';
 import { hierarchicalSamplingCache } from '@/lib/services/hierarchicalSamplingCache';
+import { parameterTracker } from '@/lib/services/parameterTracker';
 import { incrementalSample } from '@/lib/utils/incrementalSampling';
 import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, SamplingConfig, getMemoryAwareSamplingConfig, PREVIEW_SAMPLING_CONFIG, HIGH_RES_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
@@ -191,6 +192,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       if (stats.pressure === 'critical') {
         console.warn('[Memory Monitor] Critical memory pressure detected, clearing all caches');
         dataCache.clear();
+        parameterTracker.clear(); // Clear parameter tracking when clearing caches
         setState(prev => ({
           ...prev,
           chartDataCache: new Map()
@@ -273,31 +275,79 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
         });
         const data = await db.getTimeSeriesData(metadataId, metadata.startTime, metadata.endTime, parameterIds);
         console.log(`[ChartDataContext] Filtered data count: ${data.length}`);
+        
+        // Update parameter tracker even for time-filtered data
+        if (data.length > 0) {
+          const actualKeys = data[0]?.data ? Object.keys(data[0].data) : [];
+          if (parameterIds) {
+            parameterTracker.addLoadedParameters(metadataId, parameterIds);
+          } else {
+            parameterTracker.addLoadedParameters(metadataId, actualKeys);
+          }
+        }
+        
         return { metadataId, data };
       }
       
-      // For data without time range, use cache as before
-      // Note: With selective column loading, we need a different cache key
-      const cacheKey = parameterIds ? `${metadataId}-${parameterIds.join(',')}` : `${metadataId}`;
-      const cachedData = timeSeriesCache.get(cacheKey);
-      if (cachedData) {
+      // For data without time range, use intelligent caching with parameter tracking
+      // Always use metadataId as the main cache key
+      const cachedData = timeSeriesCache.get(metadataId);
+      
+      if (cachedData && parameterIds) {
+        // Check if cached data has all required parameters
+        const missingParams = parameterTracker.getMissingParameters(metadataId, parameterIds);
+        
+        if (missingParams.length === 0) {
+          // All required parameters are already loaded
+          console.log(`[ChartDataContext] Cache hit with all parameters for metadataId ${metadataId}`);
+          return { metadataId, data: cachedData };
+        } else {
+          // Some parameters are missing, fetch only the missing ones
+          console.log(`[ChartDataContext] Fetching missing parameters for metadataId ${metadataId}:`, missingParams);
+          const additionalData = await db.getTimeSeriesData(metadataId, undefined, undefined, missingParams);
+          
+          // Merge additional data with cached data
+          const mergedData = cachedData.map((item, index) => ({
+            ...item,
+            data: {
+              ...item.data,
+              ...(additionalData[index]?.data || {})
+            }
+          }));
+          
+          // Update tracker and cache
+          parameterTracker.addLoadedParameters(metadataId, missingParams);
+          timeSeriesCache.set(metadataId, mergedData);
+          return { metadataId, data: mergedData };
+        }
+      } else if (cachedData && !parameterIds) {
+        // No specific parameters requested, return all cached data
         return { metadataId, data: cachedData };
       }
       
+      // No cache or first time loading
       const data = await db.getTimeSeriesData(metadataId, undefined, undefined, parameterIds);
       
-      // Debug: Check data structure and selective loading
+      // Debug: Check data structure
       if (data.length > 0) {
         const actualKeys = data[0]?.data ? Object.keys(data[0].data) : [];
-        console.log(`[ChartDataContext] Selective loading for metadataId ${metadataId}:`, {
-          requestedParams: parameterIds?.length || 'all',
+        console.log(`[ChartDataContext] Initial data loading for metadataId ${metadataId}:`, {
+          requestedParams: parameterIds?.length || 'all columns',
           actualKeysCount: actualKeys.length,
           actualKeys: actualKeys.slice(0, 5), // Show first 5 keys
           dataPoints: data.length
         });
+        
+        // Update parameter tracker
+        if (parameterIds) {
+          parameterTracker.addLoadedParameters(metadataId, parameterIds);
+        } else {
+          // If loading all columns, track all loaded parameters
+          parameterTracker.addLoadedParameters(metadataId, actualKeys);
+        }
       }
       
-      timeSeriesCache.set(cacheKey, data);
+      timeSeriesCache.set(metadataId, data);
       return { metadataId, data };
     });
 
@@ -396,7 +446,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       
       console.log(`[ChartDataContext] Parameter IDs for "${config.title}":`, parameterIds);
       
-      // Fetch raw data (with caching) - only load required columns
+      // Fetch raw data (with caching) - selective column loading is now properly supported
       const fetchStartTime = performance.now();
       const rawData = await fetchRawData(config.selectedDataIds, parameterIds);
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);

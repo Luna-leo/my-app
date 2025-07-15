@@ -176,14 +176,14 @@ export const dataCache = DataCache.getInstance();
 
 // Typed cache functions for specific data types
 export const timeSeriesCache = {
-  get: (key: string | number): TimeSeriesData[] | null => {
-    return dataCache.get<TimeSeriesData[]>({ type: 'timeseries', id: key });
+  get: (metadataId: number): TimeSeriesData[] | null => {
+    return dataCache.get<TimeSeriesData[]>({ type: 'timeseries', id: metadataId });
   },
-  set: (key: string | number, data: TimeSeriesData[]): void => {
-    dataCache.set({ type: 'timeseries', id: key }, data);
+  set: (metadataId: number, data: TimeSeriesData[]): void => {
+    dataCache.set({ type: 'timeseries', id: metadataId }, data);
   },
-  has: (key: string | number): boolean => {
-    return dataCache.has({ type: 'timeseries', id: key });
+  has: (metadataId: number): boolean => {
+    return dataCache.has({ type: 'timeseries', id: metadataId });
   },
   clear: (): void => {
     // Clear all timeseries entries
