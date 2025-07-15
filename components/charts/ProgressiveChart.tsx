@@ -120,7 +120,7 @@ function ProgressiveChartComponent({
   if (loadingState.error) {
     return (
       <Card className={cn("h-full flex flex-col", className)}>
-        <div className="flex items-center justify-between p-3 border-b">
+        <div className="flex items-center justify-between p-2 border-b">
           <h3 className="font-medium truncate flex-1">{config.title}</h3>
         </div>
         <CardContent className="flex-1 flex items-center justify-center">
@@ -139,7 +139,7 @@ function ProgressiveChartComponent({
 
   return (
     <Card className={cn("h-full flex flex-col", className)}>
-      <div className="flex items-center justify-between p-3 border-b">
+      <div className="flex items-center justify-between p-2 border-b">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <h3 className="font-medium truncate">{config.title}</h3>
           {enableProgressive && (
@@ -189,7 +189,7 @@ function ProgressiveChartComponent({
           )}
         </div>
       </div>
-      <CardContent className="flex-1 p-4 min-h-[200px]" ref={containerRef}>
+      <CardContent className="flex-1 p-2 min-h-[200px]" ref={containerRef}>
         {plotData && plotData.series.length > 0 && uplotOptions ? (
           <div className="relative h-full w-full">
             <UplotChart

@@ -35,7 +35,7 @@ export function ChartContainer({
 }: ChartContainerProps) {
   return (
     <Card className={cn("h-full flex flex-col", className)}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-2 flex-shrink-0">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-1 flex-shrink-0">
         <div className="space-y-0">
           <CardTitle className="text-xs font-medium">{title}</CardTitle>
           <CardDescription className="text-xs leading-none">
@@ -77,8 +77,8 @@ export function ChartContainer({
           </DropdownMenu>
         )}
       </CardHeader>
-      <CardContent className="pt-2 pb-1 px-2 flex-1 flex flex-col min-h-0">
-        <div className="relative pl-3 pr-1 pb-1 flex-1">
+      <CardContent className="pt-1 pb-1 px-1 flex-1 flex flex-col min-h-0">
+        <div className="relative flex-1">
           {children}
         </div>
       </CardContent>

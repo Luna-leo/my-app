@@ -140,7 +140,7 @@ export function buildUplotOptions({
     height,
     title,
     class: 'uplot-chart',
-    padding: [5, 5, 5, 5], // top, right, bottom, left
+    padding: [2, 2, 2, 2], // top, right, bottom, left
     legend: {
       show: showLegend,
       isolate: true,
