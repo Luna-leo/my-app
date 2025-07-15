@@ -109,8 +109,15 @@ export class HybridDataService {
     }
 
     if (this.loadedMetadataIds.has(metadataId)) {
-      console.log(`[HybridDataService] Data for metadataId ${metadataId} already loaded`);
-      return;
+      console.log(`[HybridDataService] Data for metadataId ${metadataId} already loaded, dropping existing table`);
+      // Drop existing table to recreate with new schema
+      const tableName = `timeseries_${metadataId}`;
+      try {
+        await this.duckDBInstance.connection.query(`DROP TABLE IF EXISTS ${tableName}`);
+        this.loadedMetadataIds.delete(metadataId);
+      } catch (error) {
+        console.error(`[HybridDataService] Failed to drop table ${tableName}:`, error);
+      }
     }
 
     const tableName = `timeseries_${metadataId}`;
@@ -121,6 +128,7 @@ export class HybridDataService {
       const columnDefs = parameterIds.map(id => `"${id}" DOUBLE`).join(', ');
       const createTableSQL = `
         CREATE TABLE IF NOT EXISTS ${tableName} (
+          metadata_id INTEGER,
           timestamp TIMESTAMP,
           ${columnDefs}
         )
@@ -154,11 +162,12 @@ export class HybridDataService {
         // Build INSERT statement
         const values = batch.map(row => {
           const params = parameterIds.map(id => row.data[id] ?? 'NULL').join(', ');
-          return `(TIMESTAMP '${row.timestamp.toISOString()}', ${params})`;
+          return `(${metadataId}, TIMESTAMP '${row.timestamp.toISOString()}', ${params})`;
         }).join(', ');
 
+        const columnNames = ['metadata_id', 'timestamp', ...parameterIds.map(id => `"${id}"`)].join(', ');
         const insertSQL = `
-          INSERT INTO ${tableName} VALUES ${values}
+          INSERT INTO ${tableName} (${columnNames}) VALUES ${values}
         `;
 
         await this.duckDBInstance.connection.query(insertSQL);
@@ -221,7 +230,7 @@ export class HybridDataService {
         // Different sampling strategies
         if (method === 'random') {
           return `
-            (SELECT ${metadataId} as metadata_id, timestamp, ${columns}
+            (SELECT metadata_id, timestamp, ${columns}
              FROM ${tableName}
              ${whereClause}
              USING SAMPLE ${targetPoints} ROWS)
@@ -230,7 +239,7 @@ export class HybridDataService {
           // Nth-point sampling using row numbers
           return `
             (WITH numbered AS (
-              SELECT ${metadataId} as metadata_id, timestamp, ${columns},
+              SELECT metadata_id, timestamp, ${columns},
                      ROW_NUMBER() OVER (ORDER BY timestamp) as rn,
                      COUNT(*) OVER () as total_count
               FROM ${tableName}
@@ -238,14 +247,14 @@ export class HybridDataService {
             )
             SELECT metadata_id, timestamp, ${columns}
             FROM numbered
-            WHERE rn % GREATEST(1, total_count / ${targetPoints}) = 0
+            WHERE MOD(rn, GREATEST(1, CAST(total_count / ${targetPoints} AS INTEGER))) = 0
             LIMIT ${targetPoints})
           `;
         } else {
           // For LTTB, we'll need a more complex implementation
           // For now, fall back to nth-point sampling
           return `
-            (SELECT ${metadataId} as metadata_id, timestamp, ${columns}
+            (SELECT metadata_id, timestamp, ${columns}
              FROM ${tableName}
              ${whereClause}
              ORDER BY timestamp
@@ -261,6 +270,7 @@ export class HybridDataService {
       `;
 
       console.log(`[HybridDataService] Executing sampling query for ${metadataIds.length} tables`);
+      console.log(`[HybridDataService] Query: ${finalQuery}`);
       const result = await this.duckDBInstance.connection.query(finalQuery);
       
       // Convert DuckDB result to TimeSeriesData format
