@@ -216,11 +216,12 @@ export async function transformDataForChart(
       
       // デバッグ: 処理されたデータの時間範囲を確認
       if (timestamps.length > 0) {
-        const firstTime = new Date(timestamps[0] * 1000);
-        const lastTime = new Date(timestamps[timestamps.length - 1] * 1000);
+        // タイムスタンプはすでにミリ秒単位なので、そのまま使用
+        const firstTime = new Date(timestamps[0]);
+        const lastTime = new Date(timestamps[timestamps.length - 1]);
         
-        // タイムスタンプが異常に大きい場合の警告
-        if (timestamps[0] > 2000000000) { // 2033年以降
+        // タイムスタンプが異常に大きい場合の警告（ミリ秒単位で2033年以降）
+        if (timestamps[0] > 2000000000000) { // 2033年以降（ミリ秒）
           console.warn(`[transformDataForChart] Abnormally large timestamp detected for ${metadataLabel}:`, {
             firstTimestamp: timestamps[0],
             firstDate: firstTime.toISOString(),
