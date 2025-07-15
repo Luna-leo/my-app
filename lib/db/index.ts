@@ -269,7 +269,7 @@ export class AppDatabase extends Dexie {
       parameterIds?: string[];
       maxPoints?: number; // Target number of points to return (default: 500)
     }
-  ): Promise<TimeSeriesData[]> {
+  ): Promise<{ data: TimeSeriesData[]; totalCount: number }> {
     const maxPoints = options?.maxPoints || 500;
     console.log(`[DB] getTimeSeriesDataSampled called for metadataId ${metadataId}, maxPoints: ${maxPoints}`);
     
@@ -293,7 +293,10 @@ export class AppDatabase extends Dexie {
       // If filtered data is small enough, return it directly
       if (totalCount <= maxPoints) {
         console.log(`[DB] Returning all ${totalCount} points (below maxPoints threshold)`);
-        return this.filterParameterIds(filteredData, options.parameterIds);
+        return {
+          data: this.filterParameterIds(filteredData, options.parameterIds),
+          totalCount: totalCount
+        };
       }
       
       // Sample from filtered data
@@ -313,14 +316,20 @@ export class AppDatabase extends Dexie {
       }
       
       console.log(`[DB] Sampled ${sampled.length} points from time-filtered data`);
-      return this.filterParameterIds(sampled, options.parameterIds);
+      return {
+        data: this.filterParameterIds(sampled, options.parameterIds),
+        totalCount: totalCount
+      };
     }
     
     // If data is small enough, return all
     if (totalCount <= maxPoints) {
       console.log(`[DB] Returning all ${totalCount} points (below maxPoints threshold)`);
       const results = await query.toArray();
-      return this.filterParameterIds(results, options?.parameterIds);
+      return {
+        data: this.filterParameterIds(results, options?.parameterIds),
+        totalCount: totalCount
+      };
     }
     
     // Calculate sampling step
@@ -343,7 +352,10 @@ export class AppDatabase extends Dexie {
     }
     
     console.log(`[DB] Sampled ${sampled.length} points from ${allData.length} total (step: ${step})`);
-    return this.filterParameterIds(sampled, options?.parameterIds);
+    return {
+      data: this.filterParameterIds(sampled, options?.parameterIds),
+      totalCount: totalCount
+    };
   }
   
   /**

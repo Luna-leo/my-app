@@ -267,7 +267,9 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
         timeSeries: [],
         dataByMetadata: new Map(),
         metadata: new Map(),
-        parameters: new Map()
+        parameters: new Map(),
+        originalCountByMetadata: new Map(),
+        totalOriginalCount: 0
       };
     }
 
@@ -316,13 +318,14 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
           parameterIds: parameterIds?.length || 'all'
         });
         // Use database-level sampling for performance
-        const data = await db.getTimeSeriesDataSampled(metadataId, {
+        const result = await db.getTimeSeriesDataSampled(metadataId, {
           startTime: metadata.startTime,
           endTime: metadata.endTime,
           parameterIds: parameterIds,
           maxPoints: maxPointsPerDataset || DB_SAMPLING_CONFIG.normal
         });
-        console.log(`[ChartDataContext] DB-sampled data count: ${data.length} (max: ${maxPointsPerDataset || DB_SAMPLING_CONFIG.normal})`);
+        const data = result.data;
+        console.log(`[ChartDataContext] DB-sampled data count: ${data.length} from total: ${result.totalCount} (max: ${maxPointsPerDataset || DB_SAMPLING_CONFIG.normal})`);
         
         // Update parameter tracker even for time-filtered data
         if (data.length > 0) {
@@ -334,7 +337,7 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
           }
         }
         
-        return { metadataId, data };
+        return { metadataId, data, totalCount: result.totalCount };
       }
       
       // For data without time range, use intelligent caching with parameter tracking
@@ -345,7 +348,7 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
       if (cachedData && !parameterIds) {
         // No specific parameters requested, return all cached data
         console.log(`[ChartDataContext] Cache hit (all columns) for metadataId ${metadataId}, data points: ${cachedData.length}`);
-        return { metadataId, data: cachedData };
+        return { metadataId, data: cachedData, totalCount: cachedData.length };
       }
       
       // TEMPORARY: Disable cache for selective column loading to avoid partial data pollution
@@ -371,7 +374,7 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
         if (missingParams.length === 0) {
           // All required parameters are already loaded
           console.log(`[ChartDataContext] Cache hit with all parameters for metadataId ${metadataId}`);
-          return { metadataId, data: cachedData };
+          return { metadataId, data: cachedData, totalCount: cachedData.length };
         } else {
           // Some parameters are missing, fetch only the missing ones
           console.log(`[ChartDataContext DEBUG] Fetching missing parameters for metadataId ${metadataId}:`, missingParams);
@@ -437,7 +440,7 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
             });
           }
           
-          return { metadataId, data: mergedData };
+          return { metadataId, data: mergedData, totalCount: mergedData.length };
         }
       }*/
       
@@ -445,12 +448,13 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
       console.log(`[ChartDataContext] No cache for metadataId ${metadataId}, calling getTimeSeriesDataSampled with maxPoints: ${maxPointsPerDataset || DB_SAMPLING_CONFIG.normal}`);
       
       // Use database-level sampling for initial data load
-      const data = await db.getTimeSeriesDataSampled(metadataId, {
+      const result = await db.getTimeSeriesDataSampled(metadataId, {
         parameterIds: parameterIds,
         maxPoints: maxPointsPerDataset || DB_SAMPLING_CONFIG.normal
       });
+      const data = result.data;
       
-      console.log(`[ChartDataContext] getTimeSeriesDataSampled returned ${data.length} points for metadataId ${metadataId}`);
+      console.log(`[ChartDataContext] getTimeSeriesDataSampled returned ${data.length} points from total: ${result.totalCount} for metadataId ${metadataId}`);
       
       // Debug: Check data structure
       if (data.length > 0) {
@@ -481,15 +485,18 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
         timeSeriesCache.set(metadataId, data);
       }
       
-      return { metadataId, data };
+      return { metadataId, data, totalCount: result.totalCount };
     });
 
     const timeSeriesResults = await Promise.all(timeSeriesPromises);
     
     // Create a map of data by metadataId for per-series sampling
     const dataByMetadata = new Map<number, TimeSeriesData[]>();
-    timeSeriesResults.forEach(({ metadataId, data }) => {
+    const originalCountByMetadata = new Map<number, number>();
+    
+    timeSeriesResults.forEach(({ metadataId, data, totalCount }) => {
       dataByMetadata.set(metadataId, data);
+      originalCountByMetadata.set(metadataId, totalCount || data.length);
     });
 
     // Also create merged data for backward compatibility
@@ -500,7 +507,9 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
       timeSeries: mergedTimeSeries,
       dataByMetadata,
       metadata: metadataMap,
-      parameters: new Map<string, ParameterInfo>()
+      parameters: new Map<string, ParameterInfo>(),
+      originalCountByMetadata, // Add original counts
+      totalOriginalCount: Array.from(originalCountByMetadata.values()).reduce((sum, count) => sum + count, 0)
     };
 
     return rawData;
@@ -584,7 +593,7 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
       const fetchStartTime = performance.now();
       
       // Determine max points based on sampling config
-      let maxPointsPerDataset = DB_SAMPLING_CONFIG.normal;
+      let maxPointsPerDataset: number = DB_SAMPLING_CONFIG.normal;
       if (enableSampling && typeof enableSampling === 'object') {
         if (enableSampling.targetPoints <= PREVIEW_SAMPLING_CONFIG.targetPoints) {
           maxPointsPerDataset = DB_SAMPLING_CONFIG.preview;
@@ -616,7 +625,7 @@ export function ChartDataProvider({ children, useDuckDB = false }: { children: R
       let samplingInfo: SamplingInfo | undefined;
       
       const shouldSample = typeof enableSampling === 'boolean' ? enableSampling : enableSampling.enabled;
-      const originalCount = rawData.timeSeries.length;
+      const originalCount = rawData.totalOriginalCount;
       
       if (shouldSample) {
         console.log(`[ChartDataContext] Sampling enabled for "${config.title}", originalCount: ${originalCount}`);

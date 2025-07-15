@@ -1,13 +1,14 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog';
 import { ChartPlotData, ChartLoadingState, ChartViewport } from '@/lib/types/chart';
-import { useChartDataContext, DB_SAMPLING_CONFIG } from '@/contexts/ChartDataContext';
+import { useChartDataContext } from '@/contexts/ChartDataContext';
 import { 
   SamplingConfig, 
   PREVIEW_SAMPLING_CONFIG, 
   DEFAULT_SAMPLING_CONFIG,
   HIGH_RES_SAMPLING_CONFIG 
 } from '@/lib/utils/chartDataSampling';
+import { DB_SAMPLING_CONFIG } from '@/lib/constants/samplingConfig';
 import { getSimpleWorkerPool } from '@/lib/services/simpleWorkerPool';
 
 export type DataResolution = 'preview' | 'normal' | 'high' | 'full';
