@@ -301,7 +301,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       // Always use metadataId as the main cache key
       const cachedData = timeSeriesCache.get(metadataId);
       
-      // TEMPORARY: Skip selective loading logic when parameterIds is not provided
+      // If no specific parameters requested, return all cached data
       if (cachedData && !parameterIds) {
         // No specific parameters requested, return all cached data
         console.log(`[ChartDataContext] Cache hit (all columns) for metadataId ${metadataId}, data points: ${cachedData.length}`);
@@ -509,9 +509,8 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       });
       
       // Fetch raw data (with caching)
-      // TEMPORARY: Disable selective column loading until parameter ID mapping is fixed
       const fetchStartTime = performance.now();
-      const rawData = await fetchRawData(config.selectedDataIds); // Load all columns for now
+      const rawData = await fetchRawData(config.selectedDataIds, parameterIds);
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
       if (rawData.timeSeries.length === 0) {
