@@ -20,6 +20,7 @@ import { incrementalSample } from '@/lib/utils/incrementalSampling';
 import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, SamplingConfig, getMemoryAwareSamplingConfig, PREVIEW_SAMPLING_CONFIG, HIGH_RES_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig, hashSamplingConfig } from '@/lib/utils/hashUtils';
+import { SamplingOptions } from '@/lib/db/sampling';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
@@ -224,6 +225,133 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
     };
   }, []);
+
+  // Fetch sampled data directly from database
+  const fetchSampledData = async (
+    metadataIds: number[], 
+    samplingConfig: SamplingConfig,
+    parameterIds?: string[]
+  ) => {
+    if (!metadataIds || metadataIds.length === 0) {
+      return {
+        timeSeries: [],
+        dataByMetadata: new Map(),
+        metadata: new Map(),
+        parameters: new Map()
+      };
+    }
+
+    // Convert SamplingConfig to SamplingOptions for DB
+    const samplingOptions: SamplingOptions = {
+      targetPoints: samplingConfig.targetPoints,
+      method: samplingConfig.method === 'lttb' ? 'lttb' : 'nth-point',
+      parameterIds
+    };
+
+    // Fetch metadata first
+    const metadataPromises = metadataIds.map(async (metadataId) => {
+      const cached = metadataCache.get(metadataId);
+      if (cached) {
+        return { metadataId, metadata: cached };
+      }
+      
+      const metadata = await db.metadata.get(metadataId);
+      if (metadata) {
+        metadataCache.set(metadataId, metadata);
+      }
+      return { metadataId, metadata };
+    });
+
+    const metadataResults = await Promise.all(metadataPromises);
+    const metadataMap = new Map();
+    const metadataByIdMap = new Map<number, Metadata | undefined>();
+    
+    metadataResults.forEach(({ metadataId, metadata }) => {
+      metadataByIdMap.set(metadataId, metadata);
+      if (metadata) {
+        metadataMap.set(metadataId, {
+          label: metadata.label,
+          plant: metadata.plant,
+          machineNo: metadata.machineNo,
+          startTime: metadata.startTime,
+          endTime: metadata.endTime,
+        });
+      }
+    });
+
+    // Fetch sampled time series data using DB-level sampling
+    console.log(`[ChartDataContext fetchSampledData] Fetching with DB sampling:`, {
+      metadataIds,
+      targetPoints: samplingConfig.targetPoints,
+      method: samplingOptions.method,
+      parameterIds
+    });
+
+    const timeSeriesPromises = metadataIds.map(async (metadataId) => {
+      const metadata = metadataByIdMap.get(metadataId);
+      
+      // Add time range filtering if specified
+      if (metadata?.startTime || metadata?.endTime) {
+        samplingOptions.startTime = metadata.startTime;
+        samplingOptions.endTime = metadata.endTime;
+      }
+
+      // Use DB-level sampling
+      const data = await db.getSampledTimeSeriesData(metadataId, samplingOptions);
+      console.log(`[ChartDataContext] DB sampled data for metadataId ${metadataId}: ${data.length} points`);
+      
+      return { metadataId, data };
+    });
+
+    const timeSeriesResults = await Promise.all(timeSeriesPromises);
+    
+    // Combine results
+    const allTimeSeries: TimeSeriesData[] = [];
+    const dataByMetadata = new Map();
+    
+    timeSeriesResults.forEach(({ metadataId, data }) => {
+      allTimeSeries.push(...data);
+      dataByMetadata.set(metadataId, data);
+    });
+
+    // Sort by timestamp
+    allTimeSeries.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    // Fetch parameters
+    const parametersMap = new Map();
+    if (parameterIds && parameterIds.length > 0) {
+      const parameterPromises = parameterIds.map(async (parameterId) => {
+        const cached = parameterCache.get(parameterId);
+        if (cached) {
+          return { parameterId, paramInfo: cached };
+        }
+        
+        const paramInfo = await db.parameters
+          .where('parameterId')
+          .equals(parameterId)
+          .first();
+        
+        if (paramInfo) {
+          parameterCache.set(parameterId, paramInfo);
+        }
+        return { parameterId, paramInfo };
+      });
+      
+      const results = await Promise.all(parameterPromises);
+      results.forEach(({ parameterId, paramInfo }) => {
+        if (paramInfo) {
+          parametersMap.set(parameterId, paramInfo);
+        }
+      });
+    }
+
+    return {
+      timeSeries: allTimeSeries,
+      dataByMetadata,
+      metadata: metadataMap,
+      parameters: parametersMap
+    };
+  };
 
   // Fetch and cache raw data for given metadata IDs
   const fetchRawData = async (metadataIds: number[], parameterIds?: string[]) => {
@@ -544,13 +672,28 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           ? getMemoryAwareSamplingConfig(rawData.timeSeries.length, currentMemoryMB)
           : { ...enableSampling, enabled: true };
         
-        // Check hierarchical sampling cache first
-        const cachedSampledData = hierarchicalSamplingCache.get(config.selectedDataIds, samplingConfig);
+        // Determine if we should use DB-level sampling
+        const useDBSampling = (
+          samplingConfig.targetPoints <= 500 || // Preview mode
+          rawData.timeSeries.length > 10000 // Large dataset
+        );
         
-        if (cachedSampledData) {
-          processedTimeSeries = cachedSampledData;
-          console.log(`[ChartDataContext] Hierarchical cache hit for "${config.title}" (${performance.now() - samplingStartTime}ms)`);
+        if (useDBSampling) {
+          console.log(`[ChartDataContext] Using DB-level sampling for "${config.title}" (target: ${samplingConfig.targetPoints} points)`);
+          
+          // Fetch data with DB-level sampling
+          const sampledData = await fetchSampledData(config.selectedDataIds, samplingConfig, parameterIds);
+          processedTimeSeries = sampledData.timeSeries;
+          
+          console.log(`[ChartDataContext] DB sampling for "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
         } else {
+          // Check hierarchical sampling cache first
+          const cachedSampledData = hierarchicalSamplingCache.get(config.selectedDataIds, samplingConfig);
+          
+          if (cachedSampledData) {
+            processedTimeSeries = cachedSampledData;
+            console.log(`[ChartDataContext] Hierarchical cache hit for "${config.title}" (${performance.now() - samplingStartTime}ms)`);
+          } else {
           // Try to find existing lower resolution data for incremental sampling
           const existingData = hierarchicalSamplingCache.getBestAvailableResolution(
             config.selectedDataIds, 
@@ -592,6 +735,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           
           // Cache the sampled data for reuse by other charts and resolutions
           hierarchicalSamplingCache.set(config.selectedDataIds, samplingConfig, processedTimeSeries);
+          }
         }
         
         // Track sampling info
