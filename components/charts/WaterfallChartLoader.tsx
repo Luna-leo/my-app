@@ -9,7 +9,7 @@ import { AspectRatioPreset } from '@/hooks/useChartDimensions'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 import { DataResolution } from '@/hooks/useProgressiveChartData'
 // Use CSS animations instead of framer-motion
-import { CheckCircle2, AlertCircle } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 
 interface WaterfallChartLoaderProps {
   config: ChartConfiguration & { id: string }
@@ -169,10 +169,6 @@ export function WaterfallChartLoader({
               enableProgressive={enableProgressive}
             />
             
-            {/* Success indicator */}
-            <div className="absolute top-2 right-2 z-10 animate-in fade-in-0 zoom-in-0 duration-300">
-              <CheckCircle2 className="w-6 h-6 text-green-500" />
-            </div>
           </div>
         )
 
