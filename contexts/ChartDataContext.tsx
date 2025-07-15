@@ -20,6 +20,7 @@ import { incrementalSample } from '@/lib/utils/incrementalSampling';
 import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, SamplingConfig, getMemoryAwareSamplingConfig, PREVIEW_SAMPLING_CONFIG, HIGH_RES_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig, hashSamplingConfig } from '@/lib/utils/hashUtils';
+import { getSimpleWorkerPool } from '@/lib/services/simpleWorkerPool';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
@@ -594,17 +595,56 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
           {
             // No existing data, perform full sampling
             if (config.selectedDataIds.length > 1) {
-              processedTimeSeries = sampleTimeSeriesDataByMetadata(
-                rawData.dataByMetadata,
-                samplingConfig,
-                samplingParameter
-              );
+              // Multiple series - try Worker first, fallback to main thread
+              try {
+                const workerPool = getSimpleWorkerPool();
+                processedTimeSeries = await workerPool.execute({
+                  type: 'SAMPLE_DATA',
+                  data: {
+                    id: `sampling-multi-${config.id}-${Date.now()}`,
+                    rawData: [], // For backward compatibility
+                    targetPoints: samplingConfig.targetPoints,
+                    samplingConfig: {
+                      dataByMetadata: Object.fromEntries(rawData.dataByMetadata),
+                      samplingConfig: samplingConfig,
+                      samplingParameter: samplingParameter
+                    }
+                  }
+                });
+                console.log(`[ChartDataContext] Worker sampling for multiple series "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
+              } catch (error) {
+                console.warn('[ChartDataContext] Worker sampling failed for multiple series, falling back to main thread:', error);
+                processedTimeSeries = sampleTimeSeriesDataByMetadata(
+                  rawData.dataByMetadata,
+                  samplingConfig,
+                  samplingParameter
+                );
+                console.log(`[ChartDataContext] Fallback sampling for multiple series "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
+              }
             } else {
-              // Single series - use regular sampling
-              processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+              // Single series - try Worker first, fallback to main thread
+              try {
+                const workerPool = getSimpleWorkerPool();
+                processedTimeSeries = await workerPool.execute({
+                  type: 'SAMPLE_DATA',
+                  data: {
+                    id: `sampling-${config.id}-${Date.now()}`,
+                    rawData: [], // For backward compatibility
+                    targetPoints: samplingConfig.targetPoints,
+                    samplingConfig: {
+                      data: rawData.timeSeries,
+                      samplingConfig: samplingConfig,
+                      samplingParameter: samplingParameter
+                    }
+                  }
+                });
+                console.log(`[ChartDataContext] Worker sampling for "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
+              } catch (error) {
+                console.warn('[ChartDataContext] Worker sampling failed, falling back to main thread:', error);
+                processedTimeSeries = sampleTimeSeriesData(rawData.timeSeries, samplingConfig, samplingParameter);
+                console.log(`[ChartDataContext] Fallback sampling for "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
+              }
             }
-            
-            console.log(`[ChartDataContext] Full sampling for "${config.title}" took ${performance.now() - samplingStartTime}ms (${originalCount} → ${processedTimeSeries.length} points)`);
           }
           
           // TEMPORARY: Disable caching until parameter IDs are included in cache key
@@ -929,7 +969,26 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
             ? getMemoryAwareSamplingConfig(chartTimeSeries.length, memoryMonitor.getCurrentStats()?.usedMB || 0)
             : samplingConfig;
           
-          processedTimeSeries = sampleTimeSeriesData(chartTimeSeries, actualConfig);
+          // Try Worker first for sampling
+          try {
+            const workerPool = getSimpleWorkerPool();
+            processedTimeSeries = await workerPool.execute({
+              type: 'SAMPLE_DATA',
+              data: {
+                id: `xy-sampling-${config.id}-${Date.now()}`,
+                rawData: [], // For backward compatibility
+                targetPoints: actualConfig.targetPoints,
+                samplingConfig: {
+                  data: chartTimeSeries,
+                  samplingConfig: actualConfig,
+                  samplingParameter: config.yAxisParameters[0]
+                }
+              }
+            });
+          } catch (error) {
+            console.warn('[ChartDataContext] Worker sampling failed for XY chart, falling back to main thread:', error);
+            processedTimeSeries = sampleTimeSeriesData(chartTimeSeries, actualConfig);
+          }
         }
         
         // Transform data for the chart

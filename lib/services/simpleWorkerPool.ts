@@ -8,6 +8,12 @@ export interface SimpleWorkerMessage {
     id: string;
     rawData: unknown[];
     targetPoints: number;
+    samplingConfig?: {
+      data?: unknown[];
+      dataByMetadata?: Record<string, unknown[]>;
+      samplingConfig: unknown;
+      samplingParameter: unknown;
+    };
   };
 }
 
@@ -31,10 +37,8 @@ export class SimpleWorkerPool {
   
   private initWorker() {
     try {
-      this.worker = new Worker(
-        new URL('../../workers/dataProcessing.worker.ts', import.meta.url),
-        { type: 'module' }
-      );
+      // Use the public worker file for now
+      this.worker = new Worker('/dataProcessing.worker.js');
       
       this.worker.addEventListener('message', (event: MessageEvent<SimpleWorkerResponse>) => {
         const { id, type, data, error } = event.data;
@@ -68,7 +72,6 @@ export class SimpleWorkerPool {
       // Fallback to main thread processing
       return this.fallbackProcessing(message) as T;
     }
-    
     return new Promise((resolve, reject) => {
       const id = message.data.id;
       this.pendingRequests.set(id, { 
