@@ -71,6 +71,7 @@ export function useProgressiveChartData(
       }));
 
       const samplingConfig = RESOLUTION_CONFIGS[resolution];
+      console.log(`[useProgressiveChartData] Loading resolution: ${resolution}, samplingConfig:`, samplingConfig);
       
       const configWithData = {
         ...config,

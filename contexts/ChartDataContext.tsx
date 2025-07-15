@@ -540,6 +540,10 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
 
   const getChartData = async (config: ChartConfigurationWithData, enableSampling: boolean | SamplingConfig = true, onProgress?: (progress: number) => void) => {
     const startTime = performance.now();
+    
+    // Debug log for enableSampling value
+    console.log(`[ChartDataContext] getChartData called with enableSampling:`, enableSampling, `type: ${typeof enableSampling}`);
+    
     const configHash = getConfigHash(config, enableSampling);
     
     // Check if we already have transformed data for this configuration
@@ -596,22 +600,39 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
         console.log(`[ChartDataContext] Full mode - no sampling`);
       } else if (typeof enableSampling === 'object') {
         // Resolution-based sampling - fetch more from DB than final target
-        if (enableSampling.targetPoints <= PREVIEW_SAMPLING_CONFIG.targetPoints) {
+        if (!enableSampling.enabled || !enableSampling.targetPoints) {
+          // If sampling is disabled or no target points, treat as full mode
+          maxPointsPerDataset = undefined;
+          targetPointsPerDataset = undefined;
+          console.log(`[ChartDataContext] Sampling disabled - full mode`);
+        } else if (enableSampling.targetPoints <= PREVIEW_SAMPLING_CONFIG.targetPoints) {
           maxPointsPerDataset = SAMPLING_STRATEGY.preview.dbFetchPoints;
           targetPointsPerDataset = SAMPLING_STRATEGY.preview.clientTargetPoints;
         } else if (enableSampling.targetPoints <= DEFAULT_SAMPLING_CONFIG.targetPoints) {
           maxPointsPerDataset = SAMPLING_STRATEGY.normal.dbFetchPoints;
           targetPointsPerDataset = SAMPLING_STRATEGY.normal.clientTargetPoints;
-        } else {
+        } else if (enableSampling.targetPoints <= HIGH_RES_SAMPLING_CONFIG.targetPoints) {
           maxPointsPerDataset = SAMPLING_STRATEGY.high.dbFetchPoints;
           targetPointsPerDataset = SAMPLING_STRATEGY.high.clientTargetPoints;
+        } else {
+          // For any targetPoints larger than HIGH_RES, use full data
+          maxPointsPerDataset = undefined;
+          targetPointsPerDataset = undefined;
+          console.log(`[ChartDataContext] Target points ${enableSampling.targetPoints} exceeds high-res limit - full mode`);
         }
-        console.log(`[ChartDataContext] DB fetch: ${maxPointsPerDataset}, target: ${targetPointsPerDataset} per dataset`);
-      } else {
-        // Default to normal resolution
+        if (maxPointsPerDataset !== undefined) {
+          console.log(`[ChartDataContext] DB fetch: ${maxPointsPerDataset}, target: ${targetPointsPerDataset} per dataset`);
+        }
+      } else if (enableSampling === true) {
+        // Default to normal resolution when true is passed
         maxPointsPerDataset = SAMPLING_STRATEGY.normal.dbFetchPoints;
         targetPointsPerDataset = SAMPLING_STRATEGY.normal.clientTargetPoints;
-        console.log(`[ChartDataContext] Default - DB fetch: ${maxPointsPerDataset}, target: ${targetPointsPerDataset}`);
+        console.log(`[ChartDataContext] enableSampling=true - using normal resolution`);
+      } else {
+        // Unexpected value - log warning and use normal resolution
+        console.warn(`[ChartDataContext] Unexpected enableSampling value: ${enableSampling} (type: ${typeof enableSampling})`);
+        maxPointsPerDataset = SAMPLING_STRATEGY.normal.dbFetchPoints;
+        targetPointsPerDataset = SAMPLING_STRATEGY.normal.clientTargetPoints;
       }
       
       const rawData = await fetchRawData(config.selectedDataIds, parameterIds, maxPointsPerDataset);
