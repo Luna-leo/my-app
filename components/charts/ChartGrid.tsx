@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { useDynamicGridAspectRatio } from '@/hooks/useDynamicGridAspectRatio'
 import { SamplingConfig } from '@/lib/utils/chartDataSampling'
 import { DataResolution } from '@/hooks/useProgressiveChartData'
+import { useBatchChartData } from '@/hooks/useBatchChartData'
 
 interface ChartGridProps {
   charts: (ChartConfiguration & { id: string })[]
@@ -28,6 +29,7 @@ interface ChartGridProps {
   onChartLoaded?: (loadedCount: number) => void
   globalResolution?: DataResolution
   globalAutoUpgrade?: boolean
+  enableBatchLoading?: boolean
 }
 
 export function ChartGrid({ 
@@ -46,7 +48,8 @@ export function ChartGrid({
   onAllChartsLoaded,
   onChartLoaded,
   globalResolution,
-  globalAutoUpgrade
+  globalAutoUpgrade,
+  enableBatchLoading = false
 }: ChartGridProps) {
   const ChartComponent = getDataChartComponent(enableProgressive)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -70,6 +73,30 @@ export function ChartGrid({
       return charts
     }
   }, [charts, paginationEnabled, layoutOption, currentPage, chartsPerPage])
+  
+  // Prepare charts with selectedDataIds for batch loading
+  const chartsWithData = useMemo(() => {
+    return visibleCharts.map(chart => ({
+      ...chart,
+      selectedDataIds
+    }))
+  }, [visibleCharts, selectedDataIds])
+  
+  // Use batch loading if enabled
+  const batchDataResult = useBatchChartData(chartsWithData, {
+    enabled: enableBatchLoading && !enableWaterfall, // Don't use batch loading with waterfall mode
+    enableSampling: samplingConfig,
+    onProgress: (loaded, total) => {
+      console.log(`[ChartGrid] Batch loading progress: ${loaded}/${total}`)
+    }
+  })
+  
+  // Log batch loading results
+  useEffect(() => {
+    if (enableBatchLoading && batchDataResult.dataMap.size > 0) {
+      console.log(`[ChartGrid] Batch loaded data for ${batchDataResult.dataMap.size} charts`)
+    }
+  }, [enableBatchLoading, batchDataResult.dataMap])
   
   // State to track which charts should be rendered (for old stagger mode)
   const [renderedCharts, setRenderedCharts] = useState<Set<number>>(new Set())

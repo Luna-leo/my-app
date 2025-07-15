@@ -918,6 +918,7 @@ function HomeContent() {
                     const visibleChartCount = Math.min(chartsPerPage, Math.max(0, charts.length - startIndex))
                     setTotalChartsToLoad(visibleChartCount)
                   }}
+                  enableBatchLoading={true}
                 />
               </div>
             ) : (

@@ -14,6 +14,8 @@ import {
 import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache } from '@/lib/services/dataCache';
 import { hierarchicalSamplingCache } from '@/lib/services/hierarchicalSamplingCache';
 import { parameterTracker } from '@/lib/services/parameterTracker';
+import { ChartParameterAggregator } from '@/lib/services/chartParameterAggregator';
+import { batchDataLoader } from '@/lib/services/batchDataLoader';
 import { incrementalSample } from '@/lib/utils/incrementalSampling';
 import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, SamplingConfig, getMemoryAwareSamplingConfig, PREVIEW_SAMPLING_CONFIG, HIGH_RES_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
@@ -142,6 +144,10 @@ interface ChartDataContextType {
     batchSize?: number;
     onProgress?: (loaded: number, total: number) => void;
   }) => Promise<void>;
+  getChartsDataBatch: (configs: ChartConfigurationWithData[], options?: {
+    enableSampling?: boolean | SamplingConfig;
+    onProgress?: (loaded: number, total: number) => void;
+  }) => Promise<Map<string, { plotData: ChartPlotData | null; dataViewport: ChartViewport | null }>>;
   clearCache: () => void;
   clearChartCache: (configId: string) => void;
 }
@@ -503,9 +509,9 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
       });
       
       // Fetch raw data (with caching)
-      // TEMPORARY: Disable selective column loading due to multi-chart issue
+      // Re-enable selective column loading with improved caching
       const fetchStartTime = performance.now();
-      const rawData = await fetchRawData(config.selectedDataIds); // Remove parameterIds to load all columns
+      const rawData = await fetchRawData(config.selectedDataIds, parameterIds);
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
       if (rawData.timeSeries.length === 0) {
@@ -784,6 +790,165 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const getChartsDataBatch = async (
+    configs: ChartConfigurationWithData[],
+    options?: {
+      enableSampling?: boolean | SamplingConfig;
+      onProgress?: (loaded: number, total: number) => void;
+    }
+  ): Promise<Map<string, { plotData: ChartPlotData | null; dataViewport: ChartViewport | null }>> => {
+    const startTime = performance.now();
+    const results = new Map<string, { plotData: ChartPlotData | null; dataViewport: ChartViewport | null }>();
+    
+    if (!configs || configs.length === 0) {
+      return results;
+    }
+    
+    console.log(`[ChartDataContext] Starting batch data loading for ${configs.length} charts`);
+    
+    try {
+      // Step 1: Aggregate required parameters
+      const aggregator = new ChartParameterAggregator();
+      aggregator.collectRequiredParameters(configs);
+      
+      const stats = aggregator.getStats();
+      console.log(`[ChartDataContext] Aggregation stats:`, stats);
+      
+      // Step 2: Fetch data for each unique metadata ID
+      const metadataIds = aggregator.getMetadataIds();
+      const dataPromises = metadataIds.map(async metadataId => {
+        const requiredParams = aggregator.getRequiredParameters(metadataId);
+        
+        // Use batch data loader for efficient fetching
+        const requestId = `batch-${metadataId}-${Date.now()}`;
+        const loadResult = await batchDataLoader.load({
+          metadataId,
+          parameterIds: requiredParams,
+          requestId
+        });
+        
+        return {
+          metadataId,
+          data: loadResult.data,
+          metadata: loadResult.metadata
+        };
+      });
+      
+      const dataResults = await Promise.all(dataPromises);
+      
+      // Create a map for quick access
+      const dataByMetadataId = new Map<number, TimeSeriesData[]>();
+      const metadataByIdMap = new Map<number, Metadata | undefined>();
+      
+      dataResults.forEach(result => {
+        dataByMetadataId.set(result.metadataId, result.data);
+        metadataByIdMap.set(result.metadataId, result.metadata);
+      });
+      
+      // Step 3: Process each chart configuration
+      let processedCount = 0;
+      
+      for (const config of configs) {
+        const configHash = getConfigHash(config, options?.enableSampling);
+        
+        // Check if already cached
+        const cached = state.chartDataCache.get(configHash);
+        if (cached) {
+          // Convert cached format to expected format
+          results.set(config.id || configHash, { 
+            plotData: cached.plotData, 
+            dataViewport: cached.viewport 
+          });
+          processedCount++;
+          options?.onProgress?.(processedCount, configs.length);
+          continue;
+        }
+        
+        // Get the data for this chart's metadata IDs
+        const chartTimeSeries: TimeSeriesData[] = [];
+        config.selectedDataIds.forEach(metadataId => {
+          const data = dataByMetadataId.get(metadataId);
+          if (data) {
+            chartTimeSeries.push(...data);
+          }
+        });
+        
+        if (chartTimeSeries.length === 0) {
+          results.set(config.id || configHash, { plotData: null, dataViewport: null });
+          processedCount++;
+          options?.onProgress?.(processedCount, configs.length);
+          continue;
+        }
+        
+        // Create metadata map for this chart
+        const chartMetadataMap = new Map();
+        config.selectedDataIds.forEach(metadataId => {
+          const metadata = metadataByIdMap.get(metadataId);
+          if (metadata) {
+            chartMetadataMap.set(metadataId, {
+              label: metadata.label,
+              plant: metadata.plant,
+              machineNo: metadata.machineNo,
+              startTime: metadata.startTime,
+              endTime: metadata.endTime,
+            });
+          }
+        });
+        
+        // Fetch parameters
+        const parameterIds = [
+          ...(config.xAxisParameter !== 'timestamp' ? [config.xAxisParameter] : []),
+          ...config.yAxisParameters,
+        ];
+        
+        const parameterInfoMap = await fetchParameters(parameterIds);
+        
+        // Apply sampling if needed
+        let processedTimeSeries = chartTimeSeries;
+        const samplingConfig = options?.enableSampling ?? true;
+        
+        if (samplingConfig && chartTimeSeries.length > DEFAULT_SAMPLING_CONFIG.targetPoints) {
+          const actualConfig = typeof samplingConfig === 'boolean' 
+            ? getMemoryAwareSamplingConfig(chartTimeSeries.length, memoryMonitor.getCurrentStats()?.usedMB || 0)
+            : samplingConfig;
+          
+          processedTimeSeries = sampleTimeSeriesData(chartTimeSeries, actualConfig);
+        }
+        
+        // Transform data for the chart
+        let plotData: ChartPlotData | null = null;
+        
+        if (config.chartType === 'line') {
+          // TODO: Update to use new transformDataForChart signature
+          // For now, skip transformation in batch mode
+          console.warn('[ChartDataContext] Batch mode chart transformation not yet implemented for line charts');
+          plotData = null;
+        } else if (config.chartType === 'scatter') {
+          // TODO: Update to use new transformDataForXYChart signature
+          console.warn('[ChartDataContext] Batch mode chart transformation not yet implemented for scatter charts');
+          plotData = null;
+        }
+        
+        const dataViewport: ChartViewport | null = null; // TODO: Calculate viewport when transformation is implemented
+        
+        // Cache the result (skip for now since we're not transforming data)
+        // TODO: Re-enable caching when transformation is implemented
+        const result = { plotData, dataViewport };
+        
+        results.set(config.id || configHash, result);
+        processedCount++;
+        options?.onProgress?.(processedCount, configs.length);
+      }
+      
+      console.log(`[ChartDataContext] Batch processing completed in ${performance.now() - startTime}ms`);
+      return results;
+      
+    } catch (error) {
+      console.error('[ChartDataContext] Batch processing error:', error);
+      throw error;
+    }
+  };
+
   const clearCache = () => {
     setState({
       chartDataCache: new Map(),
@@ -838,6 +1003,7 @@ export function ChartDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({
     getChartData,
     preloadChartData,
+    getChartsDataBatch,
     clearCache,
     clearChartCache
   }), []);
