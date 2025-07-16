@@ -156,8 +156,61 @@ function ProgressiveChartComponent({
             <UplotChart
               data={(() => {
                 if (config.xAxisParameter === 'timestamp') {
-                  // For time series, always use unified x-axis approach to ensure consistent rendering
-                  // across different resolutions. Use null for missing values.
+                  // Check if series have overlapping time ranges
+                  const seriesTimeRanges = plotData.series.map(series => ({
+                    min: Math.min(...series.xValues),
+                    max: Math.max(...series.xValues),
+                    count: series.xValues.length,
+                    label: series.metadataLabel
+                  }));
+                  
+                  
+                  // Check for time range overlap between series
+                  let hasOverlap = false;
+                  for (let i = 0; i < seriesTimeRanges.length - 1; i++) {
+                    for (let j = i + 1; j < seriesTimeRanges.length; j++) {
+                      const range1 = seriesTimeRanges[i];
+                      const range2 = seriesTimeRanges[j];
+                      if (range1.max >= range2.min && range2.max >= range1.min) {
+                        hasOverlap = true;
+                        break;
+                      }
+                    }
+                    if (hasOverlap) break;
+                  }
+                  
+                  // If series don't overlap and we have multiple series, use sparse array approach
+                  // to avoid creating large arrays with mostly null values
+                  if (!hasOverlap && plotData.series.length > 1) {
+                    // Collect all unique timestamps from all series
+                    const allTimestamps = new Set<number>();
+                    plotData.series.forEach(series => {
+                      series.xValues.forEach(x => allTimestamps.add(x));
+                    });
+                    
+                    const unifiedXValues = Array.from(allTimestamps).sort((a, b) => a - b);
+                    const xValues = unifiedXValues.map(x => x / 1000);
+                    
+                    // Create sparse arrays to minimize memory usage
+                    const ySeriesData: (number | null)[][] = plotData.series.map(series => {
+                      // Initialize array with nulls
+                      const sparseArray = new Array(unifiedXValues.length).fill(null);
+                      
+                      // Fill only the indices where this series has data
+                      series.xValues.forEach((x, i) => {
+                        const unifiedIdx = unifiedXValues.indexOf(x);
+                        if (unifiedIdx !== -1) {
+                          sparseArray[unifiedIdx] = series.yValues[i];
+                        }
+                      });
+                      
+                      return sparseArray;
+                    });
+                    
+                    return transformToUplotData(xValues, ySeriesData);
+                  }
+                  
+                  // For overlapping series or single series, use unified x-axis approach
                   const allTimestamps = new Set<number>();
                   plotData.series.forEach(series => {
                     series.xValues.forEach(x => allTimestamps.add(x));
@@ -166,16 +219,18 @@ function ProgressiveChartComponent({
                   const unifiedXValues = Array.from(allTimestamps).sort((a, b) => a - b);
                   const xValues = unifiedXValues.map(x => x / 1000);
                   
-                  const ySeriesData: number[][] = plotData.series.map(series => {
+                  
+                  const ySeriesData: (number | null)[][] = plotData.series.map(series => {
+                    // Create a map for O(1) lookup performance
                     const valueMap = new Map<number, number>();
                     series.xValues.forEach((x, i) => {
                       valueMap.set(x, series.yValues[i]);
                     });
                     
-                    // Map values to unified x-axis, using NaN for missing data (uPlot handles NaN as gaps)
+                    // Map values to unified x-axis, using null for missing values
                     return unifiedXValues.map(x => {
                       const value = valueMap.get(x);
-                      return value !== undefined ? value : NaN;
+                      return value !== undefined ? value : null;
                     });
                   });
                   

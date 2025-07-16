@@ -145,9 +145,10 @@ export function buildSeriesOptions(
 // Transform data to uPlot format
 export function transformToUplotData(
   xValues: number[],
-  ySeriesData: number[][]
+  ySeriesData: (number | null)[][]
 ): uPlot.AlignedData {
   // uPlot expects data in columnar format: [xValues, ...ySeriesValues]
+  // null values are handled as gaps in the line
   return [xValues, ...ySeriesData]
 }
 
