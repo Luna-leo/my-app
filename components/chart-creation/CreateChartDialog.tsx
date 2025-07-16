@@ -273,7 +273,6 @@ export function CreateChartDialog({
               ) : (
                 <MultiCombobox
                   options={availableParameters
-                    .filter(param => param.parameterId !== xAxisParameter)
                     .map((param) => ({
                       value: param.parameterId,
                       label: param.parameterName,
