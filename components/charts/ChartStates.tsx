@@ -13,15 +13,15 @@ interface ChartLoadingStateProps {
 
 export function ChartLoadingState({ title, progress, className }: ChartLoadingStateProps) {
   return (
-    <Card className={cn("h-full rounded-none shadow-none border border-gray-200 dark:border-gray-700", className)}>
+    <Card className={cn("h-full flex flex-col rounded-none shadow-none border border-gray-200 dark:border-gray-700", className)}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription className="animate-pulse">Loading chart data...</CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
+      <CardContent className="flex-1 flex flex-col p-0 min-h-0">
+        <div className="flex-1 flex flex-col p-6 space-y-4">
           {/* Skeleton chart area */}
-          <div className="h-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse">
+          <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded animate-pulse min-h-[200px]">
             <div className="h-full flex items-end p-4 space-x-2">
               <div className="w-8 bg-gray-300 dark:bg-gray-600 rounded" style={{ height: '40%' }}></div>
               <div className="w-8 bg-gray-300 dark:bg-gray-600 rounded" style={{ height: '60%' }}></div>
