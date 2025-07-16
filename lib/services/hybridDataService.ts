@@ -132,6 +132,7 @@ export class HybridDataService {
       const availableParameterIds = Array.from(allParameterIds);
       
       // Create table with columns for all available parameters
+      // DuckDB requires double quotes for identifiers, especially numeric column names
       const columnDefs = availableParameterIds.map(id => `"${id}" DOUBLE`).join(', ');
       const createTableSQL = `
         CREATE TABLE IF NOT EXISTS ${tableName} (
@@ -217,10 +218,49 @@ export class HybridDataService {
     const method = options?.method || 'nth';
 
     try {
+      // First check which columns actually exist in each table
+      const tableColumnMap = new Map<number, Set<string>>();
+      for (const metadataId of metadataIds) {
+        const tableName = `timeseries_${metadataId}`;
+        try {
+          const schemaQuery = `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}' AND column_name NOT IN ('metadata_id', 'timestamp')`;
+          const schemaResult = await this.duckDBInstance.connection.query(schemaQuery);
+          const columns = new Set(schemaResult.toArray().map((row: Record<string, unknown>) => row.column_name as string));
+          tableColumnMap.set(metadataId, columns);
+        } catch (err) {
+          console.warn(`[HybridDataService] Failed to get schema for table ${tableName}:`, err);
+        }
+      }
+      
       // Build UNION query for multiple metadata IDs
       const queries = metadataIds.map(metadataId => {
         const tableName = `timeseries_${metadataId}`;
-        const columns = parameterIds.map(id => `"${id}"`).join(', ');
+        
+        // Get available columns for this table
+        const availableColumns = tableColumnMap.get(metadataId) || new Set<string>();
+        
+        // Filter parameterIds to only include columns that exist in the table
+        const existingParameterIds = parameterIds.filter(id => availableColumns.has(id));
+        
+        if (existingParameterIds.length === 0) {
+          console.warn(`[HybridDataService] No requested parameter IDs exist in table ${tableName}. Requested: [${parameterIds.join(', ')}], Available: [${Array.from(availableColumns).join(', ')}]`);
+          // Still return data with NULL values for all requested parameters
+          // This allows charts to display time axis even when parameters are missing
+        }
+        
+        // DuckDB requires double quotes for identifiers, especially numeric column names
+        const rawColumns = existingParameterIds.length > 0 
+          ? existingParameterIds.map(id => `"${id}"`).join(', ')
+          : ''; // Empty when no columns exist, but WITH clause will still work
+        
+        // Add NULL values for missing columns to ensure consistent result set structure
+        const allAliasedColumns = parameterIds.map(id => {
+          if (existingParameterIds.includes(id)) {
+            return `"${id}" AS "param_${id}"`;
+          } else {
+            return `NULL AS "param_${id}"`;
+          }
+        }).join(', ');
         
         let whereClause = '';
         if (options?.startTime || options?.endTime) {
@@ -237,7 +277,7 @@ export class HybridDataService {
         // Different sampling strategies
         if (method === 'random') {
           return `
-            (SELECT metadata_id, timestamp, ${columns}
+            (SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}" AS "param_${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "param_${id}"`).join('')}
              FROM ${tableName}
              ${whereClause}
              USING SAMPLE ${targetPoints} ROWS)
@@ -246,13 +286,13 @@ export class HybridDataService {
           // Fast nth-point sampling (original method, less accurate)
           return `
             (WITH numbered AS (
-              SELECT metadata_id, timestamp, ${columns},
+              SELECT metadata_id, timestamp${rawColumns ? ', ' + rawColumns : ''},
                      ROW_NUMBER() OVER (ORDER BY timestamp) as rn,
                      COUNT(*) OVER () as total_count
               FROM ${tableName}
               ${whereClause}
             )
-            SELECT metadata_id, timestamp, ${columns}
+            SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}" AS "param_${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "param_${id}"`).join('')}
             FROM numbered
             WHERE MOD(rn, GREATEST(1, CAST(total_count / ${targetPoints} AS INTEGER))) = 0
             LIMIT ${targetPoints})
@@ -261,13 +301,13 @@ export class HybridDataService {
           // Accurate nth-point sampling using systematic selection
           return `
             (WITH numbered AS (
-              SELECT metadata_id, timestamp, ${columns},
+              SELECT metadata_id, timestamp${rawColumns ? ', ' + rawColumns : ''},
                      ROW_NUMBER() OVER (ORDER BY timestamp) as rn,
                      COUNT(*) OVER () as total_count
               FROM ${tableName}
               ${whereClause}
             )
-            SELECT metadata_id, timestamp, ${columns}
+            SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}" AS "param_${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "param_${id}"`).join('')}
             FROM numbered
             WHERE 
               -- Select exactly targetPoints rows with even distribution
@@ -281,14 +321,19 @@ export class HybridDataService {
           // For LTTB, we'll need a more complex implementation
           // For now, fall back to nth-point sampling
           return `
-            (SELECT metadata_id, timestamp, ${columns}
+            (SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}" AS "param_${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "param_${id}"`).join('')}
              FROM ${tableName}
              ${whereClause}
              ORDER BY timestamp
              LIMIT ${targetPoints})
           `;
         }
-      });
+      }).filter(q => q !== null);
+      
+      if (queries.length === 0) {
+        console.warn('[HybridDataService] No tables contain any of the requested parameter IDs');
+        return [];
+      }
 
       const unionQuery = queries.join(' UNION ALL ');
       const finalQuery = `
@@ -304,7 +349,13 @@ export class HybridDataService {
       const data: TimeSeriesData[] = [];
       const resultArray = result.toArray();
 
-      resultArray.forEach((row: Record<string, unknown>) => {
+      resultArray.forEach((row: Record<string, unknown>, index: number) => {
+        // Debug: Log the first row to see actual column names
+        if (index === 0) {
+          console.log(`[HybridDataService] First row keys:`, Object.keys(row));
+          console.log(`[HybridDataService] Expected parameter IDs:`, parameterIds);
+        }
+
         const dataPoint: TimeSeriesData = {
           metadataId: row.metadata_id as number,
           timestamp: new Date(row.timestamp as string | number),
@@ -312,8 +363,12 @@ export class HybridDataService {
         };
 
         parameterIds.forEach(id => {
-          if (row[id] !== null && typeof row[id] === 'number') {
-            dataPoint.data[id] = row[id] as number;
+          // Access using the aliased column name
+          const aliasedName = `param_${id}`;
+          const value = row[aliasedName];
+          
+          if (value !== null && value !== undefined && typeof value === 'number') {
+            dataPoint.data[id] = value as number;
           }
         });
 

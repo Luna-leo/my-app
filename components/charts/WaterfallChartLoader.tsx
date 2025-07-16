@@ -142,6 +142,7 @@ export function WaterfallChartLoader({
             title={config.title}
             progress={0}
             className="h-full"
+            aspectRatio={typeof aspectRatio === 'number' ? aspectRatio : 1.5}
           />
         ) : null
 
@@ -151,6 +152,7 @@ export function WaterfallChartLoader({
             title={config.title}
             progress={50}
             className="h-full"
+            aspectRatio={typeof aspectRatio === 'number' ? aspectRatio : 1.5}
           />
         )
 

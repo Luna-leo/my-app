@@ -707,18 +707,19 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
           try {
             console.log(`[ChartDataContext] Using DuckDB for sampling`);
             
-            // Load data to DuckDB if not already loaded
+            // Load data to DuckDB - ALWAYS reload to ensure all parameters are available
+            // This is necessary because we don't know which parameters will be requested
             for (const metadataId of config.selectedDataIds) {
-              if (!duckDBLoadedData.current.has(metadataId)) {
-                const dataForMetadata = rawData.dataByMetadata.get(metadataId) || [];
-                if (dataForMetadata.length > 0) {
-                  await hybridDataService.loadTimeSeriesData(
-                    metadataId,
-                    dataForMetadata,
-                    samplingParameterIds
-                  );
-                  duckDBLoadedData.current.add(metadataId);
-                }
+              const dataForMetadata = rawData.dataByMetadata.get(metadataId) || [];
+              if (dataForMetadata.length > 0) {
+                // Always reload data to ensure all columns are available
+                // The HybridDataService will drop and recreate the table
+                await hybridDataService.loadTimeSeriesData(
+                  metadataId,
+                  dataForMetadata,
+                  []  // Empty array means load all parameters
+                );
+                duckDBLoadedData.current.add(metadataId);
               }
             }
             

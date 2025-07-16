@@ -140,7 +140,7 @@ function ProgressiveChartComponent({
   }
 
   if (loadingState.loading && !plotData) {
-    return <ChartLoadingState title={config.title} progress={loadingState.progress} className={className} />;
+    return <ChartLoadingState title={config.title} progress={loadingState.progress} className={className} aspectRatio={aspectRatioValue} />;
   }
 
   return (
@@ -149,7 +149,7 @@ function ProgressiveChartComponent({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <CardContent className="flex-1 p-0 min-h-[200px] relative" ref={containerRef}>
+      <CardContent className="flex-1 p-0 relative" ref={containerRef}>
         {plotData && plotData.series.length > 0 && uplotOptions ? (
           <div className="relative h-full w-full">
             <UplotChart

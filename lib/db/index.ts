@@ -279,6 +279,24 @@ export class AppDatabase extends Dexie {
     let totalCount = await query.count();
     console.log(`[DB] Total count for metadataId ${metadataId}: ${totalCount}`);
     
+    // Debug: Check if requested parameters exist in the database
+    if (options?.parameterIds && options.parameterIds.length > 0) {
+      // Get a sample data point to check available parameters
+      // Create a new query to avoid modifying the original
+      const sampleQuery = this.timeSeries.where('metadataId').equals(metadataId);
+      const sampleData = await sampleQuery.limit(1).toArray();
+      if (sampleData.length > 0) {
+        const availableKeys = Object.keys(sampleData[0].data);
+        console.log(`[DB] Available parameter keys in DB for metadataId ${metadataId}:`, availableKeys);
+        console.log(`[DB] Requested parameter IDs:`, options.parameterIds);
+        
+        const missingParams = options.parameterIds.filter(id => !availableKeys.includes(id));
+        if (missingParams.length > 0) {
+          console.warn(`[DB] WARNING: Requested parameters not found in database:`, missingParams);
+        }
+      }
+    }
+    
     // If time filtering is needed, we need to get the count within the time range
     if (options?.startTime || options?.endTime) {
       console.log(`[DB] Time range filtering:`, {
@@ -419,6 +437,22 @@ export class AppDatabase extends Dexie {
   private filterParameterIds(data: TimeSeriesData[], parameterIds?: string[]): TimeSeriesData[] {
     if (!parameterIds || parameterIds.length === 0) {
       return data;
+    }
+    
+    // Debug: Log the filtering operation
+    if (data.length > 0) {
+      const availableKeys = Object.keys(data[0].data);
+      const requestedKeys = parameterIds;
+      const missingKeys = requestedKeys.filter(key => !availableKeys.includes(key));
+      
+      if (missingKeys.length > 0) {
+        console.warn(`[DB] filterParameterIds: Some requested parameters not found in data:`, {
+          requested: requestedKeys,
+          available: availableKeys.slice(0, 10),
+          missing: missingKeys,
+          metadataId: data[0].metadataId
+        });
+      }
     }
     
     return data.map(item => ({

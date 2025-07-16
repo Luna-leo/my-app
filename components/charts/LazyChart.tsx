@@ -91,6 +91,7 @@ export function LazyChart({
           title={config.title}
           progress={0}
           className="h-full"
+          aspectRatio={typeof aspectRatio === 'number' ? aspectRatio : 1.5}
         />
       )}
     </div>
