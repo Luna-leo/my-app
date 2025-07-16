@@ -1,5 +1,4 @@
 export { UplotChart } from './UplotChart'
-export { UplotChartWithData } from './UplotChartWithData'
 export { ChartContainer } from './ChartContainer'
 export { ChartGrid } from './ChartGrid'
 export { getDataChartComponent, useChartEngine } from './ChartProvider'

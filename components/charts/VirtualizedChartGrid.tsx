@@ -51,7 +51,7 @@ const Cell = memo(({ columnIndex, rowIndex, style, data }: GridChildComponentPro
     return <div style={style} />
   }
 
-  const ChartComponent = getDataChartComponent(enableProgressive)
+  const ChartComponent = getDataChartComponent()
 
   return (
     <div style={style} className="p-2">

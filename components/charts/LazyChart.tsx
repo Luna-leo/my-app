@@ -68,7 +68,7 @@ export function LazyChart({
     }
   }, [threshold, rootMargin, hasBeenVisible])
 
-  const ChartComponent = getDataChartComponent(!!globalResolution)
+  const ChartComponent = getDataChartComponent()
 
   return (
     <div ref={containerRef} className={cn("h-full", className)}>

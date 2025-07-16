@@ -79,7 +79,7 @@ export function EditMetadataDialog({ open, onOpenChange, metadata, onUpdate }: E
         startTime: startDate.toLocaleString(),
         endTime: endDate.toLocaleString()
       })
-    } catch (err) {
+    } catch {
       setError('時間範囲の設定に失敗しました')
     } finally {
       setAutoSettingTimeRange(false)
