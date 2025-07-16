@@ -277,21 +277,26 @@ export function ChartGrid({
   // Determine aspect ratio: use dynamic for fixed layouts, default for responsive
   const aspectRatio = layoutOption ? dynamicAspectRatio : 1.5
   
-  // Calculate maximum auto-upgrade resolution based on chart count
+  // Calculate maximum auto-upgrade resolution based on layout configuration
   const calculateMaxAutoUpgradeResolution = useCallback((): DataResolution => {
-    const chartCount = visibleCharts.length;
-    
-    // For 16 or more charts (4x4 grid), limit to 'normal'
-    if (chartCount >= 16) {
-      return 'normal';
+    // If we have a fixed layout, use the grid size (rows x cols)
+    if (layoutOption) {
+      const gridSize = layoutOption.rows * layoutOption.cols;
+      // For 3x3 or larger grids (9+ grid slots), limit to 'normal' resolution
+      if (gridSize >= 9) {
+        return 'normal';
+      }
+      // For smaller grids (8 or fewer slots), allow up to 'high' resolution
+      return 'high';
     }
-    // For 9-15 charts (3x3 to 3x5), also limit to 'normal' for better performance
+    
+    // For responsive layout (no layoutOption), fall back to chart count
+    const chartCount = visibleCharts.length;
     if (chartCount >= 9) {
       return 'normal';
     }
-    // For 8 or fewer charts, allow up to 'high'
     return 'high';
-  }, [visibleCharts.length]);
+  }, [layoutOption, visibleCharts.length]);
   
   const maxAutoUpgradeResolution = calculateMaxAutoUpgradeResolution();
   
