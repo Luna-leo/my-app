@@ -28,6 +28,7 @@ import { layoutService } from '@/lib/services/layoutService'
 import { SamplingConfig, DEFAULT_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling'
 import { ResolutionConfig } from '@/components/layout/ResolutionControls'
 import { useDataPointsInfo } from '@/hooks/useDataPointsInfo'
+import { useAutoSaveWorkspace } from '@/hooks/useAutoSaveWorkspace'
 import { metadataService } from '@/lib/services/metadataService'
 import { colorService } from '@/lib/services/colorService'
 import { db } from '@/lib/db'
@@ -75,6 +76,21 @@ function HomeContent() {
   const [showWorkspaceListDialog, setShowWorkspaceListDialog] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
   const [currentWorkspace, setCurrentWorkspace] = useState<{ id: string; name: string; description?: string } | null>(null)
+  
+  // 自動保存フックを使用
+  useAutoSaveWorkspace({
+    workspace: currentWorkspace ? {
+      id: currentWorkspace.id,
+      name: currentWorkspace.name,
+      description: currentWorkspace.description,
+      isActive: true,
+      selectedDataKeys,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    } : null,
+    selectedDataKeys,
+    enabled: !!currentWorkspace && !loading
+  })
   const [waterfallLoadedCharts, setWaterfallLoadedCharts] = useState(0)
   const [totalChartsToLoad, setTotalChartsToLoad] = useState(0)
   const [showLoadingProgress, setShowLoadingProgress] = useState(false)
@@ -743,6 +759,14 @@ function HomeContent() {
       workspaceId: selectedWorkspaceId
     })
   }
+  
+  const handleSelectWorkspace = async (selectedWorkspaceId: string) => {
+    await handleLoadSession(selectedWorkspaceId)
+  }
+  
+  const handleCreateNewSession = () => {
+    window.location.href = '/?clean=true'
+  }
 
   const handleImportWorkspace = async () => {
     const input = document.createElement('input')
@@ -838,10 +862,10 @@ function HomeContent() {
           onExportClick={() => setShowExportDialog(true)}
           onImportWorkspaceClick={handleImportWorkspace}
           onSaveSessionClick={() => setShowSaveSessionDialog(true)}
-          onLoadSessionClick={() => setShowWorkspaceListDialog(true)}
+          onSelectWorkspace={handleSelectWorkspace}
+          onCreateNewSession={handleCreateNewSession}
           isCreateChartDisabled={selectedDataIds.length === 0}
-          isExportDisabled={charts.length === 0}
-          workspaceName={workspaceName}
+          currentWorkspace={currentWorkspace}
           hasDataOrCharts={selectedDataIds.length > 0 || charts.length > 0}
         />
         </div>
