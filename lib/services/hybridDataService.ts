@@ -254,13 +254,6 @@ export class HybridDataService {
           : ''; // Empty when no columns exist, but WITH clause will still work
         
         // Add NULL values for missing columns to ensure consistent result set structure
-        const allAliasedColumns = parameterIds.map(id => {
-          if (existingParameterIds.includes(id)) {
-            return `"${id}" AS "param_${id}"`;
-          } else {
-            return `NULL AS "param_${id}"`;
-          }
-        }).join(', ');
         
         let whereClause = '';
         if (options?.startTime || options?.endTime) {
