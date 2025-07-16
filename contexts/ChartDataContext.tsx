@@ -317,10 +317,10 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
           startTime: metadata.startTime,
           endTime: metadata.endTime,
           parameterIds: parameterIds,
-          maxPoints: maxPointsPerDataset || DB_SAMPLING_CONFIG.normal
+          maxPoints: maxPointsPerDataset
         });
         const data = result.data;
-        console.log(`[ChartDataContext] DB-sampled data count: ${data.length} from total: ${result.totalCount} (max: ${maxPointsPerDataset || DB_SAMPLING_CONFIG.normal})`);
+        console.log(`[ChartDataContext] DB-sampled data count: ${data.length} from total: ${result.totalCount} (max: ${maxPointsPerDataset || 'unlimited'})`);
         
         // Update parameter tracker even for time-filtered data
         if (data.length > 0) {
@@ -440,7 +440,7 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       }*/
       
       // No cache or first time loading
-      console.log(`[ChartDataContext] No cache for metadataId ${metadataId}, calling getTimeSeriesDataSampled with maxPoints: ${maxPointsPerDataset}`);
+      console.log(`[ChartDataContext] No cache for metadataId ${metadataId}, calling getTimeSeriesDataSampled with maxPoints: ${maxPointsPerDataset} (${maxPointsPerDataset === undefined ? 'FULL DATA' : 'SAMPLED'})`);
       
       // Use database-level sampling for initial data load
       const result = await db.getTimeSeriesDataSampled(metadataId, {
@@ -543,8 +543,6 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
   const getChartData = async (config: ChartConfigurationWithData, enableSampling: boolean | SamplingConfig = true, onProgress?: (progress: number) => void) => {
     const startTime = performance.now();
     
-    // Debug log for enableSampling value
-    console.log(`[ChartDataContext] getChartData called with enableSampling:`, enableSampling, `type: ${typeof enableSampling}`);
     
     const configHash = getConfigHash(config, enableSampling);
     
@@ -637,6 +635,7 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
         targetPointsPerDataset = SAMPLING_STRATEGY.normal.clientTargetPoints;
       }
       
+      console.log(`[ChartDataContext] Calling fetchRawData with maxPointsPerDataset:`, maxPointsPerDataset);
       const rawData = await fetchRawData(config.selectedDataIds, parameterIds, maxPointsPerDataset);
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
@@ -675,6 +674,8 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       let processedTimeSeries = rawData.timeSeries;
       let samplingInfo: SamplingInfo | undefined;
       const originalCount = rawData.totalOriginalCount;
+      
+      console.log(`[ChartDataContext] Client-side sampling check: rawData.length=${processedTimeSeries.length}, threshold=${targetPointsPerDataset ? targetPointsPerDataset * config.selectedDataIds.length : 'N/A'}`);
       
       if (targetPointsPerDataset && processedTimeSeries.length > targetPointsPerDataset * config.selectedDataIds.length) {
         console.log(`[ChartDataContext] Client-side sampling needed: ${processedTimeSeries.length} → ${targetPointsPerDataset * config.selectedDataIds.length}`);
@@ -724,15 +725,20 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
             }
             
             // Perform SQL-based sampling with per-dataset targets
-            const pointsPerDataset = Math.floor(samplingConfig.targetPoints / config.selectedDataIds.length);
-            processedTimeSeries = await hybridDataService.sampleData(
-              config.selectedDataIds,
-              samplingParameterIds,
-              pointsPerDataset,
-              {
-                method: 'nth' // DuckDB supports nth-point and random
-              }
-            );
+            // Check if we have valid samplingConfig with targetPoints
+            if (typeof samplingConfig === 'object' && samplingConfig.targetPoints) {
+              const pointsPerDataset = Math.floor(samplingConfig.targetPoints / config.selectedDataIds.length);
+              processedTimeSeries = await hybridDataService.sampleData(
+                config.selectedDataIds,
+                samplingParameterIds,
+                pointsPerDataset,
+                {
+                  method: 'nth' // DuckDB supports nth-point and random
+                }
+              );
+            } else {
+              // Keep the data as-is
+            }
             
             // Cache the sampled data
             hierarchicalSamplingCache.set(

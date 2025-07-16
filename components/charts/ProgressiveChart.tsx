@@ -120,6 +120,7 @@ function ProgressiveChartComponent({
     high: { label: 'High-Res', description: '1,000 pts/dataset - Detailed' },
     full: { label: 'Full', description: 'All points - Maximum detail' }
   };
+  
 
   // Handle resolution change
   const handleResolutionChange = (value: string) => {

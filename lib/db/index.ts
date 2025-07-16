@@ -271,74 +271,17 @@ export class AppDatabase extends Dexie {
     }
   ): Promise<{ data: TimeSeriesData[]; totalCount: number }> {
     const maxPoints = options?.maxPoints;
-    console.log(`[DB] getTimeSeriesDataSampled called for metadataId ${metadataId}, maxPoints: ${maxPoints || 'unlimited'}`);
     
     const query = this.timeSeries.where('metadataId').equals(metadataId);
     
     // Get total count for this metadata ID
     let totalCount = await query.count();
-    console.log(`[DB] Total count for metadataId ${metadataId}: ${totalCount}`);
     
-    // Debug: Check if requested parameters exist in the database
-    if (options?.parameterIds && options.parameterIds.length > 0) {
-      // Get a sample data point to check available parameters
-      // Create a new query to avoid modifying the original
-      const sampleQuery = this.timeSeries.where('metadataId').equals(metadataId);
-      const sampleData = await sampleQuery.limit(1).toArray();
-      if (sampleData.length > 0) {
-        const availableKeys = Object.keys(sampleData[0].data);
-        console.log(`[DB] Available parameter keys in DB for metadataId ${metadataId}:`, availableKeys);
-        console.log(`[DB] Requested parameter IDs:`, options.parameterIds);
-        
-        const missingParams = options.parameterIds.filter(id => !availableKeys.includes(id));
-        if (missingParams.length > 0) {
-          console.warn(`[DB] WARNING: Requested parameters not found in database:`, missingParams);
-        }
-      }
-    }
     
     // If time filtering is needed, we need to get the count within the time range
     if (options?.startTime || options?.endTime) {
-      console.log(`[DB] Time range filtering:`, {
-        startTime: options.startTime ? new Date(options.startTime).toLocaleString() : 'not set',
-        endTime: options.endTime ? new Date(options.endTime).toLocaleString() : 'not set',
-        startTimeMs: options.startTime,
-        endTimeMs: options.endTime
-      });
       const allData = await query.toArray();
       
-      // デバッグ: 最初と最後のデータポイントを確認
-      if (allData.length > 0) {
-        console.log(`[DB] Data time range:`, {
-          firstPoint: new Date(allData[0].timestamp).toLocaleString(),
-          lastPoint: new Date(allData[allData.length - 1].timestamp).toLocaleString(),
-          firstTimestamp: allData[0].timestamp,
-          lastTimestamp: allData[allData.length - 1].timestamp,
-          dataCount: allData.length
-        });
-        
-        // デバッグ: 9:00以降のデータが存在するか確認
-        const after9am = allData.filter(item => {
-          const hour = new Date(item.timestamp).getHours();
-          return hour >= 9;
-        });
-        console.log(`[DB] Data after 9:00 AM: ${after9am.length} points`);
-        
-        if (after9am.length > 0) {
-          console.log(`[DB] Sample after 9:00:`, {
-            time: new Date(after9am[0].timestamp).toLocaleString(),
-            timestamp: after9am[0].timestamp
-          });
-        }
-        
-        // デバッグ: 時間ごとのデータ分布を確認
-        const hourDistribution: Record<number, number> = {};
-        allData.forEach(item => {
-          const hour = new Date(item.timestamp).getHours();
-          hourDistribution[hour] = (hourDistribution[hour] || 0) + 1;
-        });
-        console.log(`[DB] Hour distribution:`, hourDistribution);
-      }
       
       const filteredData = allData.filter(item => {
         if (options.startTime && item.timestamp < options.startTime) return false;
@@ -346,26 +289,9 @@ export class AppDatabase extends Dexie {
         return true;
       });
       totalCount = filteredData.length;
-      console.log(`[DB] Filtered count (time range) for metadataId ${metadataId}: ${totalCount} from ${allData.length} total`);
-      
-      // デバッグ: フィルタリング後のデータ範囲を確認
-      if (filteredData.length > 0) {
-        console.log(`[DB] Filtered data time range:`, {
-          firstPoint: new Date(filteredData[0].timestamp).toLocaleString(),
-          lastPoint: new Date(filteredData[filteredData.length - 1].timestamp).toLocaleString()
-        });
-        
-        // 9:00以降のデータがフィルタリング後に残っているか確認
-        const after9amFiltered = filteredData.filter(item => {
-          const hour = new Date(item.timestamp).getHours();
-          return hour >= 9;
-        });
-        console.log(`[DB] Filtered data after 9:00 AM: ${after9amFiltered.length} points`);
-      }
       
       // If no maxPoints specified or filtered data is small enough, return it directly
       if (!maxPoints || totalCount <= maxPoints) {
-        console.log(`[DB] Returning all ${totalCount} points (${!maxPoints ? 'no limit' : 'below maxPoints threshold'})`);
         return {
           data: this.filterParameterIds(filteredData, options.parameterIds),
           totalCount: totalCount
@@ -375,8 +301,6 @@ export class AppDatabase extends Dexie {
       // Sample from filtered data
       const step = Math.max(1, Math.floor(totalCount / maxPoints));
       const sampled: TimeSeriesData[] = [];
-      
-      console.log(`[DB] Sampling with step ${step} to get ~${maxPoints} points from ${totalCount} total`);
       
       for (let i = 0; i < filteredData.length; i += step) {
         if (sampled.length >= maxPoints) break;
@@ -388,7 +312,6 @@ export class AppDatabase extends Dexie {
         sampled.push(filteredData[filteredData.length - 1]);
       }
       
-      console.log(`[DB] Sampled ${sampled.length} points from time-filtered data`);
       return {
         data: this.filterParameterIds(sampled, options.parameterIds),
         totalCount: totalCount
@@ -397,7 +320,6 @@ export class AppDatabase extends Dexie {
     
     // If no maxPoints specified or data is small enough, return all
     if (!maxPoints || totalCount <= maxPoints) {
-      console.log(`[DB] Returning all ${totalCount} points (${!maxPoints ? 'no limit' : 'below maxPoints threshold'})`);
       const results = await query.toArray();
       return {
         data: this.filterParameterIds(results, options?.parameterIds),
@@ -407,7 +329,6 @@ export class AppDatabase extends Dexie {
     
     // Calculate sampling step
     const step = Math.max(1, Math.floor(totalCount / maxPoints));
-    console.log(`[DB] Sampling with step ${step} to get ~${maxPoints} points from ${totalCount} total`);
     
     // First, get all data sorted by timestamp (more reliable than offset/limit)
     const allData = await query.sortBy('timestamp');
@@ -424,7 +345,6 @@ export class AppDatabase extends Dexie {
       sampled.push(allData[allData.length - 1]);
     }
     
-    console.log(`[DB] Sampled ${sampled.length} points from ${allData.length} total (step: ${step})`);
     return {
       data: this.filterParameterIds(sampled, options?.parameterIds),
       totalCount: totalCount
@@ -439,21 +359,6 @@ export class AppDatabase extends Dexie {
       return data;
     }
     
-    // Debug: Log the filtering operation
-    if (data.length > 0) {
-      const availableKeys = Object.keys(data[0].data);
-      const requestedKeys = parameterIds;
-      const missingKeys = requestedKeys.filter(key => !availableKeys.includes(key));
-      
-      if (missingKeys.length > 0) {
-        console.warn(`[DB] filterParameterIds: Some requested parameters not found in data:`, {
-          requested: requestedKeys,
-          available: availableKeys.slice(0, 10),
-          missing: missingKeys,
-          metadataId: data[0].metadataId
-        });
-      }
-    }
     
     return data.map(item => ({
       ...item,
