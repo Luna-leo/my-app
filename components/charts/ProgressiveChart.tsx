@@ -236,10 +236,108 @@ function ProgressiveChartComponent({
                   
                   return transformToUplotData(xValues, ySeriesData);
                 } else {
-                  // For non-time series (XY charts), use the original logic
-                  const xValues = plotData.series[0]?.xValues || [];
-                  const ySeriesData = plotData.series.map(s => s.yValues || []);
-                  return transformToUplotData(xValues, ySeriesData);
+                  // For non-time series (XY charts)
+                  // Check if all series have the same x values (optimization for common case)
+                  const firstSeries = plotData.series[0];
+                  if (!firstSeries) {
+                    return transformToUplotData([], []);
+                  }
+                  
+                  // Check if X and Y use the same parameter
+                  const isXYSameParameter = config.yAxisParameters.includes(config.xAxisParameter);
+                  
+                  const allSameXValues = plotData.series.every(s => 
+                    s.xValues.length === firstSeries.xValues.length &&
+                    s.xValues.every((x, i) => x === firstSeries.xValues[i])
+                  );
+                  
+                  if (allSameXValues) {
+                    // All series share the same x values - optimize by sharing x array
+                    const xValues = firstSeries.xValues || [];
+                    const ySeriesData = plotData.series.map(s => s.yValues || []);
+                    return transformToUplotData(xValues, ySeriesData);
+                  } else {
+                    // Different x values for each series - need to create unified x-axis
+                    // This happens when using the same parameter for both X and Y axes with different datasets
+                    console.log('[ProgressiveChart] Series have different X values, creating unified axis');
+                    
+                    // Special handling when X and Y use the same parameter
+                    if (isXYSameParameter) {
+                      console.log('[ProgressiveChart] X and Y use the same parameter, preserving diagonal relationship');
+                      
+                      // For X=Y case, we need to ensure that each point maintains x[i] = y[i]
+                      // Collect all unique values from both x and y arrays of all series
+                      const allValues = new Set<number>();
+                      plotData.series.forEach(series => {
+                        series.xValues.forEach(x => {
+                          if (!isNaN(x)) {
+                            allValues.add(x);
+                          }
+                        });
+                        // Also add y values since they should be the same as x values
+                        series.yValues.forEach(y => {
+                          if (y !== null && !isNaN(y)) {
+                            allValues.add(y);
+                          }
+                        });
+                      });
+                      
+                      // Sort values
+                      const unifiedValues = Array.from(allValues).sort((a, b) => a - b);
+                      
+                      // Map each series' data
+                      const ySeriesData: (number | null)[][] = plotData.series.map(series => {
+                        // Create a set of values that exist in this series
+                        const seriesValues = new Set<number>();
+                        series.xValues.forEach((x, i) => {
+                          if (!isNaN(x) && series.yValues[i] !== null && !isNaN(series.yValues[i])) {
+                            // For X=Y, both should have the same value
+                            seriesValues.add(x);
+                          }
+                        });
+                        
+                        // Map to unified axis, using the value itself for Y when it exists
+                        return unifiedValues.map(value => {
+                          return seriesValues.has(value) ? value : null;
+                        });
+                      });
+                      
+                      return transformToUplotData(unifiedValues, ySeriesData);
+                    } else {
+                      // Different parameters for X and Y - use original logic
+                      // Collect all unique x values from all series
+                      const allXValues = new Set<number>();
+                      plotData.series.forEach(series => {
+                        series.xValues.forEach(x => {
+                          if (!isNaN(x)) {
+                            allXValues.add(x);
+                          }
+                        });
+                      });
+                      
+                      // Sort x values
+                      const unifiedXValues = Array.from(allXValues).sort((a, b) => a - b);
+                      
+                      // Map each series' y values to the unified x-axis
+                      const ySeriesData: (number | null)[][] = plotData.series.map(series => {
+                        // Create a map for fast lookup
+                        const valueMap = new Map<number, number>();
+                        series.xValues.forEach((x, i) => {
+                          if (!isNaN(x) && series.yValues[i] !== null && !isNaN(series.yValues[i])) {
+                            valueMap.set(x, series.yValues[i]);
+                          }
+                        });
+                        
+                        // Map to unified x-axis
+                        return unifiedXValues.map(x => {
+                          const value = valueMap.get(x);
+                          return value !== undefined ? value : null;
+                        });
+                      });
+                      
+                      return transformToUplotData(unifiedXValues, ySeriesData);
+                    }
+                  }
                 }
               })()}
               options={uplotOptions}
