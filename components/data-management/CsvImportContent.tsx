@@ -146,7 +146,8 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
               dataSource: metadata.dataSource
             },
             dataSource,
-            (progress) => setDuckDBProgress(progress)
+            (progress) => setDuckDBProgress(progress),
+            { convertToParquet: true } // Always convert to Parquet
           )
         : await importer.importMultipleCsvFiles(
             selectedFiles,
@@ -162,7 +163,8 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
               dataSource: metadata.dataSource
             },
             dataSource,
-            (progress) => setDuckDBProgress(progress)
+            (progress) => setDuckDBProgress(progress),
+            { convertToParquet: true } // Always convert to Parquet
           )
 
       setDuckDBProgress(null)
@@ -299,6 +301,11 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
               <p className="text-sm">
                 <span className="font-medium">Import time:</span> {importResult.duration.toFixed(0)}ms
               </p>
+              {importResult.parquetFileId && (
+                <p className="text-sm">
+                  <span className="font-medium">Storage:</span> Parquet format (optimized)
+                </p>
+              )}
             </div>
             
             {importResult.errors.length > 0 && (

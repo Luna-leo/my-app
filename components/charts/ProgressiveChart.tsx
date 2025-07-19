@@ -413,7 +413,7 @@ function ProgressiveChartComponent({
             <p className="text-sm text-muted-foreground">
               {selectedDataIds.length === 0 
                 ? "No data selected - Please select data from the Data Management dialog"
-                : "No data to display"}
+                : "No data to display - Please re-import CSV data if you reloaded the page"}
             </p>
           </div>
         )}

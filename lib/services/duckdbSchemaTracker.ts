@@ -115,6 +115,13 @@ export class DuckDBSchemaTracker {
   }
 
   /**
+   * Alias for removeTable to match the naming convention used in DuckDBCsvImporter
+   */
+  dropTable(metadataId: number): void {
+    this.removeTable(metadataId);
+  }
+
+  /**
    * Clear all tracked schemas
    */
   clear(): void {

@@ -17,6 +17,7 @@ import { hybridDataService } from '@/lib/services/hybridDataService';
 import { parameterTracker } from '@/lib/services/parameterTracker';
 import { ChartParameterAggregator } from '@/lib/services/chartParameterAggregator';
 import { batchDataLoader } from '@/lib/services/batchDataLoader';
+import { createParquetDataManager } from '@/lib/services/parquetDataManager';
 import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, SamplingConfig, getMemoryAwareSamplingConfig, PREVIEW_SAMPLING_CONFIG, HIGH_RES_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig } from '@/lib/utils/hashUtils';
@@ -359,6 +360,47 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                 }
                 
                 return { metadataId, data: duckdbData, totalCount: duckdbData.length };
+              } else {
+                // Check for Parquet files when table doesn't exist
+                const parquetFiles = await db.parquetFiles
+                  .where('metadataId')
+                  .equals(metadataId)
+                  .toArray();
+                
+                if (parquetFiles.length > 0) {
+                  console.log(`[ChartDataContext] Found ${parquetFiles.length} Parquet file(s) for metadataId ${metadataId}, loading from Parquet`);
+                  const parquetFile = parquetFiles[0];
+                  
+                  try {
+                    const parquetManager = createParquetDataManager(connection);
+                    const parquetData = await parquetManager.readParquetData(parquetFile.id!);
+                    
+                    console.log(`[ChartDataContext] Loaded ${parquetData.length} points from Parquet with time filtering`);
+                    
+                    // Convert to TimeSeriesData format with parseDuckDBTimestamp
+                    const { parseDuckDBTimestamp } = await import('@/lib/utils/duckdbTimestamp');
+                    const timeSeriesData: TimeSeriesData[] = parquetData.map((row: unknown) => {
+                      const rowObj = row as Record<string, unknown>;
+                      return {
+                        metadataId: metadataId,
+                        timestamp: parseDuckDBTimestamp(rowObj.timestamp as string | number),
+                        data: parameterIds ? 
+                          Object.fromEntries(parameterIds.map(pid => [pid, rowObj[pid] ?? null])) :
+                          Object.fromEntries(Object.entries(rowObj).filter(([k]) => k !== 'timestamp'))
+                      };
+                    });
+                    
+                    // Update parameter tracker
+                    if (timeSeriesData.length > 0) {
+                      const actualKeys = Object.keys(timeSeriesData[0].data);
+                      parameterTracker.addLoadedParameters(metadataId, actualKeys);
+                    }
+                    
+                    return { metadataId, data: timeSeriesData, totalCount: parquetFile.rowCount };
+                  } catch (err) {
+                    console.error(`[ChartDataContext] Failed to load from Parquet:`, err);
+                  }
+                }
               }
             }
           } catch (err) {
@@ -541,6 +583,48 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
               }
               
               return { metadataId, data: duckdbData, totalCount: duckdbData.length };
+            } else {
+              // Check for Parquet files when table doesn't exist
+              const parquetFiles = await db.parquetFiles
+                .where('metadataId')
+                .equals(metadataId)
+                .toArray();
+              
+              if (parquetFiles.length > 0) {
+                console.log(`[ChartDataContext] Found ${parquetFiles.length} Parquet file(s) for metadataId ${metadataId}, loading from Parquet`);
+                const parquetFile = parquetFiles[0];
+                
+                try {
+                  const parquetManager = createParquetDataManager(connection);
+                  const parquetData = await parquetManager.readParquetData(parquetFile.id!);
+                  
+                  console.log(`[ChartDataContext] Loaded ${parquetData.length} points from Parquet`);
+                  
+                  // Convert to TimeSeriesData format with parseDuckDBTimestamp
+                  const { parseDuckDBTimestamp } = await import('@/lib/utils/duckdbTimestamp');
+                  const timeSeriesData: TimeSeriesData[] = parquetData.map((row: unknown) => {
+                    const rowObj = row as Record<string, unknown>;
+                    return {
+                      metadataId: metadataId,
+                      timestamp: parseDuckDBTimestamp(rowObj.timestamp as string | number),
+                      data: parameterIds ? 
+                        Object.fromEntries(parameterIds.map(pid => [pid, rowObj[pid] ?? null])) :
+                        Object.fromEntries(Object.entries(rowObj).filter(([k]) => k !== 'timestamp'))
+                    };
+                  });
+                  
+                  // Update parameter tracker
+                  if (timeSeriesData.length > 0) {
+                    const actualKeys = Object.keys(timeSeriesData[0].data);
+                    parameterTracker.addLoadedParameters(metadataId, actualKeys);
+                    timeSeriesCache.set(metadataId, timeSeriesData);
+                  }
+                  
+                  return { metadataId, data: timeSeriesData, totalCount: parquetFile.rowCount };
+                } catch (err) {
+                  console.error(`[ChartDataContext] Failed to load from Parquet:`, err);
+                }
+              }
             }
           }
         } catch (err) {
@@ -832,6 +916,46 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                   if (tableExists.toArray()[0]?.count > 0) {
                     console.log(`[ChartDataContext] Data already exists in DuckDB table ${tableName}`);
                     duckDBLoadedData.current.add(metadataId);
+                  } else {
+                    // Table doesn't exist after page reload - check for Parquet files
+                    console.log(`[ChartDataContext] DuckDB table ${tableName} doesn't exist (page was reloaded)`);
+                    
+                    // Check if Parquet file exists in IndexedDB
+                    const parquetFiles = await db.parquetFiles
+                      .where('metadataId')
+                      .equals(metadataId)
+                      .toArray();
+                    
+                    if (parquetFiles.length > 0) {
+                      console.log(`[ChartDataContext] Found ${parquetFiles.length} Parquet file(s) for metadataId ${metadataId}`);
+                      const parquetFile = parquetFiles[0]; // Use the first file
+                      
+                      try {
+                        // Create a temporary table from Parquet
+                        const parquetManager = createParquetDataManager(connection);
+                        const parquetData = await parquetManager.readParquetData(parquetFile.id!);
+                        
+                        console.log(`[ChartDataContext] Loaded ${parquetData.length} points from Parquet for metadataId ${metadataId}`);
+                        
+                        // Convert Parquet data to TimeSeriesData format
+                        const timeSeriesData: TimeSeriesData[] = parquetData.map((row: unknown) => {
+                          const rowObj = row as Record<string, unknown>;
+                          return {
+                            metadataId: metadataId,
+                            timestamp: rowObj.timestamp instanceof Date ? rowObj.timestamp : new Date(rowObj.timestamp as string | number),
+                            data: parameterIds ? 
+                              Object.fromEntries(parameterIds.map(pid => [pid, rowObj[pid] ?? null])) :
+                              Object.fromEntries(Object.entries(rowObj).filter(([k]) => k !== 'timestamp'))
+                          };
+                        });
+                        
+                        return { metadataId, data: timeSeriesData, totalCount: parquetFile.rowCount };
+                      } catch (err) {
+                        console.error(`[ChartDataContext] Failed to load from Parquet:`, err);
+                      }
+                    }
+                    
+                    console.log(`[ChartDataContext] No Parquet files found - please re-import the CSV data for metadataId ${metadataId}`);
                   }
                 }
               } catch (err) {
@@ -844,9 +968,11 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
           
           // Perform SQL-based sampling with per-dataset targets
           const pointsPerDataset = Math.floor(targetPointsPerDataset);
+          
           console.log('[ChartDataContext] Calling hybridDataService.sampleData with:', {
             xAxisMode: config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter',
             xAxisParameter: config.xAxisParameter,
+            parameterIds: samplingParameterIds,
             metadataIds: config.selectedDataIds,
             samplingParameterIds,
             pointsPerDataset

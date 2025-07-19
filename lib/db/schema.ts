@@ -67,3 +67,14 @@ export interface Workspace {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface ParquetFile {
+  id?: string;
+  metadataId: number;
+  filename: string;
+  blob: Blob;
+  size: number;
+  parameters: string[]; // List of parameter IDs in this file
+  rowCount: number;
+  createdAt: Date;
+}

@@ -10,6 +10,7 @@ import { Metadata, DataSource, ParameterInfo } from '@/lib/db/schema';
 import { duckDBSchemaTracker } from './duckdbSchemaTracker';
 import { db } from '@/lib/db';
 import { generateDataKey } from '@/lib/utils/dataKeyUtils';
+import { createParquetDataManager } from './parquetDataManager';
 
 export interface DuckDBImportProgress {
   current: number;
@@ -26,6 +27,7 @@ export interface DuckDBImportResult {
   columnCount: number;
   duration: number;
   errors: string[];
+  parquetFileId?: string;
 }
 
 export class DuckDBCsvImporter {
@@ -42,7 +44,10 @@ export class DuckDBCsvImporter {
     files: File[],
     metadata: Omit<Metadata, 'id' | 'importedAt' | 'dataKey'>,
     dataSource: DataSource,
-    onProgress?: (progress: DuckDBImportProgress) => void
+    onProgress?: (progress: DuckDBImportProgress) => void,
+    options?: {
+      convertToParquet?: boolean;
+    }
   ): Promise<DuckDBImportResult> {
     const startTime = performance.now();
     const errors: string[] = [];
@@ -245,6 +250,43 @@ export class DuckDBCsvImporter {
 
       const duration = performance.now() - startTime;
 
+      // Convert to Parquet if requested
+      let parquetFileId: string | undefined;
+      if (options?.convertToParquet) {
+        onProgress?.({
+          current: 95,
+          total: 100,
+          phase: 'indexing',
+          message: 'Converting to Parquet format...'
+        });
+
+        try {
+          const parquetManager = createParquetDataManager(this.connection!);
+          const metadataRecord = await db.metadata.get(metadataId as number);
+          
+          if (metadataRecord) {
+            const parquetResult = await parquetManager.convertTableToParquet(
+              tableName,
+              metadataId as number,
+              metadataRecord,
+              { compression: 'snappy' }
+            );
+
+            if (parquetResult.success) {
+              parquetFileId = parquetResult.parquetFileId;
+              console.log(`[DuckDBCsvImporter] Successfully converted to Parquet: ${parquetResult.filename}`);
+              
+              // Keep the DuckDB table for now - Parquet serves as backup
+              // await this.connection!.query(`DROP TABLE ${tableName}`);
+              console.log(`[DuckDBCsvImporter] Keeping DuckDB table ${tableName} in memory along with Parquet backup`);
+            }
+          }
+        } catch (err) {
+          console.error('[DuckDBCsvImporter] Failed to convert to Parquet:', err);
+          errors.push(`Parquet conversion failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      }
+
       onProgress?.({
         current: 100,
         total: 100,
@@ -259,7 +301,8 @@ export class DuckDBCsvImporter {
         rowCount: totalRowsImported,
         columnCount: uniqueHeaders.length,
         duration,
-        errors
+        errors,
+        parquetFileId
       };
 
     } catch (error) {
@@ -375,7 +418,10 @@ export class DuckDBCsvImporter {
     file: File,
     metadata: Omit<Metadata, 'id' | 'importedAt' | 'dataKey'>,
     dataSource: DataSource,
-    onProgress?: (progress: DuckDBImportProgress) => void
+    onProgress?: (progress: DuckDBImportProgress) => void,
+    options?: {
+      convertToParquet?: boolean;
+    }
   ): Promise<DuckDBImportResult> {
     const startTime = performance.now();
     const errors: string[] = [];
@@ -612,6 +658,43 @@ export class DuckDBCsvImporter {
 
       const duration = performance.now() - startTime;
 
+      // Convert to Parquet if requested
+      let parquetFileId: string | undefined;
+      if (options?.convertToParquet) {
+        onProgress?.({
+          current: 95,
+          total: 100,
+          phase: 'indexing',
+          message: 'Converting to Parquet format...'
+        });
+
+        try {
+          const parquetManager = createParquetDataManager(this.connection!);
+          const metadataRecord = await db.metadata.get(metadataId as number);
+          
+          if (metadataRecord) {
+            const parquetResult = await parquetManager.convertTableToParquet(
+              tableName,
+              metadataId as number,
+              metadataRecord,
+              { compression: 'snappy' }
+            );
+
+            if (parquetResult.success) {
+              parquetFileId = parquetResult.parquetFileId;
+              console.log(`[DuckDBCsvImporter] Successfully converted to Parquet: ${parquetResult.filename}`);
+              
+              // Keep the DuckDB table for now - Parquet serves as backup
+              // await this.connection!.query(`DROP TABLE ${tableName}`);
+              console.log(`[DuckDBCsvImporter] Keeping DuckDB table ${tableName} in memory along with Parquet backup`);
+            }
+          }
+        } catch (err) {
+          console.error('[DuckDBCsvImporter] Failed to convert to Parquet:', err);
+          errors.push(`Parquet conversion failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      }
+
       onProgress?.({
         current: 100,
         total: 100,
@@ -626,7 +709,8 @@ export class DuckDBCsvImporter {
         rowCount,
         columnCount: headers.length,
         duration,
-        errors
+        errors,
+        parquetFileId
       };
 
     } catch (error) {

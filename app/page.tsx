@@ -158,6 +158,8 @@ function HomeContent() {
       }
       
       console.log('[loadWorkspaceAndCharts] Loaded workspace:', workspace)
+      console.log('[loadWorkspaceAndCharts] Workspace selectedDataKeys:', workspace.selectedDataKeys)
+      console.log('[loadWorkspaceAndCharts] Workspace selectedDataKeys length:', workspace.selectedDataKeys?.length || 0)
       
       console.log('[loadWorkspaceAndCharts] Setting workspace state...')
       setWorkspaceId(workspace.id!)
@@ -172,12 +174,21 @@ function HomeContent() {
       // Load selected data keys from workspace (skip for clean start)
       let currentSelectedDataIds: number[] = []
       
+      console.log('[loadWorkspaceAndCharts] Checking condition:', {
+        mode: startupOptions?.mode,
+        hasSelectedDataKeys: !!workspace.selectedDataKeys,
+        selectedDataKeysLength: workspace.selectedDataKeys?.length || 0,
+        willLoadData: startupOptions?.mode !== 'clean' && workspace.selectedDataKeys && workspace.selectedDataKeys.length > 0
+      })
+      
       if (startupOptions?.mode !== 'clean' && workspace.selectedDataKeys && workspace.selectedDataKeys.length > 0) {
         console.log('[loadWorkspaceAndCharts] Loading selected data keys from workspace:', workspace.selectedDataKeys)
+        console.log('[loadWorkspaceAndCharts] Workspace object:', JSON.stringify(workspace, null, 2))
         setSelectedDataKeys(workspace.selectedDataKeys)
         
         // Convert data keys to IDs for backward compatibility
         const metadata = await db.getMetadataByDataKeys(workspace.selectedDataKeys)
+        console.log('[loadWorkspaceAndCharts] Retrieved metadata:', metadata)
         const ids = metadata.map(m => m.id!).filter(id => id !== undefined)
         console.log('[loadWorkspaceAndCharts] Converted data keys to IDs:', ids)
         setSelectedDataIds(ids)
