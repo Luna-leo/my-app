@@ -12,6 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { hybridDataService } from '@/lib/services/hybridDataService'
 
 interface DataPreviewDialogProps {
   open: boolean
@@ -40,38 +41,92 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
     // Delay loading to avoid unnecessary DB access for quick open/close
     const loadTimer = setTimeout(async () => {
       try {
-        // Load first 100 rows of data for preview
-        const timeSeriesData = await db.timeSeries
-          .where('metadataId')
-          .equals(metadata.id!)
-          .limit(100)
-          .toArray()
+        console.log('[DataPreviewDialog] Loading data for metadata:', metadata.id);
         
-        setData(timeSeriesData)
+        // Initialize HybridDataService
+        await hybridDataService.initialize();
+        const connection = await hybridDataService.getConnection();
+        
+        let timeSeriesData: TimeSeriesData[] = [];
+        
+        // Try to load from DuckDB first
+        if (connection) {
+          const tableName = `timeseries_${metadata.id}`;
+          
+          try {
+            // Check if table exists in DuckDB
+            const tableExists = await connection.query(`
+              SELECT COUNT(*) as count 
+              FROM information_schema.tables 
+              WHERE table_name = '${tableName}'
+            `);
+            
+            const exists = tableExists.toArray()[0]?.count > 0;
+            console.log(`[DataPreviewDialog] DuckDB table ${tableName} exists:`, exists);
+            
+            if (exists) {
+              // Load data from DuckDB
+              const result = await connection.query(`
+                SELECT * FROM ${tableName}
+                ORDER BY timestamp
+                LIMIT 100
+              `);
+              
+              const duckdbData = result.toArray();
+              console.log(`[DataPreviewDialog] Loaded ${duckdbData.length} rows from DuckDB`);
+              
+              // Convert DuckDB data to TimeSeriesData format
+              timeSeriesData = duckdbData.map((row: any) => {
+                const { metadata_id, timestamp, ...dataColumns } = row;
+                return {
+                  metadataId: metadata_id,
+                  timestamp: new Date(timestamp),
+                  data: dataColumns
+                };
+              });
+            }
+          } catch (err) {
+            console.warn('[DataPreviewDialog] Failed to load from DuckDB:', err);
+          }
+        }
+        
+        // Fall back to IndexedDB if no data from DuckDB
+        if (timeSeriesData.length === 0) {
+          console.log('[DataPreviewDialog] Falling back to IndexedDB');
+          timeSeriesData = await db.timeSeries
+            .where('metadataId')
+            .equals(metadata.id!)
+            .limit(100)
+            .toArray();
+          console.log(`[DataPreviewDialog] Loaded ${timeSeriesData.length} rows from IndexedDB`);
+        }
+        
+        setData(timeSeriesData);
         
         // Load parameter information
         if (timeSeriesData.length > 0) {
-          const parameterIds = Object.keys(timeSeriesData[0].data)
+          const parameterIds = Object.keys(timeSeriesData[0].data);
           const parameterInfos = await db.parameters
             .where('plant')
             .equals(metadata.plant)
             .and(p => p.machineNo === metadata.machineNo)
-            .toArray()
+            .toArray();
           
-          const paramMap: Record<string, ParameterInfo> = {}
+          const paramMap: Record<string, ParameterInfo> = {};
           parameterInfos.forEach(p => {
             if (parameterIds.includes(p.parameterId)) {
-              paramMap[p.parameterId] = p
+              paramMap[p.parameterId] = p;
             }
-          })
-          setParameters(paramMap)
+          });
+          setParameters(paramMap);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load data')
+        console.error('[DataPreviewDialog] Error loading data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load data');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }, 300) // 300ms delay
+    }, 300); // 300ms delay
 
     // Cleanup function to cancel loading if dialog is closed quickly
     return () => {
@@ -95,10 +150,60 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
       
       // Load all data if exportAll is true
       if (exportAll) {
-        exportData = await db.timeSeries
-          .where('metadataId')
-          .equals(metadata.id!)
-          .toArray()
+        const connection = await hybridDataService.getConnection();
+        const tableName = `timeseries_${metadata.id}`;
+        
+        if (connection) {
+          try {
+            // Check if table exists in DuckDB
+            const tableExists = await connection.query(`
+              SELECT COUNT(*) as count 
+              FROM information_schema.tables 
+              WHERE table_name = '${tableName}'
+            `);
+            
+            const exists = tableExists.toArray()[0]?.count > 0;
+            
+            if (exists) {
+              // Load all data from DuckDB
+              const result = await connection.query(`
+                SELECT * FROM ${tableName}
+                ORDER BY timestamp
+              `);
+              
+              const duckdbData = result.toArray();
+              
+              // Convert DuckDB data to TimeSeriesData format
+              exportData = duckdbData.map((row: any) => {
+                const { metadata_id, timestamp, ...dataColumns } = row;
+                return {
+                  metadataId: metadata_id,
+                  timestamp: new Date(timestamp),
+                  data: dataColumns
+                };
+              });
+            } else {
+              // Fall back to IndexedDB
+              exportData = await db.timeSeries
+                .where('metadataId')
+                .equals(metadata.id!)
+                .toArray();
+            }
+          } catch (err) {
+            console.warn('[DataPreviewDialog] Failed to export from DuckDB:', err);
+            // Fall back to IndexedDB
+            exportData = await db.timeSeries
+              .where('metadataId')
+              .equals(metadata.id!)
+              .toArray();
+          }
+        } else {
+          // Fall back to IndexedDB
+          exportData = await db.timeSeries
+            .where('metadataId')
+            .equals(metadata.id!)
+            .toArray();
+        }
       }
       
       if (exportData.length === 0) {

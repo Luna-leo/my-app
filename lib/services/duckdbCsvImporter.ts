@@ -6,7 +6,7 @@
  */
 
 import * as duckdb from '@duckdb/duckdb-wasm';
-import { Metadata, DataSource } from '@/lib/db/schema';
+import { Metadata, DataSource, ParameterInfo } from '@/lib/db/schema';
 import { duckDBSchemaTracker } from './duckdbSchemaTracker';
 import { db } from '@/lib/db';
 import { generateDataKey } from '@/lib/utils/dataKeyUtils';
@@ -45,7 +45,6 @@ export class DuckDBCsvImporter {
     onProgress?: (progress: DuckDBImportProgress) => void
   ): Promise<DuckDBImportResult> {
     const startTime = performance.now();
-    const tableName = `timeseries_${metadata.plant}_${metadata.machineNo}_${Date.now()}`;
     const errors: string[] = [];
     let totalRowsImported = 0;
     const allHeaders = new Set<string>();
@@ -81,6 +80,50 @@ export class DuckDBCsvImporter {
 
       const uniqueHeaders = Array.from(allHeaders);
       
+      // First, save metadata to IndexedDB to get the actual ID
+      const importedAt = new Date();
+      
+      // Detect data range from first file for metadata
+      let dataStartTime: Date | undefined;
+      let dataEndTime: Date | undefined;
+      
+      if (files.length > 0) {
+        const firstFileText = await files[0].text();
+        const lines = firstFileText.split('\n').filter(line => line.trim());
+        if (lines.length > 3) {
+          const firstDataLine = lines[3];
+          const firstTimestamp = firstDataLine.split(',')[0]?.trim();
+          if (firstTimestamp) {
+            dataStartTime = new Date(firstTimestamp);
+          }
+          
+          const lastDataLine = lines[lines.length - 1];
+          const lastTimestamp = lastDataLine.split(',')[0]?.trim();
+          if (lastTimestamp) {
+            dataEndTime = new Date(lastTimestamp);
+          }
+        }
+      }
+      
+      const dataKey = generateDataKey({
+        plant: metadata.plant,
+        machineNo: metadata.machineNo,
+        dataSource: metadata.dataSource,
+        dataStartTime: metadata.dataStartTime || dataStartTime || new Date(),
+        dataEndTime: metadata.dataEndTime || dataEndTime || new Date(),
+        importedAt: importedAt
+      });
+
+      const metadataId = await db.metadata.add({
+        ...metadata,
+        dataKey,
+        importedAt,
+        dataStartTime: metadata.dataStartTime || dataStartTime || new Date(),
+        dataEndTime: metadata.dataEndTime || dataEndTime || new Date()
+      });
+      
+      const tableName = `timeseries_${metadataId}`;
+      
       // Create column definitions with proper naming and deduplication
       const columnNames = new Map<string, number>();
       const columnDefs = uniqueHeaders.map((header) => {
@@ -110,7 +153,6 @@ export class DuckDBCsvImporter {
       `);
 
       // Import each file
-      const tempMetadataId = Math.floor(Math.random() * 1000000); // Temporary ID for DuckDB
       
       for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
         const file = files[fileIndex];
@@ -124,7 +166,7 @@ export class DuckDBCsvImporter {
         const rowsImported = await this.importSingleFile(
           file,
           tableName,
-          tempMetadataId,
+          metadataId as number,
           uniqueHeaders,
           (progress) => {
             // Calculate overall progress
@@ -156,47 +198,45 @@ export class DuckDBCsvImporter {
         `);
       }
 
-      // Detect data range from imported data
-      const rangeResult = await this.connection!.query(`
-        SELECT 
-          MIN(timestamp) as min_timestamp,
-          MAX(timestamp) as max_timestamp
-        FROM ${tableName}
-        WHERE timestamp IS NOT NULL
-      `);
-      
-      const rangeData = rangeResult.toArray()[0];
-      const dataStartTime = rangeData.min_timestamp ? new Date(rangeData.min_timestamp) : new Date();
-      const dataEndTime = rangeData.max_timestamp ? new Date(rangeData.max_timestamp) : new Date();
-
-      // Save metadata to IndexedDB
-      const importedAt = new Date();
-      const dataKey = generateDataKey({
-        plant: metadata.plant,
-        machineNo: metadata.machineNo,
-        dataSource: metadata.dataSource,
-        dataStartTime: metadata.dataStartTime || dataStartTime,
-        dataEndTime: metadata.dataEndTime || dataEndTime,
-        importedAt: importedAt
-      });
-
-      const metadataId = await db.metadata.add({
-        ...metadata,
-        dataKey,
-        importedAt,
-        dataStartTime: metadata.dataStartTime || dataStartTime,
-        dataEndTime: metadata.dataEndTime || dataEndTime
-      });
-
-      // Update DuckDB table with real metadata ID
-      await this.connection!.query(`
-        UPDATE ${tableName} 
-        SET metadata_id = ${metadataId}
-        WHERE metadata_id = ${tempMetadataId}
-      `);
-
-      // Register table in schema tracker with real metadata ID
+      // Register table in schema tracker
       duckDBSchemaTracker.registerTable(metadataId as number, uniqueHeaders, totalRowsImported);
+      
+      // Save parameter information to IndexedDB
+      try {
+        // Get parameter info from CSV headers
+        const firstFile = files[0];
+        const firstFileText = await firstFile.text();
+        const lines = firstFileText.split('\n');
+        
+        if (lines.length >= 3) {
+          const parameterIds = lines[0].split(',').slice(1).map(h => h.trim());
+          const parameterNames = lines[1].split(',').slice(1).map(h => h.trim());
+          const units = lines[2].split(',').slice(1).map(h => h.trim());
+          
+          const parameters: ParameterInfo[] = [];
+          
+          for (let i = 0; i < parameterIds.length; i++) {
+            if (parameterIds[i] && parameterIds[i] !== '' && 
+                parameterNames[i] && parameterNames[i] !== '-' &&
+                units[i] && units[i] !== '-') {
+              parameters.push({
+                parameterId: parameterIds[i],
+                parameterName: parameterNames[i],
+                unit: units[i],
+                plant: metadata.plant,
+                machineNo: metadata.machineNo
+              });
+            }
+          }
+          
+          if (parameters.length > 0) {
+            await db.parameters.bulkPut(parameters);
+            console.log(`[DuckDBCsvImporter] Saved ${parameters.length} parameters to IndexedDB`);
+          }
+        }
+      } catch (err) {
+        console.warn('[DuckDBCsvImporter] Failed to save parameters:', err);
+      }
 
       const duration = performance.now() - startTime;
 
@@ -322,7 +362,6 @@ export class DuckDBCsvImporter {
     onProgress?: (progress: DuckDBImportProgress) => void
   ): Promise<DuckDBImportResult> {
     const startTime = performance.now();
-    const tableName = `timeseries_${metadata.plant}_${metadata.machineNo}_${Date.now()}`;
     const errors: string[] = [];
 
     try {
@@ -349,6 +388,45 @@ export class DuckDBCsvImporter {
       const allHeaders = lines[dataStartIndex - 1].split(',').map(h => h.trim());
       // Skip first column (timestamp) and filter empty headers
       const headers = allHeaders.slice(1).filter(h => h && h !== '');
+      
+      // Detect data range for metadata
+      let dataStartTime: Date | undefined;
+      let dataEndTime: Date | undefined;
+      
+      if (lines.length > dataStartIndex) {
+        const firstDataLine = lines[dataStartIndex];
+        const firstTimestamp = firstDataLine.split(',')[0]?.trim();
+        if (firstTimestamp) {
+          dataStartTime = new Date(firstTimestamp);
+        }
+        
+        const lastDataLine = lines[lines.length - 1];
+        const lastTimestamp = lastDataLine.split(',')[0]?.trim();
+        if (lastTimestamp) {
+          dataEndTime = new Date(lastTimestamp);
+        }
+      }
+      
+      // Save metadata to IndexedDB first to get the ID
+      const importedAt = new Date();
+      const dataKey = generateDataKey({
+        plant: metadata.plant,
+        machineNo: metadata.machineNo,
+        dataSource: metadata.dataSource,
+        dataStartTime: metadata.dataStartTime || dataStartTime || new Date(),
+        dataEndTime: metadata.dataEndTime || dataEndTime || new Date(),
+        importedAt: importedAt
+      });
+
+      const metadataId = await db.metadata.add({
+        ...metadata,
+        dataKey,
+        importedAt,
+        dataStartTime: metadata.dataStartTime || dataStartTime || new Date(),
+        dataEndTime: metadata.dataEndTime || dataEndTime || new Date()
+      });
+      
+      const tableName = `timeseries_${metadataId}`;
       
       // Create column definitions with proper naming and deduplication
       const columnNames = new Map<string, number>();
@@ -393,7 +471,6 @@ export class DuckDBCsvImporter {
       });
 
       // Import data in batches to avoid memory issues
-      const metadataId = Math.floor(Math.random() * 1000000); // Temporary ID
       const batchSize = 1000;
       let importedRows = 0;
       
@@ -468,47 +545,40 @@ export class DuckDBCsvImporter {
         `);
       }
 
-      // Detect data range from imported data
-      const rangeResult = await this.connection!.query(`
-        SELECT 
-          MIN(timestamp) as min_timestamp,
-          MAX(timestamp) as max_timestamp
-        FROM ${tableName}
-        WHERE timestamp IS NOT NULL
-      `);
+      // Register table in schema tracker
+      duckDBSchemaTracker.registerTable(metadataId as number, headers, rowCount);
       
-      const rangeData = rangeResult.toArray()[0];
-      const dataStartTime = rangeData.min_timestamp ? new Date(rangeData.min_timestamp) : new Date();
-      const dataEndTime = rangeData.max_timestamp ? new Date(rangeData.max_timestamp) : new Date();
-
-      // Save metadata to IndexedDB
-      const importedAt = new Date();
-      const dataKey = generateDataKey({
-        plant: metadata.plant,
-        machineNo: metadata.machineNo,
-        dataSource: metadata.dataSource,
-        dataStartTime: metadata.dataStartTime || dataStartTime,
-        dataEndTime: metadata.dataEndTime || dataEndTime,
-        importedAt: importedAt
-      });
-
-      const realMetadataId = await db.metadata.add({
-        ...metadata,
-        dataKey,
-        importedAt,
-        dataStartTime: metadata.dataStartTime || dataStartTime,
-        dataEndTime: metadata.dataEndTime || dataEndTime
-      });
-
-      // Update DuckDB table with real metadata ID
-      await this.connection!.query(`
-        UPDATE ${tableName} 
-        SET metadata_id = ${realMetadataId}
-        WHERE metadata_id = ${metadataId}
-      `);
-
-      // Register table in schema tracker with real metadata ID
-      duckDBSchemaTracker.registerTable(realMetadataId as number, headers, rowCount);
+      // Save parameter information to IndexedDB
+      try {
+        if (lines.length >= 3) {
+          const parameterIds = lines[0].split(',').slice(1).map(h => h.trim());
+          const parameterNames = lines[1].split(',').slice(1).map(h => h.trim());
+          const units = lines[2].split(',').slice(1).map(h => h.trim());
+          
+          const parameters: ParameterInfo[] = [];
+          
+          for (let i = 0; i < parameterIds.length; i++) {
+            if (parameterIds[i] && parameterIds[i] !== '' && 
+                parameterNames[i] && parameterNames[i] !== '-' &&
+                units[i] && units[i] !== '-') {
+              parameters.push({
+                parameterId: parameterIds[i],
+                parameterName: parameterNames[i],
+                unit: units[i],
+                plant: metadata.plant,
+                machineNo: metadata.machineNo
+              });
+            }
+          }
+          
+          if (parameters.length > 0) {
+            await db.parameters.bulkPut(parameters);
+            console.log(`[DuckDBCsvImporter] Saved ${parameters.length} parameters to IndexedDB`);
+          }
+        }
+      } catch (err) {
+        console.warn('[DuckDBCsvImporter] Failed to save parameters:', err);
+      }
 
       const duration = performance.now() - startTime;
 
@@ -521,7 +591,7 @@ export class DuckDBCsvImporter {
 
       return {
         success: true,
-        metadataId: realMetadataId as number,
+        metadataId: metadataId as number,
         tableName,
         rowCount,
         columnCount: headers.length,
