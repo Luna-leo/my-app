@@ -134,7 +134,7 @@ export class HybridDataService {
       const checkTableSQL = `SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '${tableName}'`;
       const result = await this.duckDBInstance.connection.query(checkTableSQL);
       tableExistsInDB = result.toArray()[0]['count_star()'] > 0;
-    } catch (error) {
+    } catch {
       console.log(`[HybridDataService] Table existence check failed, assuming not exists`);
     }
 

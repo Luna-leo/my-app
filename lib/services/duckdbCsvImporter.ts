@@ -7,7 +7,6 @@
 
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { Metadata, DataSource } from '@/lib/db/schema';
-import { generateDataKey } from '@/lib/utils/dataKeyUtils';
 import { duckDBSchemaTracker } from './duckdbSchemaTracker';
 
 export interface DuckDBImportProgress {
@@ -55,64 +54,35 @@ export class DuckDBCsvImporter {
         message: 'Preparing CSV import...'
       });
 
-      // Read file as text for DuckDB
-      const fileText = await file.text();
-      
-      // Create temporary CSV view
-      const tempViewName = `temp_csv_${Date.now()}`;
-      
       onProgress?.({
         current: 20,
         total: 100,
         phase: 'preparing',
-        message: 'Analyzing CSV structure...'
+        message: 'Reading CSV file...'
       });
 
-      // First, create a view to analyze the CSV structure
-      await this.connection!.query(`
-        CREATE TEMPORARY VIEW ${tempViewName} AS
-        SELECT * FROM read_csv_auto(
-          '${this.escapeString(fileText)}',
-          header = true,
-          skip = 3,  -- Skip first 3 header rows
-          delim = ',',
-          quote = '"',
-          escape = '"',
-          null_padding = true,
-          ignore_errors = true
-        )
-      `);
-
-      // Get column information
-      const schemaResult = await this.connection!.query(`
-        SELECT column_name, data_type 
-        FROM duckdb_columns() 
-        WHERE table_name = '${tempViewName}'
-      `);
+      // Parse CSV manually to avoid stack overflow with large files
+      const text = await file.text();
+      const lines = text.split('\n');
       
-      const columns = schemaResult.toArray();
-      console.log(`[DuckDBCsvImporter] Detected ${columns.length} columns`);
+      // Skip header rows
+      const dataStartIndex = 3; // Skip first 3 rows
+      const headers = lines[dataStartIndex - 1].split(',').map(h => h.trim());
+      
+      // Create table with proper schema
+      const columnDefs = headers.map((header) => {
+        if (header.toLowerCase().includes('timestamp') || header.toLowerCase().includes('time')) {
+          return `"${header}" TIMESTAMP`;
+        }
+        return `"${header}" DOUBLE`;
+      }).join(', ');
 
       onProgress?.({
         current: 40,
         total: 100,
         phase: 'importing',
-        message: `Creating table with ${columns.length} columns...`
+        message: `Creating table with ${headers.length} columns...`
       });
-
-      // Create target table with proper schema
-      const columnDefs = columns.map((col: any) => {
-        const colName = col.column_name;
-        let colType = 'DOUBLE'; // Default to DOUBLE for numeric data
-        
-        if (colName.toLowerCase() === 'timestamp' || colName.toLowerCase().includes('time')) {
-          colType = 'TIMESTAMP';
-        } else if (col.data_type.includes('VARCHAR')) {
-          colType = 'VARCHAR';
-        }
-        
-        return `"${colName}" ${colType}`;
-      }).join(', ');
 
       await this.connection!.query(`
         CREATE TABLE ${tableName} (
@@ -128,16 +98,51 @@ export class DuckDBCsvImporter {
         message: 'Importing data...'
       });
 
-      // Import data from CSV with metadata_id
+      // Import data in batches to avoid memory issues
       const metadataId = Math.floor(Math.random() * 1000000); // Temporary ID
+      const batchSize = 1000;
+      let importedRows = 0;
       
-      await this.connection!.query(`
-        INSERT INTO ${tableName}
-        SELECT 
-          ${metadataId} as metadata_id,
-          *
-        FROM ${tempViewName}
-      `);
+      for (let i = dataStartIndex; i < lines.length; i += batchSize) {
+        const batch = lines.slice(i, Math.min(i + batchSize, lines.length))
+          .filter(line => line.trim() !== '');
+        
+        if (batch.length === 0) continue;
+        
+        const values = batch.map(line => {
+          const cols = line.split(',').map(col => col.trim());
+          const valueList = [metadataId.toString()];
+          
+          cols.forEach((col, idx) => {
+            if (headers[idx] && (headers[idx].toLowerCase().includes('timestamp') || headers[idx].toLowerCase().includes('time'))) {
+              valueList.push(col ? `TIMESTAMP '${col}'` : 'NULL');
+            } else if (!col || col === '') {
+              valueList.push('NULL');
+            } else {
+              valueList.push(col);
+            }
+          });
+          
+          return `(${valueList.join(', ')})`;
+        }).join(', ');
+        
+        try {
+          await this.connection!.query(`
+            INSERT INTO ${tableName} VALUES ${values}
+          `);
+          importedRows += batch.length;
+          
+          const progress = 60 + (importedRows / (lines.length - dataStartIndex)) * 30;
+          onProgress?.({
+            current: progress,
+            total: 100,
+            phase: 'importing',
+            message: `Imported ${importedRows} rows...`
+          });
+        } catch (err) {
+          console.warn(`[DuckDBCsvImporter] Failed to import batch at line ${i}:`, err);
+        }
+      }
 
       // Get row count
       const countResult = await this.connection!.query(`
@@ -146,14 +151,14 @@ export class DuckDBCsvImporter {
       const rowCount = countResult.toArray()[0].count;
 
       onProgress?.({
-        current: 80,
+        current: 90,
         total: 100,
         phase: 'indexing',
         message: 'Creating indexes...'
       });
 
       // Create indexes for better query performance
-      if (columns.some((col: any) => col.column_name.toLowerCase() === 'timestamp')) {
+      if (headers.some(h => h.toLowerCase() === 'timestamp')) {
         await this.connection!.query(`
           CREATE INDEX idx_${tableName}_timestamp 
           ON ${tableName}(timestamp)
@@ -161,11 +166,7 @@ export class DuckDBCsvImporter {
       }
 
       // Register table in schema tracker
-      const columnNames = columns.map((col: any) => col.column_name);
-      duckDBSchemaTracker.registerTable(metadataId, columnNames, rowCount);
-
-      // Clean up temporary view
-      await this.connection!.query(`DROP VIEW ${tempViewName}`);
+      duckDBSchemaTracker.registerTable(metadataId, headers, rowCount);
 
       const duration = performance.now() - startTime;
 
@@ -181,7 +182,7 @@ export class DuckDBCsvImporter {
         metadataId,
         tableName,
         rowCount,
-        columnCount: columns.length,
+        columnCount: headers.length,
         duration,
         errors
       };

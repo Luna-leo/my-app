@@ -168,6 +168,13 @@ export class DuckDBSchemaTracker {
 
     return staleIds;
   }
+  
+  /**
+   * Get all migrated metadata IDs
+   */
+  getMigratedMetadataIds(): Set<number> {
+    return new Set(this.tableSchemas.keys());
+  }
 }
 
 export const duckDBSchemaTracker = DuckDBSchemaTracker.getInstance();
