@@ -47,6 +47,16 @@ export class HybridDataService {
     return this.initializationPromise;
   }
 
+  /**
+   * Get DuckDB connection for direct queries
+   */
+  async getConnection(): Promise<duckdb.AsyncDuckDBConnection | null> {
+    if (!this.duckDBInstance) {
+      await this.initialize();
+    }
+    return this.duckDBInstance?.connection || null;
+  }
+
   private async _initialize(): Promise<void> {
     if (this.duckDBInstance) {
       console.log('[HybridDataService] Already initialized');
@@ -486,6 +496,7 @@ export class HybridDataService {
       this.duckDBInstance.worker.terminate();
       this.duckDBInstance = null;
       this.loadedMetadataIds.clear();
+      duckDBSchemaTracker.clear();
       console.log('[HybridDataService] DuckDB disposed');
     }
   }

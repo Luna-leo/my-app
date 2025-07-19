@@ -3,12 +3,17 @@
 import React, { useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Upload } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Upload, Zap } from 'lucide-react'
 import { FileDropzone } from '../csv-import/FileDropzone'
 import { MetadataForm, MetadataFormData } from '../csv-import/MetadataForm'
 import { ImportProgress } from '../csv-import/ImportProgress'
 import { CsvImporter, ImportProgress as ImportProgressType, ImportResult } from '@/lib/db/csv-import'
 import { DataSource } from '@/lib/db/schema'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Progress } from '@/components/ui/progress'
+import { hybridDataService } from '@/lib/services/hybridDataService'
+import { createDuckDBCsvImporter, DuckDBImportProgress } from '@/lib/services/duckdbCsvImporter'
 
 interface CsvImportContentProps {
   onImportComplete?: () => void
@@ -29,6 +34,8 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
   const [importError, setImportError] = useState<string>('')
   const [detectingRange, setDetectingRange] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [useDuckDBImport, setUseDuckDBImport] = useState(false)
+  const [duckDBProgress, setDuckDBProgress] = useState<DuckDBImportProgress | null>(null)
 
   const handleFilesSelected = (files: File[]) => {
     setSelectedFiles(files)
@@ -101,41 +108,95 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
       encoding: metadata.dataSource === 'CASS' ? 'shift-jis' : 'utf-8'
     }
 
-    const importer = new CsvImporter((progress) => {
-      setImportProgress(progress)
-    })
-
-    try {
-      const result = await importer.importFiles(
-        selectedFiles,
-        {
-          plant: metadata.plant,
-          machineNo: metadata.machineNo,
-          label: metadata.label,
-          event: metadata.event,
-          startTime: metadata.startTime ? new Date(metadata.startTime) : undefined,
-          endTime: metadata.endTime ? new Date(metadata.endTime) : undefined,
-          dataStartTime: metadata.dataStartTime ? new Date(metadata.dataStartTime) : undefined,
-          dataEndTime: metadata.dataEndTime ? new Date(metadata.dataEndTime) : undefined,
-          dataSource: metadata.dataSource
-        },
-        dataSource
-      )
-
-      setImportProgress(null)
-      setImportResult(result)
-      
-      if (result.success) {
-        setStep('complete')
-        if (onImportComplete) {
-          onImportComplete()
+    if (useDuckDBImport && selectedFiles.length === 1) {
+      // Use DuckDB direct import for single file
+      try {
+        await hybridDataService.initialize()
+        const connection = await hybridDataService.getConnection()
+        
+        if (!connection) {
+          throw new Error('Failed to get DuckDB connection')
         }
-      } else {
-        setImportError(result.errors.join(', '))
+
+        const importer = createDuckDBCsvImporter(connection)
+        
+        const result = await importer.importCsv(
+          selectedFiles[0],
+          {
+            plant: metadata.plant,
+            machineNo: metadata.machineNo,
+            label: metadata.label,
+            event: metadata.event,
+            startTime: metadata.startTime ? new Date(metadata.startTime) : undefined,
+            endTime: metadata.endTime ? new Date(metadata.endTime) : undefined,
+            dataStartTime: metadata.dataStartTime ? new Date(metadata.dataStartTime) : undefined,
+            dataEndTime: metadata.dataEndTime ? new Date(metadata.dataEndTime) : undefined,
+            dataSource: metadata.dataSource
+          },
+          dataSource,
+          (progress) => setDuckDBProgress(progress)
+        )
+
+        setDuckDBProgress(null)
+        
+        if (result.success) {
+          setStep('complete')
+          setImportResult({
+            success: true,
+            metadataId: result.metadataId,
+            counts: {
+              parameters: result.columnCount,
+              timeSeriesTotal: result.rowCount,
+              timeSeriesImported: result.rowCount,
+              timeSeriesSkipped: 0
+            },
+            errors: result.errors,
+            warnings: [`DuckDB高速インポート: ${result.duration.toFixed(0)}ms`]
+          })
+          onImportComplete?.()
+        } else {
+          setImportError(result.errors.join(', '))
+        }
+      } catch (error) {
+        setImportError(error instanceof Error ? error.message : 'DuckDB import failed')
+        setDuckDBProgress(null)
       }
-    } catch (error) {
-      setImportError(error instanceof Error ? error.message : 'Import failed')
-      setImportProgress(null)
+    } else {
+      // Use traditional IndexedDB import
+      const importer = new CsvImporter((progress) => {
+        setImportProgress(progress)
+      })
+
+      try {
+        const result = await importer.importFiles(
+          selectedFiles,
+          {
+            plant: metadata.plant,
+            machineNo: metadata.machineNo,
+            label: metadata.label,
+            event: metadata.event,
+            startTime: metadata.startTime ? new Date(metadata.startTime) : undefined,
+            endTime: metadata.endTime ? new Date(metadata.endTime) : undefined,
+            dataStartTime: metadata.dataStartTime ? new Date(metadata.dataStartTime) : undefined,
+            dataEndTime: metadata.dataEndTime ? new Date(metadata.dataEndTime) : undefined,
+            dataSource: metadata.dataSource
+          },
+          dataSource
+        )
+
+        setImportProgress(null)
+        setImportResult(result)
+        
+        if (result.success) {
+          setStep('complete')
+          onImportComplete?.()
+        } else {
+          setImportError(result.errors.join(', '))
+        }
+      } catch (error) {
+        setImportError(error instanceof Error ? error.message : 'Import failed')
+        setImportProgress(null)
+      }
     }
   }
 
@@ -186,6 +247,21 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
               onDetectDataRange={detectDataRange}
               detectingRange={detectingRange}
             />
+            {selectedFiles.length === 1 && (
+              <div className="mt-6 flex items-center justify-between p-4 bg-muted rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Zap className="h-5 w-5 text-yellow-600" />
+                  <Label htmlFor="duckdb-import" className="text-sm font-medium">
+                    DuckDB高速インポート（実験的）
+                  </Label>
+                </div>
+                <Switch
+                  id="duckdb-import"
+                  checked={useDuckDBImport}
+                  onCheckedChange={setUseDuckDBImport}
+                />
+              </div>
+            )}
           </div>
           <div className="flex justify-between p-4 border-t bg-background">
             <Button
@@ -205,7 +281,21 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
 
       {step === 'importing' && (
         <div className="flex-1 flex flex-col justify-center">
-          <ImportProgress progress={importProgress} error={importError} />
+          {duckDBProgress ? (
+            <div className="px-8">
+              <div className="text-center mb-4">
+                <Zap className="h-12 w-12 text-yellow-600 mx-auto mb-2 animate-pulse" />
+                <h3 className="text-lg font-semibold">DuckDB高速インポート</h3>
+                <p className="text-sm text-muted-foreground mt-1">{duckDBProgress.message}</p>
+              </div>
+              <Progress value={(duckDBProgress.current / duckDBProgress.total) * 100} className="mb-2" />
+              <p className="text-center text-sm text-muted-foreground">
+                {duckDBProgress.phase}
+              </p>
+            </div>
+          ) : (
+            <ImportProgress progress={importProgress} error={importError} />
+          )}
           {importError && (
             <div className="mt-6 text-center">
               <Button onClick={handleReset} variant="outline">
