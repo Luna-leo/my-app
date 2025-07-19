@@ -8,6 +8,8 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { Metadata, DataSource } from '@/lib/db/schema';
 import { duckDBSchemaTracker } from './duckdbSchemaTracker';
+import { db } from '@/lib/db';
+import { generateDataKey } from '@/lib/utils/dataKeyUtils';
 
 export interface DuckDBImportProgress {
   current: number;
@@ -31,6 +33,250 @@ export class DuckDBCsvImporter {
 
   constructor(connection: duckdb.AsyncDuckDBConnection) {
     this.connection = connection;
+  }
+
+  /**
+   * Import multiple CSV files directly to DuckDB
+   */
+  async importMultipleCsvFiles(
+    files: File[],
+    metadata: Omit<Metadata, 'id' | 'importedAt' | 'dataKey'>,
+    dataSource: DataSource,
+    onProgress?: (progress: DuckDBImportProgress) => void
+  ): Promise<DuckDBImportResult> {
+    const startTime = performance.now();
+    const tableName = `timeseries_${metadata.plant}_${metadata.machineNo}_${Date.now()}`;
+    const errors: string[] = [];
+    let totalRowsImported = 0;
+    const allHeaders = new Set<string>();
+
+    try {
+      onProgress?.({
+        current: 0,
+        total: files.length,
+        phase: 'preparing',
+        message: `Preparing to import ${files.length} files...`
+      });
+
+      // First pass: collect all unique headers
+      for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+        const file = files[fileIndex];
+        const text = await file.text();
+        const lines = text.split('\n');
+        
+        if (lines.length > 3) {
+          const headers = lines[2].split(',').map(h => h.trim());
+          headers.forEach(h => allHeaders.add(h));
+        }
+      }
+
+      const uniqueHeaders = Array.from(allHeaders);
+      
+      // Create table with all unique columns
+      const columnDefs = uniqueHeaders.map((header) => {
+        if (header.toLowerCase().includes('timestamp') || header.toLowerCase().includes('time')) {
+          return `"${header}" TIMESTAMP`;
+        }
+        return `"${header}" DOUBLE`;
+      }).join(', ');
+
+      await this.connection!.query(`
+        CREATE TABLE ${tableName} (
+          metadata_id INTEGER,
+          ${columnDefs}
+        )
+      `);
+
+      // Import each file
+      const tempMetadataId = Math.floor(Math.random() * 1000000); // Temporary ID for DuckDB
+      
+      for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+        const file = files[fileIndex];
+        onProgress?.({
+          current: fileIndex,
+          total: files.length,
+          phase: 'importing',
+          message: `Importing file ${fileIndex + 1} of ${files.length}: ${file.name}`
+        });
+
+        const rowsImported = await this.importSingleFile(
+          file,
+          tableName,
+          tempMetadataId,
+          uniqueHeaders,
+          (progress) => {
+            // Calculate overall progress
+            const fileProgress = (fileIndex + progress / 100) / files.length;
+            onProgress?.({
+              current: fileProgress * 100,
+              total: 100,
+              phase: 'importing',
+              message: `Importing ${file.name}: ${progress}%`
+            });
+          }
+        );
+
+        totalRowsImported += rowsImported;
+      }
+
+      // Create indexes
+      onProgress?.({
+        current: 90,
+        total: 100,
+        phase: 'indexing',
+        message: 'Creating indexes...'
+      });
+
+      if (uniqueHeaders.some(h => h.toLowerCase() === 'timestamp')) {
+        await this.connection!.query(`
+          CREATE INDEX idx_${tableName}_timestamp 
+          ON ${tableName}(timestamp)
+        `);
+      }
+
+      // Detect data range from imported data
+      const rangeResult = await this.connection!.query(`
+        SELECT 
+          MIN(timestamp) as min_timestamp,
+          MAX(timestamp) as max_timestamp
+        FROM ${tableName}
+        WHERE timestamp IS NOT NULL
+      `);
+      
+      const rangeData = rangeResult.toArray()[0];
+      const dataStartTime = rangeData.min_timestamp ? new Date(rangeData.min_timestamp) : new Date();
+      const dataEndTime = rangeData.max_timestamp ? new Date(rangeData.max_timestamp) : new Date();
+
+      // Save metadata to IndexedDB
+      const importedAt = new Date();
+      const dataKey = generateDataKey({
+        plant: metadata.plant,
+        machineNo: metadata.machineNo,
+        dataSource: metadata.dataSource,
+        dataStartTime: metadata.dataStartTime || dataStartTime,
+        dataEndTime: metadata.dataEndTime || dataEndTime,
+        importedAt: importedAt
+      });
+
+      const metadataId = await db.metadata.add({
+        ...metadata,
+        dataKey,
+        importedAt,
+        dataStartTime: metadata.dataStartTime || dataStartTime,
+        dataEndTime: metadata.dataEndTime || dataEndTime
+      });
+
+      // Update DuckDB table with real metadata ID
+      await this.connection!.query(`
+        UPDATE ${tableName} 
+        SET metadata_id = ${metadataId}
+        WHERE metadata_id = ${tempMetadataId}
+      `);
+
+      // Register table in schema tracker with real metadata ID
+      duckDBSchemaTracker.registerTable(metadataId as number, uniqueHeaders, totalRowsImported);
+
+      const duration = performance.now() - startTime;
+
+      onProgress?.({
+        current: 100,
+        total: 100,
+        phase: 'completed',
+        message: `Import completed: ${totalRowsImported} rows from ${files.length} files in ${duration.toFixed(0)}ms`
+      });
+
+      return {
+        success: true,
+        metadataId: metadataId as number,
+        tableName,
+        rowCount: totalRowsImported,
+        columnCount: uniqueHeaders.length,
+        duration,
+        errors
+      };
+
+    } catch (error) {
+      console.error('[DuckDBCsvImporter] Import failed:', error);
+      errors.push(error instanceof Error ? error.message : 'Unknown error');
+      
+      return {
+        success: false,
+        metadataId: 0,
+        tableName,
+        rowCount: 0,
+        columnCount: 0,
+        duration: performance.now() - startTime,
+        errors
+      };
+    }
+  }
+
+  /**
+   * Import single CSV file data into existing table
+   */
+  private async importSingleFile(
+    file: File,
+    tableName: string,
+    metadataId: number,
+    allHeaders: string[],
+    onProgress?: (progress: number) => void
+  ): Promise<number> {
+    const text = await file.text();
+    const lines = text.split('\n');
+    
+    // Skip header rows
+    const dataStartIndex = 3;
+    const fileHeaders = lines[dataStartIndex - 1].split(',').map(h => h.trim());
+    
+    // Import data in batches
+    const batchSize = 1000;
+    let importedRows = 0;
+    
+    for (let i = dataStartIndex; i < lines.length; i += batchSize) {
+      const batch = lines.slice(i, Math.min(i + batchSize, lines.length))
+        .filter(line => line.trim() !== '');
+      
+      if (batch.length === 0) continue;
+      
+      const values = batch.map(line => {
+        const cols = line.split(',').map(col => col.trim());
+        const valueList = [metadataId.toString()];
+        
+        // Map values to all headers, using NULL for missing columns
+        allHeaders.forEach((header) => {
+          const fileHeaderIndex = fileHeaders.indexOf(header);
+          
+          if (fileHeaderIndex === -1) {
+            valueList.push('NULL');
+          } else {
+            const col = cols[fileHeaderIndex];
+            if (header.toLowerCase().includes('timestamp') || header.toLowerCase().includes('time')) {
+              valueList.push(col ? `TIMESTAMP '${col}'` : 'NULL');
+            } else if (!col || col === '') {
+              valueList.push('NULL');
+            } else {
+              valueList.push(col);
+            }
+          }
+        });
+        
+        return `(${valueList.join(', ')})`;
+      }).join(', ');
+      
+      try {
+        await this.connection!.query(`
+          INSERT INTO ${tableName} VALUES ${values}
+        `);
+        importedRows += batch.length;
+        
+        const progress = (importedRows / (lines.length - dataStartIndex)) * 100;
+        onProgress?.(progress);
+      } catch (err) {
+        console.warn(`[DuckDBCsvImporter] Failed to import batch at line ${i}:`, err);
+      }
+    }
+
+    return importedRows;
   }
 
   /**
@@ -165,8 +411,47 @@ export class DuckDBCsvImporter {
         `);
       }
 
-      // Register table in schema tracker
-      duckDBSchemaTracker.registerTable(metadataId, headers, rowCount);
+      // Detect data range from imported data
+      const rangeResult = await this.connection!.query(`
+        SELECT 
+          MIN(timestamp) as min_timestamp,
+          MAX(timestamp) as max_timestamp
+        FROM ${tableName}
+        WHERE timestamp IS NOT NULL
+      `);
+      
+      const rangeData = rangeResult.toArray()[0];
+      const dataStartTime = rangeData.min_timestamp ? new Date(rangeData.min_timestamp) : new Date();
+      const dataEndTime = rangeData.max_timestamp ? new Date(rangeData.max_timestamp) : new Date();
+
+      // Save metadata to IndexedDB
+      const importedAt = new Date();
+      const dataKey = generateDataKey({
+        plant: metadata.plant,
+        machineNo: metadata.machineNo,
+        dataSource: metadata.dataSource,
+        dataStartTime: metadata.dataStartTime || dataStartTime,
+        dataEndTime: metadata.dataEndTime || dataEndTime,
+        importedAt: importedAt
+      });
+
+      const realMetadataId = await db.metadata.add({
+        ...metadata,
+        dataKey,
+        importedAt,
+        dataStartTime: metadata.dataStartTime || dataStartTime,
+        dataEndTime: metadata.dataEndTime || dataEndTime
+      });
+
+      // Update DuckDB table with real metadata ID
+      await this.connection!.query(`
+        UPDATE ${tableName} 
+        SET metadata_id = ${realMetadataId}
+        WHERE metadata_id = ${metadataId}
+      `);
+
+      // Register table in schema tracker with real metadata ID
+      duckDBSchemaTracker.registerTable(realMetadataId as number, headers, rowCount);
 
       const duration = performance.now() - startTime;
 
@@ -179,7 +464,7 @@ export class DuckDBCsvImporter {
 
       return {
         success: true,
-        metadataId,
+        metadataId: realMetadataId as number,
         tableName,
         rowCount,
         columnCount: headers.length,
