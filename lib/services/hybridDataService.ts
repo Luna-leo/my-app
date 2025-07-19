@@ -439,15 +439,19 @@ export class HybridDataService {
         };
 
         parameterIds.forEach(id => {
-          // Access using the column name directly (no alias)
+          // Access using the column name directly
           const value = row[id];
           
           if (index === 0) {
             console.log(`[HybridDataService] Parameter ${id}: value = ${value}, type = ${typeof value}`);
           }
           
-          if (value !== null && value !== undefined && typeof value === 'number') {
-            dataPoint.data[id] = value as number;
+          // Convert to number if it's not null/undefined
+          if (value !== null && value !== undefined) {
+            const numValue = typeof value === 'number' ? value : Number(value);
+            if (!isNaN(numValue)) {
+              dataPoint.data[id] = numValue;
+            }
           }
         });
 
