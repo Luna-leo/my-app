@@ -133,6 +133,9 @@ export class HybridDataService {
     });
     const availableParameterIds = Array.from(allParameterIds);
     
+    console.log(`[HybridDataService] Available parameter IDs in data:`, availableParameterIds.slice(0, 10), `... (${availableParameterIds.length} total)`);
+    console.log(`[HybridDataService] Requested parameter IDs:`, parameterIds);
+    
     // Check if table exists in DuckDB
     let tableExistsInDB = false;
     try {
@@ -413,6 +416,7 @@ export class HybridDataService {
       `;
 
       console.log(`[HybridDataService] Executing sampling query for ${metadataIds.length} tables`);
+      console.log(`[HybridDataService] Requested parameter IDs:`, parameterIds);
       console.log(`[HybridDataService] Query: ${finalQuery}`);
       const result = await this.duckDBInstance.connection.query(finalQuery);
       
@@ -425,6 +429,7 @@ export class HybridDataService {
         if (index === 0) {
           console.log(`[HybridDataService] First row keys:`, Object.keys(row));
           console.log(`[HybridDataService] Expected parameter IDs:`, parameterIds);
+          console.log(`[HybridDataService] First row data:`, row);
         }
 
         const dataPoint: TimeSeriesData = {
@@ -436,6 +441,10 @@ export class HybridDataService {
         parameterIds.forEach(id => {
           // Access using the column name directly (no alias)
           const value = row[id];
+          
+          if (index === 0) {
+            console.log(`[HybridDataService] Parameter ${id}: value = ${value}, type = ${typeof value}`);
+          }
           
           if (value !== null && value !== undefined && typeof value === 'number') {
             dataPoint.data[id] = value as number;

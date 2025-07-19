@@ -312,7 +312,53 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
           endTimeMs: metadata.endTime,
           parameterIds: parameterIds?.length || 'all'
         });
-        // Use database-level sampling for performance
+        
+        // Check if data exists in DuckDB first
+        if (isDuckDBReady && useDuckDB) {
+          try {
+            const connection = await hybridDataService.getConnection();
+            if (connection) {
+              const tableName = `timeseries_${metadataId}`;
+              
+              // Check if table exists
+              const tableExists = await connection.query(`
+                SELECT COUNT(*) as count 
+                FROM information_schema.tables 
+                WHERE table_name = '${tableName}'
+              `);
+              
+              if (tableExists.toArray()[0]?.count > 0) {
+                console.log(`[ChartDataContext] DuckDB table ${tableName} exists, loading from DuckDB`);
+                
+                // Load data from DuckDB
+                const duckdbData = await hybridDataService.sampleData(
+                  [metadataId],
+                  parameterIds || [],
+                  maxPointsPerDataset || 10000,
+                  {
+                    startTime: metadata.startTime ? new Date(metadata.startTime) : undefined,
+                    endTime: metadata.endTime ? new Date(metadata.endTime) : undefined,
+                    method: 'nth'
+                  }
+                );
+                
+                console.log(`[ChartDataContext] Loaded ${duckdbData.length} points from DuckDB`);
+                
+                // Update parameter tracker
+                if (duckdbData.length > 0) {
+                  const actualKeys = Object.keys(duckdbData[0].data);
+                  parameterTracker.addLoadedParameters(metadataId, actualKeys);
+                }
+                
+                return { metadataId, data: duckdbData, totalCount: duckdbData.length };
+              }
+            }
+          } catch (err) {
+            console.warn('[ChartDataContext] Failed to load from DuckDB:', err);
+          }
+        }
+        
+        // Fall back to IndexedDB
         const result = await db.getTimeSeriesDataSampled(metadataId, {
           startTime: metadata.startTime,
           endTime: metadata.endTime,
@@ -442,7 +488,51 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       // No cache or first time loading
       console.log(`[ChartDataContext] No cache for metadataId ${metadataId}, calling getTimeSeriesDataSampled with maxPoints: ${maxPointsPerDataset} (${maxPointsPerDataset === undefined ? 'FULL DATA' : 'SAMPLED'})`);
       
-      // Use database-level sampling for initial data load
+      // Check if data exists in DuckDB first
+      if (isDuckDBReady && useDuckDB) {
+        try {
+          const connection = await hybridDataService.getConnection();
+          if (connection) {
+            const tableName = `timeseries_${metadataId}`;
+            
+            // Check if table exists
+            const tableExists = await connection.query(`
+              SELECT COUNT(*) as count 
+              FROM information_schema.tables 
+              WHERE table_name = '${tableName}'
+            `);
+            
+            if (tableExists.toArray()[0]?.count > 0) {
+              console.log(`[ChartDataContext] DuckDB table ${tableName} exists, loading from DuckDB`);
+              
+              // Load data from DuckDB
+              const duckdbData = await hybridDataService.sampleData(
+                [metadataId],
+                parameterIds || [],
+                maxPointsPerDataset || 10000,
+                {
+                  method: 'nth'
+                }
+              );
+              
+              console.log(`[ChartDataContext] Loaded ${duckdbData.length} points from DuckDB`);
+              
+              // Update parameter tracker and cache
+              if (duckdbData.length > 0) {
+                const actualKeys = Object.keys(duckdbData[0].data);
+                parameterTracker.addLoadedParameters(metadataId, actualKeys);
+                timeSeriesCache.set(metadataId, duckdbData);
+              }
+              
+              return { metadataId, data: duckdbData, totalCount: duckdbData.length };
+            }
+          }
+        } catch (err) {
+          console.warn('[ChartDataContext] Failed to load from DuckDB:', err);
+        }
+      }
+      
+      // Fall back to IndexedDB
       const result = await db.getTimeSeriesDataSampled(metadataId, {
         parameterIds: parameterIds,
         maxPoints: maxPointsPerDataset // Pass undefined for full data
@@ -663,7 +753,17 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
           // Load data to DuckDB with intelligent column tracking
           for (const metadataId of config.selectedDataIds) {
             const dataForMetadata = rawData.dataByMetadata.get(metadataId) || [];
+            console.log(`[ChartDataContext] Loading data for metadataId ${metadataId}: ${dataForMetadata.length} rows`);
+            
             if (dataForMetadata.length > 0) {
+              // Debug: Check the structure of the first data point
+              const firstDataPoint = dataForMetadata[0];
+              console.log(`[ChartDataContext] First data point for metadataId ${metadataId}:`, {
+                timestamp: firstDataPoint.timestamp,
+                dataKeys: Object.keys(firstDataPoint.data),
+                sampleValues: Object.entries(firstDataPoint.data).slice(0, 3).map(([k, v]) => ({ key: k, value: v }))
+              });
+              
               // hybridDataService will now check if columns exist and only add missing ones
               await hybridDataService.loadTimeSeriesData(
                 metadataId,
@@ -671,8 +771,30 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                 samplingParameterIds  // Pass required parameters for tracking
               );
               duckDBLoadedData.current.add(metadataId);
+            } else {
+              // Check if data already exists in DuckDB
+              try {
+                const connection = await hybridDataService.getConnection();
+                if (connection) {
+                  const tableName = `timeseries_${metadataId}`;
+                  const tableExists = await connection.query(`
+                    SELECT COUNT(*) as count 
+                    FROM information_schema.tables 
+                    WHERE table_name = '${tableName}'
+                  `);
+                  
+                  if (tableExists.toArray()[0]?.count > 0) {
+                    console.log(`[ChartDataContext] Data already exists in DuckDB table ${tableName}`);
+                    duckDBLoadedData.current.add(metadataId);
+                  }
+                }
+              } catch (err) {
+                console.warn('[ChartDataContext] Failed to check DuckDB table existence:', err);
+              }
             }
           }
+          
+          console.log(`[ChartDataContext] Sampling with parameters: ${samplingParameterIds.join(', ')}`);
           
           // Perform SQL-based sampling with per-dataset targets
           const pointsPerDataset = Math.floor(targetPointsPerDataset);
@@ -739,6 +861,18 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
             valuesLength: timeChartData.series[0].values.length,
             firstTimestamp: timeChartData.series[0].timestamps[0],
             firstValue: timeChartData.series[0].values[0]
+          } : null
+        });
+        
+        // Debug: Check if processed time series has data for the requested parameters
+        console.log(`[ChartDataContext] Checking processedTimeSeries for chart "${config.title}":`, {
+          totalPoints: processedTimeSeries.length,
+          requestedParams: config.yAxisParameters,
+          samplePoint: processedTimeSeries[0] ? {
+            metadataId: processedTimeSeries[0].metadataId,
+            timestamp: processedTimeSeries[0].timestamp,
+            dataKeys: Object.keys(processedTimeSeries[0].data),
+            dataValues: Object.entries(processedTimeSeries[0].data).slice(0, 3)
           } : null
         });
 
