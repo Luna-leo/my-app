@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
-import { Search, Filter, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Search, Filter, CheckCircle, AlertCircle, Loader2, Database } from 'lucide-react'
 import { db } from '@/lib/db'
 import { Metadata } from '@/lib/db/schema'
 import { 
@@ -31,6 +31,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { hybridDataService } from '@/lib/services/hybridDataService'
+import { createDataPersistenceService } from '@/lib/services/dataPersistenceService'
 
 interface UnifiedDataViewProps {
   selectedDataIds: number[]
@@ -87,6 +89,18 @@ export function UnifiedDataView({
     show: boolean,
     isDeleting: boolean
   }>({ item: null, show: false, isDeleting: false })
+  
+  // Persistence states
+  const [persistenceLoading, setPersistenceLoading] = useState<Record<string, boolean>>({})
+  const [persistenceProgress, setPersistenceProgress] = useState<Record<string, {
+    phase: string
+    progress: number
+    message: string
+  }>>({})
+  const [storageUsage, setStorageUsage] = useState<{
+    totalSize: number
+    itemCount: number
+  }>({ totalSize: 0, itemCount: 0 })
 
   // Filter data based on search and location
   const filteredData = useMemo(() => {
@@ -151,6 +165,24 @@ export function UnifiedDataView({
       }
     }
   }, [data, pendingAutoSelect])
+  
+  // Calculate storage usage
+  useEffect(() => {
+    const persistedItems = data.filter(item => item.persistenceStatus?.isPersisted)
+    const totalSize = persistedItems.reduce((acc, item) => acc + (item.persistenceStatus?.totalSize || 0), 0)
+    setStorageUsage({
+      totalSize,
+      itemCount: persistedItems.length
+    })
+  }, [data])
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
 
   const handleSelectAll = () => {
     const allIds = filteredData.map(item => item.id)
@@ -687,6 +719,162 @@ export function UnifiedDataView({
       }, 1000)
     }
   }
+  
+  const handlePersist = useCallback(async (item: UnifiedDataItem) => {
+    if (!item.metadata) return
+    
+    const itemId = item.id
+    setPersistenceLoading(prev => ({ ...prev, [itemId]: true }))
+    
+    try {
+      const connection = await hybridDataService.getConnection()
+      if (!connection) {
+        throw new Error('DuckDB connection not available')
+      }
+      
+      const persistenceService = createDataPersistenceService(connection)
+      
+      // Set initial progress
+      setPersistenceProgress(prev => ({
+        ...prev,
+        [itemId]: {
+          phase: 'preparing',
+          progress: 0,
+          message: 'データの永続化を準備中...'
+        }
+      }))
+      
+      // Persist the table
+      const result = await persistenceService.persistTable(
+        item.metadata.id!,
+        (progress) => {
+          setPersistenceProgress(prev => ({
+            ...prev,
+            [itemId]: {
+              phase: progress.phase,
+              progress: progress.progress,
+              message: progress.message
+            }
+          }))
+        }
+      )
+      
+      if (result.success) {
+        showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}のデータを永続化しました（${result.chunksCreated}チャンク）`)
+        await refreshData()
+      } else {
+        throw new Error(result.error || '永続化に失敗しました')
+      }
+    } catch (error) {
+      showAlert('error', `永続化に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`)
+    } finally {
+      setPersistenceLoading(prev => {
+        const newState = { ...prev }
+        delete newState[itemId]
+        return newState
+      })
+      setPersistenceProgress(prev => {
+        const newState = { ...prev }
+        delete newState[itemId]
+        return newState
+      })
+    }
+  }, [refreshData, showAlert])
+  
+  const handleRestore = useCallback(async (item: UnifiedDataItem) => {
+    if (!item.metadata) return
+    
+    const itemId = item.id
+    setPersistenceLoading(prev => ({ ...prev, [itemId]: true }))
+    
+    try {
+      const connection = await hybridDataService.getConnection()
+      if (!connection) {
+        throw new Error('DuckDB connection not available')
+      }
+      
+      const persistenceService = createDataPersistenceService(connection)
+      
+      // Set initial progress
+      setPersistenceProgress(prev => ({
+        ...prev,
+        [itemId]: {
+          phase: 'restoring',
+          progress: 0,
+          message: 'データを復元中...'
+        }
+      }))
+      
+      // Restore the table
+      const result = await persistenceService.restoreTable(
+        item.metadata.id!,
+        (progress) => {
+          setPersistenceProgress(prev => ({
+            ...prev,
+            [itemId]: {
+              phase: progress.phase,
+              progress: progress.progress,
+              message: progress.message
+            }
+          }))
+        }
+      )
+      
+      if (result.success) {
+        showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}のデータを復元しました（${result.rowsRestored}行）`)
+        await refreshData()
+      } else {
+        throw new Error(result.error || '復元に失敗しました')
+      }
+    } catch (error) {
+      showAlert('error', `復元に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`)
+    } finally {
+      setPersistenceLoading(prev => {
+        const newState = { ...prev }
+        delete newState[itemId]
+        return newState
+      })
+      setPersistenceProgress(prev => {
+        const newState = { ...prev }
+        delete newState[itemId]
+        return newState
+      })
+    }
+  }, [refreshData, showAlert])
+  
+  const handleClearPersistence = useCallback(async (item: UnifiedDataItem) => {
+    if (!item.metadata) return
+    
+    const itemId = item.id
+    setPersistenceLoading(prev => ({ ...prev, [itemId]: true }))
+    
+    try {
+      const connection = await hybridDataService.getConnection()
+      if (!connection) {
+        throw new Error('DuckDB connection not available')
+      }
+      
+      const persistenceService = createDataPersistenceService(connection)
+      
+      // Clear persistence
+      const result = await persistenceService.clearPersistedData(item.metadata.id!)
+      
+      if (result.success) {
+        showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}の永続化データを削除しました`)
+        await refreshData()
+      } else {
+        throw new Error(result.error || '永続化データの削除に失敗しました')
+      }
+    } catch (error) {
+      showAlert('error', `永続化データの削除に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`)
+    } finally {
+      setPersistenceLoading(prev => {
+        const newState = { ...prev }
+        delete newState[itemId]
+        return newState
+      })
+    }
+  }, [refreshData, showAlert])
 
   if (loading) {
     return (
@@ -727,6 +915,30 @@ export function UnifiedDataView({
           </Alert>
         ))}
       </div>
+
+      {/* Storage Usage Summary */}
+      {storageUsage.itemCount > 0 && (
+        <div className="mb-4 p-4 bg-muted/50 rounded-lg border">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Database className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">永続化ストレージ使用状況</p>
+                <p className="text-xs text-muted-foreground">
+                  {storageUsage.itemCount}件のデータセット • 合計 {formatBytes(storageUsage.totalSize)}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground mb-1">
+                平均圧縮率: {Math.round(data.filter(item => item.persistenceStatus?.isPersisted).reduce((acc, item) => acc + (item.persistenceStatus?.compressionRatio || 0), 0) / storageUsage.itemCount * 100)}%
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search and Filter */}
       <div className="space-y-4 mb-4 flex-shrink-0">
@@ -819,11 +1031,24 @@ export function UnifiedDataView({
                   onEdit={() => handleEdit(item)}
                   onDelete={() => handleDelete(item)}
                   onCancelUpload={() => handleCancelUpload(item.id)}
+                  onPersist={() => handlePersist(item)}
+                  onRestore={() => handleRestore(item)}
+                  onClearPersistence={() => handleClearPersistence(item)}
                   isLoading={progress !== undefined}
                   uploadState={uploadState}
+                  persistenceLoading={persistenceLoading[item.id]}
                 />
                 {progress !== undefined && !uploadState && (
                   <Progress value={progress} className="mt-2" />
+                )}
+                {persistenceProgress[item.id] && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{persistenceProgress[item.id].message}</span>
+                      <span>{persistenceProgress[item.id].progress}%</span>
+                    </div>
+                    <Progress value={persistenceProgress[item.id].progress} className="h-2" />
+                  </div>
                 )}
               </div>
             )

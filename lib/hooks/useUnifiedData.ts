@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { db } from '@/lib/db'
 import { Metadata } from '@/lib/db/schema'
+import { hybridDataService } from '@/lib/services/hybridDataService'
+import { createDataPersistenceService } from '@/lib/services/dataPersistenceService'
 
 export type DataLocation = 'local' | 'server' | 'synced'
 
@@ -15,6 +17,13 @@ export interface UnifiedDataItem {
     lastLocalUpdate?: Date
     lastServerUpdate?: Date
     isOutdated?: boolean
+  }
+  persistenceStatus?: {
+    isPersisted: boolean
+    chunkCount: number
+    totalSize: number
+    compressionRatio?: number
+    lastPersisted?: Date
   }
 }
 
@@ -169,7 +178,49 @@ export function useUnifiedData() {
       ])
       
       const unifiedData = mergeData(localData, serverData)
-      setData(unifiedData)
+      
+      // Load persistence status for local data
+      try {
+        const connection = await hybridDataService.getConnection()
+        if (connection) {
+          const persistenceService = createDataPersistenceService(connection)
+          
+          // Add persistence status to unified data
+          const unifiedDataWithPersistence = await Promise.all(
+            unifiedData.map(async (item) => {
+              if (item.metadata && item.metadata.id) {
+                const status = await persistenceService.getPersistenceStatus(item.metadata.id)
+                if (status.isPersisted) {
+                  // Calculate compression ratio
+                  const originalSize = status.totalRows * 100 // Estimate 100 bytes per row
+                  const compressionRatio = originalSize > 0 
+                    ? (originalSize - status.totalSize) / originalSize 
+                    : 0
+                  
+                  return {
+                    ...item,
+                    persistenceStatus: {
+                      isPersisted: status.isPersisted,
+                      chunkCount: status.chunkCount,
+                      totalSize: status.totalSize,
+                      compressionRatio,
+                      lastPersisted: status.lastUpdated
+                    }
+                  }
+                }
+              }
+              return item
+            })
+          )
+          
+          setData(unifiedDataWithPersistence)
+        } else {
+          setData(unifiedData)
+        }
+      } catch (err) {
+        console.warn('[useUnifiedData] Failed to load persistence status:', err)
+        setData(unifiedData)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data')
     } finally {

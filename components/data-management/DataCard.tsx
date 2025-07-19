@@ -18,7 +18,10 @@ import {
   Loader2,
   Trash2,
   Edit,
-  X
+  X,
+  Database,
+  FileArchive,
+  Undo2
 } from 'lucide-react'
 import { UnifiedDataItem } from '@/lib/hooks/useUnifiedData'
 import { UploadState, formatTimeRemaining } from '@/lib/utils/uploadUtils'
@@ -34,8 +37,12 @@ interface DataCardProps {
   onEdit?: () => void
   onDelete?: () => void
   onCancelUpload?: () => void
+  onPersist?: () => void
+  onRestore?: () => void
+  onClearPersistence?: () => void
   isLoading?: boolean
   uploadState?: UploadState
+  persistenceLoading?: boolean
 }
 
 export function DataCard({
@@ -48,8 +55,12 @@ export function DataCard({
   onEdit,
   onDelete,
   onCancelUpload,
+  onPersist,
+  onRestore,
+  onClearPersistence,
   isLoading = false,
-  uploadState
+  uploadState,
+  persistenceLoading = false
 }: DataCardProps) {
   const getBorderColor = () => {
     switch (item.location) {
@@ -167,6 +178,14 @@ export function DataCard({
     }
   }
 
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
   return (
     <Card 
       className={cn(
@@ -243,6 +262,37 @@ export function DataCard({
                   </span>
                 )}
               </div>
+              
+              {/* Persistence Status */}
+              {item.persistenceStatus && (
+                <div className="mt-2 p-2 bg-muted/50 rounded-md space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">永続化済み</span>
+                    {item.persistenceStatus.compressionRatio !== undefined && (
+                      <Badge variant="secondary" className="text-xs">
+                        圧縮率 {Math.round(item.persistenceStatus.compressionRatio * 100)}%
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <FileArchive className="h-3 w-3" />
+                      <span>{item.persistenceStatus.chunkCount} チャンク</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <HardDrive className="h-3 w-3" />
+                      <span>{formatBytes(item.persistenceStatus.totalSize)}</span>
+                    </div>
+                    {item.persistenceStatus.lastPersisted && (
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        <span>{formatDate(item.persistenceStatus.lastPersisted)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             
             <div className="flex gap-2">
@@ -295,6 +345,66 @@ export function DataCard({
                   )}
                   Upload
                 </Button>
+              )}
+              
+              {/* Persistence actions for local data */}
+              {item.location === 'local' && item.metadata && (
+                <>
+                  {!item.persistenceStatus?.isPersisted && onPersist && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onPersist}
+                      disabled={isLoading || persistenceLoading}
+                      className="gap-2"
+                    >
+                      {persistenceLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Database className="h-4 w-4" />
+                      )}
+                      永続化
+                    </Button>
+                  )}
+                  
+                  {item.persistenceStatus?.isPersisted && (
+                    <>
+                      {onRestore && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={onRestore}
+                          disabled={isLoading || persistenceLoading}
+                          className="gap-2"
+                        >
+                          {persistenceLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Undo2 className="h-4 w-4" />
+                          )}
+                          復元
+                        </Button>
+                      )}
+                      
+                      {onClearPersistence && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={onClearPersistence}
+                          disabled={isLoading || persistenceLoading}
+                          className="gap-2 text-destructive hover:text-destructive"
+                        >
+                          {persistenceLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                          永続化削除
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </>
               )}
               
               {item.location === 'server' && onDownload && (
