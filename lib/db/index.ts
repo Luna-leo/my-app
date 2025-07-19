@@ -1,9 +1,9 @@
 import Dexie, { Table } from 'dexie';
-import { Metadata, ParameterInfo, TimeSeriesData, ChartConfiguration, Workspace, ParquetFile } from './schema';
+import { Metadata, ParameterInfo, TimeSeriesData, ChartConfiguration, Workspace, ParquetFile, DataChunk } from './schema';
 import { generateDataKey } from '../utils/dataKeyUtils';
 
 // Re-export types for external use
-export type { Metadata, ParameterInfo, TimeSeriesData, ChartConfiguration, Workspace, ParquetFile } from './schema';
+export type { Metadata, ParameterInfo, TimeSeriesData, ChartConfiguration, Workspace, ParquetFile, DataChunk } from './schema';
 
 export class AppDatabase extends Dexie {
   metadata!: Table<Metadata>;
@@ -12,6 +12,7 @@ export class AppDatabase extends Dexie {
   chartConfigurations!: Table<ChartConfiguration>;
   workspaces!: Table<Workspace>;
   parquetFiles!: Table<ParquetFile>;
+  dataChunks!: Table<DataChunk>;
 
   constructor() {
     super('GraphDataDB');
@@ -178,14 +179,26 @@ export class AppDatabase extends Dexie {
       workspaces: '++id, name, isActive, createdAt, selectedDataKeys',
       parquetFiles: '++id, metadataId, filename, createdAt'
     });
+
+    // Add dataChunks table for storing compressed time series data chunks
+    this.version(9).stores({
+      metadata: '++id, &dataKey, plant, machineNo, importedAt, [plant+machineNo+dataStartTime]',
+      parameters: '++id, parameterId, [plant+machineNo], plant, machineNo, [parameterId+plant+machineNo]',
+      timeSeries: '++id, metadataId, timestamp, [metadataId+timestamp]',
+      chartConfigurations: '++id, workspaceId, createdAt, updatedAt',
+      workspaces: '++id, name, isActive, createdAt, selectedDataKeys',
+      parquetFiles: '++id, metadataId, filename, createdAt',
+      dataChunks: '++id, metadataId, chunkIndex, [metadataId+chunkIndex], createdAt'
+    });
   }
 
   async clearAllData() {
-    await this.transaction('rw', this.metadata, this.parameters, this.timeSeries, this.parquetFiles, async () => {
+    await this.transaction('rw', this.metadata, this.parameters, this.timeSeries, this.parquetFiles, this.dataChunks, async () => {
       await this.metadata.clear();
       await this.parameters.clear();
       await this.timeSeries.clear();
       await this.parquetFiles.clear();
+      await this.dataChunks.clear();
     });
     
     await this.transaction('rw', this.chartConfigurations, this.workspaces, async () => {

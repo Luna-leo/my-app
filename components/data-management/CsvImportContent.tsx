@@ -10,6 +10,7 @@ import { Progress } from '@/components/ui/progress'
 import { DataSource } from '@/lib/db/schema'
 import { hybridDataService } from '@/lib/services/hybridDataService'
 import { createDuckDBCsvImporter, DuckDBImportProgress, DuckDBImportResult } from '@/lib/services/duckdbCsvImporter'
+import { createDataPersistenceService, PersistenceProgress } from '@/lib/services/dataPersistenceService'
 
 interface CsvImportContentProps {
   onImportComplete?: () => void
@@ -30,6 +31,7 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
   const [detectingRange, setDetectingRange] = useState(false)
   const [importResult, setImportResult] = useState<DuckDBImportResult | null>(null)
   const [duckDBProgress, setDuckDBProgress] = useState<DuckDBImportProgress | null>(null)
+  const [persistenceProgress, setPersistenceProgress] = useState<PersistenceProgress | null>(null)
 
   const handleFilesSelected = (files: File[]) => {
     setSelectedFiles(files)
@@ -170,6 +172,25 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
       setDuckDBProgress(null)
       
       if (result.success) {
+        // Persist data to IndexedDB for offline usage
+        try {
+          const persistenceService = createDataPersistenceService(connection)
+          const persistResult = await persistenceService.persistTable(
+            result.metadataId,
+            (progress) => setPersistenceProgress(progress)
+          )
+          
+          if (persistResult.success) {
+            console.log(`[CsvImportContent] Data persisted successfully: ${persistResult.chunksCreated} chunks`)
+          } else {
+            console.error('[CsvImportContent] Data persistence failed:', persistResult.error)
+          }
+        } catch (error) {
+          console.error('[CsvImportContent] Failed to persist data:', error)
+        } finally {
+          setPersistenceProgress(null)
+        }
+        
         setStep('complete')
         setImportResult(result)
         onImportComplete?.()
@@ -195,6 +216,7 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
     setDetectingRange(false)
     setImportResult(null)
     setDuckDBProgress(null)
+    setPersistenceProgress(null)
   }
 
   return (
@@ -261,7 +283,7 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
               <Zap className="h-12 w-12 text-yellow-600 mx-auto mb-2 animate-pulse" />
               <h3 className="text-lg font-semibold">DuckDB高速インポート</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {duckDBProgress?.message || 'インポート処理を開始しています...'}
+                {persistenceProgress?.message || duckDBProgress?.message || 'インポート処理を開始しています...'}
               </p>
             </div>
             {duckDBProgress && (
@@ -271,6 +293,15 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
                   {duckDBProgress.phase}
                 </p>
               </>
+            )}
+            {persistenceProgress && (
+              <div className="mt-4">
+                <p className="text-sm font-medium mb-2">データ永続化中...</p>
+                <Progress value={(persistenceProgress.current / persistenceProgress.total) * 100} className="mb-2" />
+                <p className="text-center text-sm text-muted-foreground">
+                  {persistenceProgress.phase}
+                </p>
+              </div>
             )}
           </div>
           {importError && (

@@ -49,7 +49,8 @@ export class ParquetDataManager {
     tableName: string,
     metadataId: number,
     metadata: Metadata,
-    options?: ParquetConversionOptions
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _options?: ParquetConversionOptions
   ): Promise<ParquetImportResult> {
     const startTime = performance.now();
     

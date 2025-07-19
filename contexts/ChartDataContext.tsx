@@ -18,6 +18,7 @@ import { parameterTracker } from '@/lib/services/parameterTracker';
 import { ChartParameterAggregator } from '@/lib/services/chartParameterAggregator';
 import { batchDataLoader } from '@/lib/services/batchDataLoader';
 import { createParquetDataManager } from '@/lib/services/parquetDataManager';
+import { createDataPersistenceService } from '@/lib/services/dataPersistenceService';
 import { sampleTimeSeriesData, sampleTimeSeriesDataByMetadata, DEFAULT_SAMPLING_CONFIG, SamplingConfig, getMemoryAwareSamplingConfig, PREVIEW_SAMPLING_CONFIG, HIGH_RES_SAMPLING_CONFIG } from '@/lib/utils/chartDataSampling';
 import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig } from '@/lib/utils/hashUtils';
@@ -195,9 +196,37 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
     if (useDuckDB) {
       console.log('[ChartDataContext] Initializing DuckDB...');
       hybridDataService.initialize()
-        .then(() => {
-          setIsDuckDBReady(true);
+        .then(async () => {
           console.log('[ChartDataContext] DuckDB initialized successfully');
+          
+          // Restore persisted data
+          try {
+            const connection = await hybridDataService.getConnection();
+            if (connection) {
+              const persistenceService = createDataPersistenceService(connection);
+              const persistedIds = await persistenceService.getPersistedMetadataIds();
+              
+              if (persistedIds.length > 0) {
+                console.log(`[ChartDataContext] Found ${persistedIds.length} persisted datasets, restoring...`);
+                
+                for (const metadataId of persistedIds) {
+                  try {
+                    const result = await persistenceService.restoreTable(metadataId);
+                    if (result.success) {
+                      console.log(`[ChartDataContext] Restored ${result.rowsRestored} rows for metadata ${metadataId}`);
+                      duckDBLoadedData.current.add(metadataId);
+                    }
+                  } catch (error) {
+                    console.error(`[ChartDataContext] Failed to restore metadata ${metadataId}:`, error);
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error('[ChartDataContext] Failed to restore persisted data:', error);
+          }
+          
+          setIsDuckDBReady(true);
         })
         .catch(error => {
           console.error('[ChartDataContext] Failed to initialize DuckDB:', error);
@@ -385,8 +414,12 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                         metadataId: metadataId,
                         timestamp: parseDuckDBTimestamp(rowObj.timestamp as string | number),
                         data: parameterIds ? 
-                          Object.fromEntries(parameterIds.map(pid => [pid, rowObj[pid] ?? null])) :
-                          Object.fromEntries(Object.entries(rowObj).filter(([k]) => k !== 'timestamp'))
+                          Object.fromEntries(parameterIds.map(pid => [pid, rowObj[pid] as number | null ?? null])) :
+                          Object.fromEntries(
+                            Object.entries(rowObj)
+                              .filter(([k]) => k !== 'timestamp')
+                              .map(([k, v]) => [k, v as number | null ?? null])
+                          )
                       };
                     });
                     
@@ -608,8 +641,12 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                       metadataId: metadataId,
                       timestamp: parseDuckDBTimestamp(rowObj.timestamp as string | number),
                       data: parameterIds ? 
-                        Object.fromEntries(parameterIds.map(pid => [pid, rowObj[pid] ?? null])) :
-                        Object.fromEntries(Object.entries(rowObj).filter(([k]) => k !== 'timestamp'))
+                        Object.fromEntries(parameterIds.map(pid => [pid, rowObj[pid] as number | null ?? null])) :
+                        Object.fromEntries(
+                          Object.entries(rowObj)
+                            .filter(([k]) => k !== 'timestamp')
+                            .map(([k, v]) => [k, v as number | null ?? null])
+                        )
                     };
                   });
                   
@@ -944,8 +981,12 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                             metadataId: metadataId,
                             timestamp: rowObj.timestamp instanceof Date ? rowObj.timestamp : new Date(rowObj.timestamp as string | number),
                             data: parameterIds ? 
-                              Object.fromEntries(parameterIds.map(pid => [pid, rowObj[pid] ?? null])) :
-                              Object.fromEntries(Object.entries(rowObj).filter(([k]) => k !== 'timestamp'))
+                              Object.fromEntries(parameterIds.map(pid => [pid, rowObj[pid] as number | null ?? null])) :
+                              Object.fromEntries(
+                                Object.entries(rowObj)
+                                  .filter(([k]) => k !== 'timestamp')
+                                  .map(([k, v]) => [k, v as number | null ?? null])
+                              )
                           };
                         });
                         

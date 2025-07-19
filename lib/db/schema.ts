@@ -78,3 +78,18 @@ export interface ParquetFile {
   rowCount: number;
   createdAt: Date;
 }
+
+export interface DataChunk {
+  id?: string;
+  metadataId: number;
+  chunkIndex: number;
+  compressedData: Blob;
+  rowCount: number;
+  startRow: number;
+  endRow: number;
+  startTimestamp?: Date;
+  endTimestamp?: Date;
+  columns: string[];
+  compressionType: 'gzip' | 'none';
+  createdAt: Date;
+}
