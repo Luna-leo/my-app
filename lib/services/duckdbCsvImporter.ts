@@ -66,18 +66,35 @@ export class DuckDBCsvImporter {
         
         if (lines.length > 3) {
           const headers = lines[2].split(',').map(h => h.trim());
-          headers.forEach(h => allHeaders.add(h));
+          headers.forEach((h, index) => {
+            // Skip empty headers or handle them with a default name
+            if (h && h !== '') {
+              allHeaders.add(h);
+            }
+          });
         }
       }
 
       const uniqueHeaders = Array.from(allHeaders);
       
-      // Create table with all unique columns
+      // Create column definitions with proper naming and deduplication
+      const columnNames = new Map<string, number>();
       const columnDefs = uniqueHeaders.map((header) => {
-        if (header.toLowerCase().includes('timestamp') || header.toLowerCase().includes('time')) {
-          return `"${header}" TIMESTAMP`;
+        // Handle duplicate column names
+        let columnName = header;
+        const count = columnNames.get(header) || 0;
+        if (count > 0) {
+          columnName = `${header}_${count + 1}`;
         }
-        return `"${header}" DOUBLE`;
+        columnNames.set(header, count + 1);
+        
+        // Escape column name
+        const escapedName = `"${columnName.replace(/"/g, '""')}"`;
+        
+        if (header.toLowerCase().includes('timestamp') || header.toLowerCase().includes('time')) {
+          return `${escapedName} TIMESTAMP`;
+        }
+        return `${escapedName} DOUBLE`;
       }).join(', ');
 
       await this.connection!.query(`
@@ -226,7 +243,14 @@ export class DuckDBCsvImporter {
     
     // Skip header rows
     const dataStartIndex = 3;
-    const fileHeaders = lines[dataStartIndex - 1].split(',').map(h => h.trim());
+    const rawHeaders = lines[dataStartIndex - 1].split(',').map(h => h.trim());
+    // Keep track of original indices for non-empty headers
+    const headerMapping = new Map<string, number>();
+    rawHeaders.forEach((h, index) => {
+      if (h && h !== '') {
+        headerMapping.set(h, index);
+      }
+    });
     
     // Import data in batches
     const batchSize = 1000;
@@ -244,12 +268,12 @@ export class DuckDBCsvImporter {
         
         // Map values to all headers, using NULL for missing columns
         allHeaders.forEach((header) => {
-          const fileHeaderIndex = fileHeaders.indexOf(header);
+          const originalIndex = headerMapping.get(header);
           
-          if (fileHeaderIndex === -1) {
+          if (originalIndex === undefined) {
             valueList.push('NULL');
           } else {
-            const col = cols[fileHeaderIndex];
+            const col = cols[originalIndex];
             if (header.toLowerCase().includes('timestamp') || header.toLowerCase().includes('time')) {
               valueList.push(col ? `TIMESTAMP '${col}'` : 'NULL');
             } else if (!col || col === '') {
@@ -313,14 +337,26 @@ export class DuckDBCsvImporter {
       
       // Skip header rows
       const dataStartIndex = 3; // Skip first 3 rows
-      const headers = lines[dataStartIndex - 1].split(',').map(h => h.trim());
+      const headers = lines[dataStartIndex - 1].split(',').map(h => h.trim()).filter(h => h && h !== '');
       
-      // Create table with proper schema
+      // Create column definitions with proper naming and deduplication
+      const columnNames = new Map<string, number>();
       const columnDefs = headers.map((header) => {
-        if (header.toLowerCase().includes('timestamp') || header.toLowerCase().includes('time')) {
-          return `"${header}" TIMESTAMP`;
+        // Handle duplicate column names
+        let columnName = header;
+        const count = columnNames.get(header) || 0;
+        if (count > 0) {
+          columnName = `${header}_${count + 1}`;
         }
-        return `"${header}" DOUBLE`;
+        columnNames.set(header, count + 1);
+        
+        // Escape column name
+        const escapedName = `"${columnName.replace(/"/g, '""')}"`;
+        
+        if (header.toLowerCase().includes('timestamp') || header.toLowerCase().includes('time')) {
+          return `${escapedName} TIMESTAMP`;
+        }
+        return `${escapedName} DOUBLE`;
       }).join(', ');
 
       onProgress?.({
