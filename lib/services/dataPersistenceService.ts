@@ -64,6 +64,18 @@ export class DataPersistenceService {
         message: 'Analyzing table structure...'
       });
 
+      // Check if table exists
+      try {
+        await this.connection.query(`SELECT 1 FROM ${tableName} LIMIT 1`);
+      } catch (error) {
+        console.error(`[DataPersistence] Table ${tableName} does not exist`);
+        return {
+          success: false,
+          chunksCreated: 0,
+          error: 'データがメモリに読み込まれていません。先に「復元」ボタンでデータを復元してください。'
+        };
+      }
+
       // Get table info
       const tableInfoResult = await this.connection.query(`
         SELECT COUNT(*) as total_rows
@@ -433,6 +445,19 @@ export class DataPersistenceService {
       metadataCount: metadataIds.size,
       chunkCount: chunks.length
     };
+  }
+
+  /**
+   * Check if a table exists in DuckDB
+   */
+  async isTableInMemory(metadataId: number): Promise<boolean> {
+    const tableName = `timeseries_${metadataId}`;
+    try {
+      await this.connection.query(`SELECT 1 FROM ${tableName} LIMIT 1`);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

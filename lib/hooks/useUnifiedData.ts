@@ -25,6 +25,7 @@ export interface UnifiedDataItem {
     compressionRatio?: number
     lastPersisted?: Date
   }
+  inMemory?: boolean // DuckDBメモリ内にテーブルが存在するか
 }
 
 export interface UploadedData {
@@ -185,11 +186,17 @@ export function useUnifiedData() {
         if (connection) {
           const persistenceService = createDataPersistenceService(connection)
           
-          // Add persistence status to unified data
+          // Add persistence status and memory status to unified data
           const unifiedDataWithPersistence = await Promise.all(
             unifiedData.map(async (item) => {
               if (item.metadata && item.metadata.id) {
-                const status = await persistenceService.getPersistenceStatus(item.metadata.id)
+                const [status, inMemory] = await Promise.all([
+                  persistenceService.getPersistenceStatus(item.metadata.id),
+                  persistenceService.isTableInMemory(item.metadata.id)
+                ])
+                
+                let updatedItem = { ...item, inMemory }
+                
                 if (status.isPersisted) {
                   // Calculate compression ratio
                   const originalSize = status.totalRows * 100 // Estimate 100 bytes per row
@@ -197,8 +204,8 @@ export function useUnifiedData() {
                     ? (originalSize - status.totalSize) / originalSize 
                     : 0
                   
-                  return {
-                    ...item,
+                  updatedItem = {
+                    ...updatedItem,
                     persistenceStatus: {
                       isPersisted: status.isPersisted,
                       chunkCount: status.chunkCount,
@@ -208,6 +215,8 @@ export function useUnifiedData() {
                     }
                   }
                 }
+                
+                return updatedItem
               }
               return item
             })

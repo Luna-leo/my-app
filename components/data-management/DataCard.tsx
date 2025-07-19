@@ -21,7 +21,8 @@ import {
   X,
   Database,
   FileArchive,
-  Undo2
+  Undo2,
+  AlertCircle
 } from 'lucide-react'
 import { UnifiedDataItem } from '@/lib/hooks/useUnifiedData'
 import { UploadState, formatTimeRemaining } from '@/lib/utils/uploadUtils'
@@ -251,6 +252,12 @@ export function DataCard({
               
               <div className="flex items-center gap-2">
                 {getLocationBadge()}
+                {item.location === 'local' && item.metadata && !item.inMemory && (
+                  <Badge variant="secondary" className="bg-orange-100 text-orange-700">
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    メモリ未ロード
+                  </Badge>
+                )}
                 {item.metadata && (
                   <span className="text-xs text-muted-foreground">
                     Imported: {formatDate(item.metadata.importedAt)}
@@ -351,20 +358,27 @@ export function DataCard({
               {item.location === 'local' && item.metadata && (
                 <>
                   {!item.persistenceStatus?.isPersisted && onPersist && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={onPersist}
-                      disabled={isLoading || persistenceLoading}
-                      className="gap-2"
-                    >
-                      {persistenceLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Database className="h-4 w-4" />
-                      )}
-                      永続化
-                    </Button>
+                    item.inMemory ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onPersist}
+                        disabled={isLoading || persistenceLoading}
+                        className="gap-2"
+                      >
+                        {persistenceLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Database className="h-4 w-4" />
+                        )}
+                        永続化
+                      </Button>
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <AlertCircle className="h-4 w-4 text-warning" />
+                        <span>メモリ未ロード</span>
+                      </div>
+                    )
                   )}
                   
                   {item.persistenceStatus?.isPersisted && (
