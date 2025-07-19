@@ -264,7 +264,7 @@ export class DuckDBCsvImporter {
       return {
         success: false,
         metadataId: 0,
-        tableName,
+        tableName: '',
         rowCount: 0,
         columnCount: 0,
         duration: performance.now() - startTime,
@@ -606,7 +606,7 @@ export class DuckDBCsvImporter {
       return {
         success: false,
         metadataId: 0,
-        tableName,
+        tableName: '',
         rowCount: 0,
         columnCount: 0,
         duration: performance.now() - startTime,
@@ -688,7 +688,7 @@ export class DuckDBCsvImporter {
       return {
         success: false,
         metadataId: 0,
-        tableName,
+        tableName: '',
         rowCount: 0,
         columnCount: 0,
         duration: performance.now() - startTime,

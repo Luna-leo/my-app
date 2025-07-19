@@ -76,12 +76,12 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
               console.log(`[DataPreviewDialog] Loaded ${duckdbData.length} rows from DuckDB`);
               
               // Convert DuckDB data to TimeSeriesData format
-              timeSeriesData = duckdbData.map((row: any) => {
+              timeSeriesData = duckdbData.map((row: Record<string, unknown>) => {
                 const { metadata_id, timestamp, ...dataColumns } = row;
                 return {
-                  metadataId: metadata_id,
-                  timestamp: new Date(timestamp),
-                  data: dataColumns
+                  metadataId: metadata_id as number,
+                  timestamp: new Date(timestamp as string),
+                  data: dataColumns as Record<string, number | null>
                 };
               });
             }
@@ -174,12 +174,12 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
               const duckdbData = result.toArray();
               
               // Convert DuckDB data to TimeSeriesData format
-              exportData = duckdbData.map((row: any) => {
+              exportData = duckdbData.map((row: Record<string, unknown>) => {
                 const { metadata_id, timestamp, ...dataColumns } = row;
                 return {
-                  metadataId: metadata_id,
-                  timestamp: new Date(timestamp),
-                  data: dataColumns
+                  metadataId: metadata_id as number,
+                  timestamp: new Date(timestamp as string),
+                  data: dataColumns as Record<string, number | null>
                 };
               });
             } else {
