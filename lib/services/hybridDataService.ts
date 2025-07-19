@@ -165,6 +165,8 @@ export class HybridDataService {
     
     if (tableExists && missingColumns.length === 0) {
       console.log(`[HybridDataService] Table ${tableName} already has all required columns, skipping load`);
+      console.log(`[HybridDataService] Required parameters: ${parameterIds.join(', ')}`);
+      console.log(`[HybridDataService] Available parameters: ${availableParameterIds.join(', ')}`);
       return;
     }
 
@@ -346,7 +348,7 @@ export class HybridDataService {
         // Different sampling strategies
         if (method === 'random') {
           return `
-            (SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}" AS "param_${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "param_${id}"`).join('')}
+            (SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "${id}"`).join('')}
              FROM ${tableName}
              ${whereClause}
              USING SAMPLE ${targetPoints} ROWS)
@@ -361,7 +363,7 @@ export class HybridDataService {
               FROM ${tableName}
               ${whereClause}
             )
-            SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}" AS "param_${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "param_${id}"`).join('')}
+            SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "${id}"`).join('')}
             FROM numbered
             WHERE MOD(rn, GREATEST(1, CAST(total_count / ${targetPoints} AS INTEGER))) = 0
             LIMIT ${targetPoints})
@@ -376,7 +378,7 @@ export class HybridDataService {
               FROM ${tableName}
               ${whereClause}
             )
-            SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}" AS "param_${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "param_${id}"`).join('')}
+            SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "${id}"`).join('')}
             FROM numbered
             WHERE 
               -- Select exactly targetPoints rows with even distribution
@@ -390,7 +392,7 @@ export class HybridDataService {
           // For LTTB, we'll need a more complex implementation
           // For now, fall back to nth-point sampling
           return `
-            (SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}" AS "param_${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "param_${id}"`).join('')}
+            (SELECT metadata_id, timestamp${existingParameterIds.length > 0 ? ', ' + existingParameterIds.map(id => `"${id}"`).join(', ') : ''}${parameterIds.filter(id => !existingParameterIds.includes(id)).map(id => `, NULL AS "${id}"`).join('')}
              FROM ${tableName}
              ${whereClause}
              ORDER BY timestamp
@@ -432,9 +434,8 @@ export class HybridDataService {
         };
 
         parameterIds.forEach(id => {
-          // Access using the aliased column name
-          const aliasedName = `param_${id}`;
-          const value = row[aliasedName];
+          // Access using the column name directly (no alias)
+          const value = row[id];
           
           if (value !== null && value !== undefined && typeof value === 'number') {
             dataPoint.data[id] = value as number;

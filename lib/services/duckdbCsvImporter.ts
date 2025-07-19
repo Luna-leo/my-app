@@ -64,8 +64,8 @@ export class DuckDBCsvImporter {
         const lines = text.split('\n');
         
         if (lines.length > 3) {
-          // Get header line (3rd row, index 2)
-          const headerLine = lines[2];
+          // Get header line (1st row, index 0) - Parameter IDs
+          const headerLine = lines[0];
           const headers = headerLine.split(',').map(h => h.trim());
           
           // Skip the first column (timestamp) and process other headers
@@ -288,7 +288,8 @@ export class DuckDBCsvImporter {
     
     // Skip header rows
     const dataStartIndex = 3;
-    const rawHeaders = lines[dataStartIndex - 1].split(',').map(h => h.trim());
+    // Get parameter IDs from first row
+    const rawHeaders = lines[0].split(',').map(h => h.trim());
     // Keep track of original indices for non-empty headers
     const headerMapping = new Map<string, number>();
     rawHeaders.forEach((h, index) => {
@@ -385,7 +386,8 @@ export class DuckDBCsvImporter {
       
       // Skip header rows
       const dataStartIndex = 3; // Skip first 3 rows
-      const allHeaders = lines[dataStartIndex - 1].split(',').map(h => h.trim());
+      // Get parameter IDs from first row
+      const allHeaders = lines[0].split(',').map(h => h.trim());
       // Skip first column (timestamp) and filter empty headers
       const headers = allHeaders.slice(1).filter(h => h && h !== '');
       
