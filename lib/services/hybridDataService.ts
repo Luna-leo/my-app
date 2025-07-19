@@ -1,6 +1,8 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { TimeSeriesData } from '@/lib/db';
 import { duckDBSchemaTracker } from './duckdbSchemaTracker';
+import { duckDBParquetService, ParquetReadOptions } from './duckdbParquetService';
+import { duckDBQueryCache } from './duckdbQueryCache';
 
 interface DuckDBInstance {
   connection: duckdb.AsyncDuckDBConnection;
@@ -97,6 +99,9 @@ export class HybridDataService {
       const connection = await db.connect();
 
       this.duckDBInstance = { db, connection, worker };
+      
+      // Initialize parquet service with connection
+      duckDBParquetService.setConnection(connection);
 
       const duration = performance.now() - startTime;
       console.log(`[HybridDataService] DuckDB initialized in ${duration.toFixed(2)}ms`);
@@ -236,6 +241,9 @@ export class HybridDataService {
       // Update row count in schema tracker
       duckDBSchemaTracker.updateRowCount(metadataId, data.length);
       
+      // Invalidate cache entries for this metadata
+      duckDBQueryCache.invalidate(`"metadataIds":\\[.*${metadataId}.*\\]`);
+      
       const duration = performance.now() - startTime;
       console.log(`[HybridDataService] Loaded ${data.length} rows into ${tableName} in ${duration.toFixed(2)}ms`);
 
@@ -256,6 +264,7 @@ export class HybridDataService {
       startTime?: Date;
       endTime?: Date;
       method?: 'nth' | 'nth-fast' | 'random' | 'lttb';
+      useCache?: boolean;
     }
   ): Promise<TimeSeriesData[]> {
     if (!this.duckDBInstance) {
@@ -264,6 +273,25 @@ export class HybridDataService {
 
     const startTime = performance.now();
     const method = options?.method || 'nth';
+    const useCache = options?.useCache !== false; // Cache enabled by default
+
+    // Generate cache key
+    const cacheKey = JSON.stringify({
+      metadataIds,
+      parameterIds,
+      targetPoints,
+      options
+    });
+
+    // Check cache first
+    if (useCache) {
+      const cachedResult = duckDBQueryCache.get<TimeSeriesData[]>(cacheKey);
+      if (cachedResult) {
+        const duration = performance.now() - startTime;
+        console.log(`[HybridDataService] Cache hit! Returned ${cachedResult.length} points in ${duration.toFixed(2)}ms`);
+        return cachedResult;
+      }
+    }
 
     try {
       // First check which columns actually exist in each table
@@ -428,6 +456,11 @@ export class HybridDataService {
       console.log(`[HybridDataService] Target: ${targetPoints} points per dataset`);
       console.log(`[HybridDataService] Actual points per metadata:`, pointsPerMetadata);
 
+      // Cache the result
+      if (useCache && data.length > 0) {
+        duckDBQueryCache.set(cacheKey, data);
+      }
+
       return data;
 
     } catch (error) {
@@ -507,6 +540,183 @@ export class HybridDataService {
       duration: 0,
       tablesCreated: tables
     };
+  }
+
+  /**
+   * Load time series data from Parquet file
+   */
+  async loadTimeSeriesFromParquet(
+    parquetPath: string,
+    metadataId: number,
+    options?: ParquetReadOptions
+  ): Promise<TimeSeriesData[]> {
+    if (!this.duckDBInstance) {
+      throw new Error('DuckDB not initialized. Call initialize() first.');
+    }
+
+    try {
+      return await duckDBParquetService.readTimeSeriesFromParquet(
+        parquetPath,
+        metadataId,
+        options
+      );
+    } catch (error) {
+      console.error('[HybridDataService] Failed to load from parquet:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sample data from Parquet files
+   */
+  async sampleDataFromParquet(
+    parquetPaths: Map<number, string>, // metadataId -> parquet file path
+    parameterIds: string[],
+    targetPoints: number,
+    options?: {
+      startTime?: Date;
+      endTime?: Date;
+      method?: 'nth' | 'random' | 'reservoir';
+    }
+  ): Promise<TimeSeriesData[]> {
+    if (!this.duckDBInstance) {
+      throw new Error('DuckDB not initialized. Call initialize() first.');
+    }
+
+    const startTime = performance.now();
+    const allData: TimeSeriesData[] = [];
+
+    try {
+      // Build filters from time range
+      const filters = [];
+      if (options?.startTime) {
+        filters.push({
+          column: 'timestamp',
+          operator: '>=' as const,
+          value: options.startTime
+        });
+      }
+      if (options?.endTime) {
+        filters.push({
+          column: 'timestamp',
+          operator: '<=' as const,
+          value: options.endTime
+        });
+      }
+
+      // Calculate target points per metadata
+      const pointsPerMetadata = Math.ceil(targetPoints / parquetPaths.size);
+
+      // Process each parquet file
+      for (const [metadataId, parquetPath] of parquetPaths) {
+        try {
+          const sampledData = await duckDBParquetService.readTimeSeriesFromParquet(
+            parquetPath,
+            metadataId,
+            {
+              columns: parameterIds,
+              filters,
+              limit: pointsPerMetadata
+            }
+          );
+          allData.push(...sampledData);
+        } catch (err) {
+          console.warn(`[HybridDataService] Failed to sample from ${parquetPath}:`, err);
+        }
+      }
+
+      const duration = performance.now() - startTime;
+      console.log(`[HybridDataService] Sampled ${allData.length} points from ${parquetPaths.size} parquet files in ${duration.toFixed(2)}ms`);
+
+      return allData;
+
+    } catch (error) {
+      console.error('[HybridDataService] Parquet sampling failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Export query results to Parquet file
+   */
+  async exportToParquet(
+    query: string,
+    outputPath: string,
+    options?: {
+      compression?: 'snappy' | 'gzip' | 'zstd' | 'lz4' | 'brotli' | 'none';
+      rowGroupSize?: number;
+    }
+  ): Promise<void> {
+    if (!this.duckDBInstance) {
+      throw new Error('DuckDB not initialized. Call initialize() first.');
+    }
+
+    try {
+      await duckDBParquetService.exportToParquet(query, outputPath, options);
+    } catch (error) {
+      console.error('[HybridDataService] Failed to export to parquet:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a hybrid query that combines in-memory tables and parquet files
+   */
+  async executeHybridQuery(
+    memoryTableIds: number[],
+    parquetPaths: Map<number, string>,
+    query: string
+  ): Promise<Record<string, unknown>[]> {
+    if (!this.duckDBInstance) {
+      throw new Error('DuckDB not initialized. Call initialize() first.');
+    }
+
+    try {
+      // Create a unified view combining memory tables and parquet files
+      const viewName = `hybrid_view_${Date.now()}`;
+      const unionParts: string[] = [];
+
+      // Add memory tables
+      for (const metadataId of memoryTableIds) {
+        const tableName = `timeseries_${metadataId}`;
+        if (this.loadedMetadataIds.has(metadataId)) {
+          unionParts.push(`SELECT * FROM ${tableName}`);
+        }
+      }
+
+      // Add parquet files
+      for (const [metadataId, parquetPath] of parquetPaths) {
+        unionParts.push(`
+          SELECT ${metadataId} as metadata_id, * 
+          FROM read_parquet('${parquetPath}')
+        `);
+      }
+
+      if (unionParts.length === 0) {
+        return [];
+      }
+
+      // Create temporary view
+      const createViewSQL = `
+        CREATE TEMPORARY VIEW ${viewName} AS
+        ${unionParts.join(' UNION ALL ')}
+      `;
+      await this.duckDBInstance.connection.query(createViewSQL);
+
+      // Execute query on unified view
+      const result = await this.duckDBInstance.connection.query(
+        query.replace(/FROM\s+\$table/gi, `FROM ${viewName}`)
+      );
+
+      // Clean up
+      await this.duckDBInstance.connection.query(`DROP VIEW ${viewName}`);
+
+      return result.toArray();
+
+    } catch (error) {
+      console.error('[HybridDataService] Hybrid query failed:', error);
+      throw error;
+    }
   }
 
   /**

@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Database, Upload, Zap } from 'lucide-react'
+import { Database, Upload, Zap, FileArchive } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CsvImportContent } from './CsvImportContent'
 import { UnifiedDataView } from './UnifiedDataView'
 import { MigrationContent } from './MigrationContent'
+import { ParquetImportContent } from './ParquetImportContent'
 
 interface DataManagementDialogProps {
   open: boolean
@@ -80,7 +81,7 @@ export function DataManagementDialog({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col px-6 pb-4 overflow-hidden">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="data" className="flex items-center gap-2">
               <Database className="h-4 w-4" />
               All Data
@@ -88,6 +89,10 @@ export function DataManagementDialog({
             <TabsTrigger value="import" className="flex items-center gap-2">
               <Upload className="h-4 w-4" />
               Import CSV
+            </TabsTrigger>
+            <TabsTrigger value="parquet" className="flex items-center gap-2">
+              <FileArchive className="h-4 w-4" />
+              Parquet
             </TabsTrigger>
             <TabsTrigger value="migrate" className="flex items-center gap-2">
               <Zap className="h-4 w-4" />
@@ -109,6 +114,10 @@ export function DataManagementDialog({
               <CsvImportContent
                 onImportComplete={handleImportComplete}
               />
+            </TabsContent>
+
+            <TabsContent value="parquet" className="h-full mt-4 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden">
+              <ParquetImportContent />
             </TabsContent>
 
             <TabsContent value="migrate" className="h-full mt-4 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden">
