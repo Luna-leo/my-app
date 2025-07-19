@@ -290,14 +290,14 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                   <tr className="bg-white">
                     <th rowSpan={3} className="sticky left-0 z-30 bg-white min-w-[180px] px-2 py-1 text-left font-medium">Timestamp</th>
                     {columns.map(col => (
-                      <th key={col} className="bg-white text-right min-w-[100px] px-2 py-1">
+                      <th key={`id-${col}`} className="bg-white text-right min-w-[100px] px-2 py-1">
                         <div className="text-xs font-normal">{col}</div>
                       </th>
                     ))}
                   </tr>
                   <tr className="bg-white">
                     {columns.map(col => (
-                      <th key={col} className="bg-white text-right min-w-[100px] px-2 py-1">
+                      <th key={`name-${col}`} className="bg-white text-right min-w-[100px] px-2 py-1">
                         <div className="text-xs font-normal">
                           {parameters[col]?.parameterName || '-'}
                         </div>
@@ -306,7 +306,7 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                   </tr>
                   <tr className="bg-white">
                     {columns.map(col => (
-                      <th key={col} className="bg-white text-right min-w-[100px] px-2 py-1">
+                      <th key={`unit-${col}`} className="bg-white text-right min-w-[100px] px-2 py-1">
                         <div className="text-xs font-normal">
                           {parameters[col]?.unit || '-'}
                         </div>
@@ -315,8 +315,8 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((row) => (
-                    <tr key={row.id} className="border-b hover:bg-gray-50">
+                  {data.map((row, index) => (
+                    <tr key={row.id || `row-${index}`} className="border-b hover:bg-gray-50">
                       <td className="font-medium sticky left-0 z-10 bg-white text-left min-w-[180px] px-2 py-2">
                         {new Date(row.timestamp).toLocaleString('ja-JP')}
                       </td>
