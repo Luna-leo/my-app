@@ -65,13 +65,17 @@ export class DuckDBCsvImporter {
         const lines = text.split('\n');
         
         if (lines.length > 3) {
-          const headers = lines[2].split(',').map(h => h.trim());
-          headers.forEach((h, index) => {
-            // Skip empty headers or handle them with a default name
-            if (h && h !== '') {
-              allHeaders.add(h);
+          // Get header line (3rd row, index 2)
+          const headerLine = lines[2];
+          const headers = headerLine.split(',').map(h => h.trim());
+          
+          // Skip the first column (timestamp) and process other headers
+          for (let i = 1; i < headers.length; i++) {
+            const header = headers[i];
+            if (header && header !== '') {
+              allHeaders.add(header);
             }
-          });
+          }
         }
       }
 
@@ -100,6 +104,7 @@ export class DuckDBCsvImporter {
       await this.connection!.query(`
         CREATE TABLE ${tableName} (
           metadata_id INTEGER,
+          timestamp TIMESTAMP,
           ${columnDefs}
         )
       `);
@@ -266,6 +271,10 @@ export class DuckDBCsvImporter {
         const cols = line.split(',').map(col => col.trim());
         const valueList = [metadataId.toString()];
         
+        // Add timestamp (first column)
+        const timestampValue = cols[0];
+        valueList.push(timestampValue ? `TIMESTAMP '${timestampValue}'` : 'NULL');
+        
         // Map values to all headers, using NULL for missing columns
         allHeaders.forEach((header) => {
           const originalIndex = headerMapping.get(header);
@@ -337,7 +346,9 @@ export class DuckDBCsvImporter {
       
       // Skip header rows
       const dataStartIndex = 3; // Skip first 3 rows
-      const headers = lines[dataStartIndex - 1].split(',').map(h => h.trim()).filter(h => h && h !== '');
+      const allHeaders = lines[dataStartIndex - 1].split(',').map(h => h.trim());
+      // Skip first column (timestamp) and filter empty headers
+      const headers = allHeaders.slice(1).filter(h => h && h !== '');
       
       // Create column definitions with proper naming and deduplication
       const columnNames = new Map<string, number>();
@@ -369,6 +380,7 @@ export class DuckDBCsvImporter {
       await this.connection!.query(`
         CREATE TABLE ${tableName} (
           metadata_id INTEGER,
+          timestamp TIMESTAMP,
           ${columnDefs}
         )
       `);
@@ -395,8 +407,17 @@ export class DuckDBCsvImporter {
           const cols = line.split(',').map(col => col.trim());
           const valueList = [metadataId.toString()];
           
-          cols.forEach((col, idx) => {
-            if (headers[idx] && (headers[idx].toLowerCase().includes('timestamp') || headers[idx].toLowerCase().includes('time'))) {
+          // Add timestamp (first column)
+          const timestampValue = cols[0];
+          valueList.push(timestampValue ? `TIMESTAMP '${timestampValue}'` : 'NULL');
+          
+          // Process remaining columns (skip timestamp at index 0)
+          headers.forEach((header, headerIndex) => {
+            // Original column index is headerIndex + 1 (because we skipped timestamp)
+            const colIndex = headerIndex + 1;
+            const col = cols[colIndex];
+            
+            if (header.toLowerCase().includes('timestamp') || header.toLowerCase().includes('time')) {
               valueList.push(col ? `TIMESTAMP '${col}'` : 'NULL');
             } else if (!col || col === '') {
               valueList.push('NULL');
