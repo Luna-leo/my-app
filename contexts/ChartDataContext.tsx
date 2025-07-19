@@ -589,54 +589,30 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       // Re-enable selective column loading with debug mode
       const fetchStartTime = performance.now();
       
-      // Determine max points per dataset for DB fetch
-      let maxPointsPerDataset: number | undefined;
+      // Simplified sampling strategy - single stage with DuckDB
       let targetPointsPerDataset: number | undefined;
       
       if (enableSampling === false) {
         // Full mode - no sampling
-        maxPointsPerDataset = undefined;
         targetPointsPerDataset = undefined;
         console.log(`[ChartDataContext] Full mode - no sampling`);
       } else if (typeof enableSampling === 'object') {
-        // Resolution-based sampling - fetch more from DB than final target
+        // Resolution-based sampling
         if (!enableSampling.enabled || !enableSampling.targetPoints) {
-          // If sampling is disabled or no target points, treat as full mode
-          maxPointsPerDataset = undefined;
           targetPointsPerDataset = undefined;
           console.log(`[ChartDataContext] Sampling disabled - full mode`);
-        } else if (enableSampling.targetPoints <= PREVIEW_SAMPLING_CONFIG.targetPoints) {
-          maxPointsPerDataset = SAMPLING_STRATEGY.preview.dbFetchPoints;
-          targetPointsPerDataset = SAMPLING_STRATEGY.preview.clientTargetPoints;
-        } else if (enableSampling.targetPoints <= DEFAULT_SAMPLING_CONFIG.targetPoints) {
-          maxPointsPerDataset = SAMPLING_STRATEGY.normal.dbFetchPoints;
-          targetPointsPerDataset = SAMPLING_STRATEGY.normal.clientTargetPoints;
-        } else if (enableSampling.targetPoints <= HIGH_RES_SAMPLING_CONFIG.targetPoints) {
-          maxPointsPerDataset = SAMPLING_STRATEGY.high.dbFetchPoints;
-          targetPointsPerDataset = SAMPLING_STRATEGY.high.clientTargetPoints;
         } else {
-          // For any targetPoints larger than HIGH_RES, use full data
-          maxPointsPerDataset = undefined;
-          targetPointsPerDataset = undefined;
-          console.log(`[ChartDataContext] Target points ${enableSampling.targetPoints} exceeds high-res limit - full mode`);
-        }
-        if (maxPointsPerDataset !== undefined) {
-          console.log(`[ChartDataContext] DB fetch: ${maxPointsPerDataset}, target: ${targetPointsPerDataset} per dataset`);
+          targetPointsPerDataset = enableSampling.targetPoints;
+          console.log(`[ChartDataContext] Target points: ${targetPointsPerDataset} per dataset`);
         }
       } else if (enableSampling === true) {
         // Default to normal resolution when true is passed
-        maxPointsPerDataset = SAMPLING_STRATEGY.normal.dbFetchPoints;
-        targetPointsPerDataset = SAMPLING_STRATEGY.normal.clientTargetPoints;
-        console.log(`[ChartDataContext] enableSampling=true - using normal resolution`);
-      } else {
-        // Unexpected value - log warning and use normal resolution
-        console.warn(`[ChartDataContext] Unexpected enableSampling value: ${enableSampling} (type: ${typeof enableSampling})`);
-        maxPointsPerDataset = SAMPLING_STRATEGY.normal.dbFetchPoints;
-        targetPointsPerDataset = SAMPLING_STRATEGY.normal.clientTargetPoints;
+        targetPointsPerDataset = DEFAULT_SAMPLING_CONFIG.targetPoints;
+        console.log(`[ChartDataContext] Default sampling: ${targetPointsPerDataset} points per dataset`);
       }
       
-      console.log(`[ChartDataContext] Calling fetchRawData with maxPointsPerDataset:`, maxPointsPerDataset);
-      const rawData = await fetchRawData(config.selectedDataIds, parameterIds, maxPointsPerDataset);
+      // Fetch full data from IndexedDB - sampling will be done in DuckDB
+      const rawData = await fetchRawData(config.selectedDataIds, parameterIds, undefined);
       console.log(`[ChartDataContext] Data fetch for "${config.title}" took ${performance.now() - fetchStartTime}ms (${rawData.timeSeries.length} points)`);
       
       // Debug: Check actual data time ranges from raw data
@@ -670,172 +646,71 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       // Report progress after parameter fetch
       onProgress?.(50);
 
-      // Apply client-side sampling using DuckDB if needed
+      // Apply sampling using DuckDB if needed
       let processedTimeSeries = rawData.timeSeries;
       let samplingInfo: SamplingInfo | undefined;
       const originalCount = rawData.totalOriginalCount;
       
-      console.log(`[ChartDataContext] Client-side sampling check: rawData.length=${processedTimeSeries.length}, threshold=${targetPointsPerDataset ? targetPointsPerDataset * config.selectedDataIds.length : 'N/A'}`);
+      const samplingParameterIds = [
+        ...(config.xAxisParameter !== 'timestamp' ? [config.xAxisParameter] : []),
+        ...config.yAxisParameters,
+      ];
       
-      if (targetPointsPerDataset && processedTimeSeries.length > targetPointsPerDataset * config.selectedDataIds.length) {
-        console.log(`[ChartDataContext] Client-side sampling needed: ${processedTimeSeries.length} → ${targetPointsPerDataset * config.selectedDataIds.length}`);
+      if (targetPointsPerDataset && useDuckDB && isDuckDBReady) {
+        console.log(`[ChartDataContext] DuckDB sampling: ${processedTimeSeries.length} → ${targetPointsPerDataset * config.selectedDataIds.length}`);
         const samplingStartTime = performance.now();
-        
-        const samplingConfig: SamplingConfig = {
-          enabled: true,
-          method: 'nth' as const, // Use nth-point for DuckDB
-          targetPoints: targetPointsPerDataset * config.selectedDataIds.length,
-          preserveExtremes: true,
-          samplingThreshold: 0 // Always sample
-        };
-        
-        // Check cache first
-        const samplingParameterIds = [
-          ...(config.xAxisParameter !== 'timestamp' ? [config.xAxisParameter] : []),
-          ...config.yAxisParameters,
-        ];
-        const cachedSampledData = hierarchicalSamplingCache.get(
-          config.selectedDataIds, 
-          samplingParameterIds,
-          samplingConfig
-        );
-        
-        if (cachedSampledData) {
-          processedTimeSeries = cachedSampledData;
-          console.log(`[ChartDataContext] Cache hit for sampling (${performance.now() - samplingStartTime}ms)`);
-        } else if (useDuckDB && isDuckDBReady) {
-          // Use DuckDB for fast SQL-based sampling
-          try {
-            console.log(`[ChartDataContext] Using DuckDB for sampling`);
-            
-            // Load data to DuckDB - ALWAYS reload to ensure all parameters are available
-            // This is necessary because we don't know which parameters will be requested
-            for (const metadataId of config.selectedDataIds) {
-              const dataForMetadata = rawData.dataByMetadata.get(metadataId) || [];
-              if (dataForMetadata.length > 0) {
-                // Always reload data to ensure all columns are available
-                // The HybridDataService will drop and recreate the table
-                await hybridDataService.loadTimeSeriesData(
-                  metadataId,
-                  dataForMetadata,
-                  []  // Empty array means load all parameters
-                );
-                duckDBLoadedData.current.add(metadataId);
-              }
-            }
-            
-            // Perform SQL-based sampling with per-dataset targets
-            // Check if we have valid samplingConfig with targetPoints
-            if (typeof samplingConfig === 'object' && samplingConfig.targetPoints) {
-              const pointsPerDataset = Math.floor(samplingConfig.targetPoints / config.selectedDataIds.length);
-              processedTimeSeries = await hybridDataService.sampleData(
-                config.selectedDataIds,
-                samplingParameterIds,
-                pointsPerDataset,
-                {
-                  method: 'nth' // DuckDB supports nth-point and random
-                }
+        try {
+          // Load data to DuckDB with intelligent column tracking
+          for (const metadataId of config.selectedDataIds) {
+            const dataForMetadata = rawData.dataByMetadata.get(metadataId) || [];
+            if (dataForMetadata.length > 0) {
+              // hybridDataService will now check if columns exist and only add missing ones
+              await hybridDataService.loadTimeSeriesData(
+                metadataId,
+                dataForMetadata,
+                samplingParameterIds  // Pass required parameters for tracking
               );
-            } else {
-              // Keep the data as-is
+              duckDBLoadedData.current.add(metadataId);
             }
-            
-            // Cache the sampled data
-            hierarchicalSamplingCache.set(
-              config.selectedDataIds, 
-              samplingParameterIds,
-              samplingConfig, 
-              processedTimeSeries
-            );
-            
-            console.log(`[ChartDataContext] DuckDB sampling completed in ${performance.now() - samplingStartTime}ms`);
-            
-            // Debug: Check sampled data time ranges
-            const sampledDataByMetadata = new Map<number, { min: Date, max: Date, count: number }>();
-            processedTimeSeries.forEach(item => {
-              const existing = sampledDataByMetadata.get(item.metadataId);
-              if (!existing) {
-                sampledDataByMetadata.set(item.metadataId, { min: item.timestamp, max: item.timestamp, count: 1 });
-              } else {
-                if (item.timestamp < existing.min) existing.min = item.timestamp;
-                if (item.timestamp > existing.max) existing.max = item.timestamp;
-                existing.count++;
-              }
-            });
-            
-            console.log('[ChartDataContext] Sampled data time ranges by metadata:');
-            sampledDataByMetadata.forEach((range, metadataId) => {
-              const metadata = rawData.metadata.get(metadataId);
-              console.log(`  - ${metadata?.label || `ID: ${metadataId}`}: ${range.min.toLocaleString()} to ${range.max.toLocaleString()} (${range.count} points)`);
-            });
-          } catch (error) {
-            console.error('[ChartDataContext] DuckDB sampling failed, falling back to Worker:', error);
-            // Fall through to Worker sampling
           }
-        }
-        
-        // Fallback to Worker/main thread if DuckDB not available or failed
-        if (!cachedSampledData && (!useDuckDB || !isDuckDBReady || processedTimeSeries === rawData.timeSeries)) {
-          try {
-            const workerPool = getSimpleWorkerPool();
-            if (config.selectedDataIds.length > 1) {
-              // Multiple datasets - sample independently
-              processedTimeSeries = await workerPool.execute({
-                type: 'SAMPLE_DATA',
-                data: {
-                  id: `sampling-multi-${config.id}-${Date.now()}`,
-                  rawData: [],
-                  targetPoints: samplingConfig.targetPoints,
-                  samplingConfig: {
-                    dataByMetadata: Object.fromEntries(rawData.dataByMetadata),
-                    samplingConfig: samplingConfig,
-                    samplingParameter: config.yAxisParameters[0]
-                  }
-                }
-              });
-            } else {
-              // Single dataset
-              processedTimeSeries = await workerPool.execute({
-                type: 'SAMPLE_DATA',
-                data: {
-                  id: `sampling-${config.id}-${Date.now()}`,
-                  rawData: [],
-                  targetPoints: samplingConfig.targetPoints,
-                  samplingConfig: {
-                    data: rawData.timeSeries,
-                    samplingConfig: samplingConfig,
-                    samplingParameter: config.yAxisParameters[0]
-                  }
-                }
-              });
+          
+          // Perform SQL-based sampling with per-dataset targets
+          const pointsPerDataset = Math.floor(targetPointsPerDataset);
+          processedTimeSeries = await hybridDataService.sampleData(
+            config.selectedDataIds,
+            samplingParameterIds,
+            pointsPerDataset,
+            {
+              method: 'nth' // DuckDB supports nth-point and random
             }
-            console.log(`[ChartDataContext] Worker sampling completed in ${performance.now() - samplingStartTime}ms`);
+          );
             
-            // Cache the result
-            hierarchicalSamplingCache.set(
-              config.selectedDataIds, 
-              samplingParameterIds,
-              samplingConfig, 
-              processedTimeSeries
-            );
-          } catch (error) {
-            console.warn('[ChartDataContext] Worker sampling failed, using data as-is:', error);
-          }
+          
+          samplingInfo = {
+            originalCount,
+            sampledCount: processedTimeSeries.length,
+            wasSampled: true,
+            method: 'duckdb'
+          };
+          
+          console.log(`[ChartDataContext] DuckDB sampling completed: ${originalCount} → ${processedTimeSeries.length} points (${performance.now() - samplingStartTime}ms)`);
+        } catch (error) {
+          console.error('[ChartDataContext] DuckDB sampling failed:', error);
+          // Keep original data if sampling fails
+          samplingInfo = {
+            originalCount,
+            sampledCount: processedTimeSeries.length,
+            wasSampled: false,
+            method: 'none'
+          };
         }
-        
-        samplingInfo = {
-          originalCount,
-          sampledCount: processedTimeSeries.length,
-          wasSampled: true,
-          method: useDuckDB && isDuckDBReady ? 'duckdb' : 'worker'
-        };
       } else {
-        // No client-side sampling needed
+        // No sampling needed or DuckDB not available
         samplingInfo = {
           originalCount,
           sampledCount: processedTimeSeries.length,
-          wasSampled: processedTimeSeries.length < originalCount,
-          method: 'database'
+          wasSampled: false,
+          method: 'none'
         };
       }
       

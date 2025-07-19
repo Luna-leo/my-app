@@ -1,5 +1,6 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { TimeSeriesData } from '@/lib/db';
+import { duckDBSchemaTracker } from './duckdbSchemaTracker';
 
 interface DuckDBInstance {
   connection: duckdb.AsyncDuckDBConnection;
@@ -108,42 +109,65 @@ export class HybridDataService {
       throw new Error('DuckDB not initialized. Call initialize() first.');
     }
 
-    if (this.loadedMetadataIds.has(metadataId)) {
-      console.log(`[HybridDataService] Data for metadataId ${metadataId} already loaded, dropping existing table`);
-      // Drop existing table to recreate with new schema
-      const tableName = `timeseries_${metadataId}`;
-      try {
-        await this.duckDBInstance.connection.query(`DROP TABLE IF EXISTS ${tableName}`);
-        this.loadedMetadataIds.delete(metadataId);
-      } catch (error) {
-        console.error(`[HybridDataService] Failed to drop table ${tableName}:`, error);
-      }
+    const tableName = `timeseries_${metadataId}`;
+    
+    // Extract all available parameter IDs from the data
+    const allParameterIds = new Set<string>();
+    data.forEach(row => {
+      Object.keys(row.data).forEach(id => allParameterIds.add(id));
+    });
+    const availableParameterIds = Array.from(allParameterIds);
+    
+    // Check if table exists and has all required columns
+    const tableExists = duckDBSchemaTracker.hasTable(metadataId);
+    const missingColumns = tableExists 
+      ? duckDBSchemaTracker.getMissingColumns(metadataId, availableParameterIds)
+      : availableParameterIds;
+    
+    if (tableExists && missingColumns.length === 0) {
+      console.log(`[HybridDataService] Table ${tableName} already has all required columns, skipping load`);
+      return;
     }
 
-    const tableName = `timeseries_${metadataId}`;
     const startTime = performance.now();
 
     try {
-      // Extract all available parameter IDs from the data
-      const allParameterIds = new Set<string>();
-      data.forEach(row => {
-        Object.keys(row.data).forEach(id => allParameterIds.add(id));
-      });
-      const availableParameterIds = Array.from(allParameterIds);
-      
-      // Create table with columns for all available parameters
-      // DuckDB requires double quotes for identifiers, especially numeric column names
-      const columnDefs = availableParameterIds.map(id => `"${id}" DOUBLE`).join(', ');
-      const createTableSQL = `
-        CREATE TABLE IF NOT EXISTS ${tableName} (
-          metadata_id INTEGER,
-          timestamp TIMESTAMP,
-          ${columnDefs}
-        )
-      `;
-      
-      await this.duckDBInstance.connection.query(createTableSQL);
-      console.log(`[HybridDataService] Created table ${tableName} with columns: ${availableParameterIds.join(', ')}`);
+      if (tableExists && missingColumns.length > 0) {
+        // Table exists but needs new columns
+        console.log(`[HybridDataService] Adding ${missingColumns.length} new columns to ${tableName}`);
+        
+        for (const columnId of missingColumns) {
+          const alterSQL = `ALTER TABLE ${tableName} ADD COLUMN "${columnId}" DOUBLE`;
+          try {
+            await this.duckDBInstance.connection.query(alterSQL);
+          } catch (err) {
+            console.warn(`[HybridDataService] Failed to add column ${columnId}:`, err);
+          }
+        }
+        
+        // Update schema tracker
+        duckDBSchemaTracker.addColumns(metadataId, missingColumns);
+        
+        // Insert only new data (simplified approach: clear and reload for now)
+        // TODO: Implement incremental data loading in the future
+        await this.duckDBInstance.connection.query(`DELETE FROM ${tableName}`);
+      } else if (!tableExists) {
+        // Create new table
+        const columnDefs = availableParameterIds.map(id => `"${id}" DOUBLE`).join(', ');
+        const createTableSQL = `
+          CREATE TABLE ${tableName} (
+            metadata_id INTEGER,
+            timestamp TIMESTAMP,
+            ${columnDefs}
+          )
+        `;
+        
+        await this.duckDBInstance.connection.query(createTableSQL);
+        console.log(`[HybridDataService] Created table ${tableName} with ${availableParameterIds.length} columns`);
+        
+        // Register table in schema tracker
+        duckDBSchemaTracker.registerTable(metadataId, availableParameterIds, data.length);
+      }
 
       // Prepare data for bulk insert
       const batchSize = 10000;
@@ -152,31 +176,18 @@ export class HybridDataService {
       for (let i = 0; i < data.length; i += batchSize) {
         const batch = data.slice(i, i + batchSize);
         
-        // Convert batch to columnar format for efficient insertion
-        const timestamps: Date[] = [];
-        const columnData: { [key: string]: (number | null)[] } = {};
-        
-        availableParameterIds.forEach(id => {
-          columnData[id] = [];
-        });
-
-        batch.forEach(row => {
-          timestamps.push(row.timestamp);
-          availableParameterIds.forEach(id => {
-            columnData[id].push(row.data[id] ?? null);
-          });
-        });
-
-        // Build INSERT statement
+        // Build INSERT statement with proper NULL handling
         const values = batch.map(row => {
-          const params = availableParameterIds.map(id => row.data[id] ?? 'NULL').join(', ');
+          const params = availableParameterIds.map(id => 
+            row.data[id] !== null && row.data[id] !== undefined 
+              ? row.data[id] 
+              : 'NULL'
+          ).join(', ');
           return `(${metadataId}, TIMESTAMP '${row.timestamp.toISOString()}', ${params})`;
         }).join(', ');
 
         const columnNames = ['metadata_id', 'timestamp', ...availableParameterIds.map(id => `"${id}"`)].join(', ');
-        const insertSQL = `
-          INSERT INTO ${tableName} (${columnNames}) VALUES ${values}
-        `;
+        const insertSQL = `INSERT INTO ${tableName} (${columnNames}) VALUES ${values}`;
 
         await this.duckDBInstance.connection.query(insertSQL);
         
@@ -187,6 +198,9 @@ export class HybridDataService {
       }
 
       this.loadedMetadataIds.add(metadataId);
+      
+      // Update row count in schema tracker
+      duckDBSchemaTracker.updateRowCount(metadataId, data.length);
       
       const duration = performance.now() - startTime;
       console.log(`[HybridDataService] Loaded ${data.length} rows into ${tableName} in ${duration.toFixed(2)}ms`);
