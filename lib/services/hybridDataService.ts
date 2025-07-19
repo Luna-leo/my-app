@@ -128,8 +128,32 @@ export class HybridDataService {
     });
     const availableParameterIds = Array.from(allParameterIds);
     
+    // Check if table exists in DuckDB
+    let tableExistsInDB = false;
+    try {
+      const checkTableSQL = `SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '${tableName}'`;
+      const result = await this.duckDBInstance.connection.query(checkTableSQL);
+      tableExistsInDB = result.toArray()[0]['count_star()'] > 0;
+    } catch (error) {
+      console.log(`[HybridDataService] Table existence check failed, assuming not exists`);
+    }
+
+    // Sync schema tracker with actual DB state
+    if (tableExistsInDB && !duckDBSchemaTracker.hasTable(metadataId)) {
+      // Table exists in DB but not in tracker - sync it
+      const schemaQuery = `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}' AND column_name NOT IN ('metadata_id', 'timestamp')`;
+      const schemaResult = await this.duckDBInstance.connection.query(schemaQuery);
+      const columns = schemaResult.toArray().map((row: Record<string, unknown>) => row.column_name as string);
+      duckDBSchemaTracker.registerTable(metadataId, columns, 0);
+      console.log(`[HybridDataService] Synced schema tracker for existing table ${tableName}`);
+    } else if (!tableExistsInDB && duckDBSchemaTracker.hasTable(metadataId)) {
+      // Table doesn't exist in DB but exists in tracker - remove from tracker
+      duckDBSchemaTracker.removeTable(metadataId);
+      console.log(`[HybridDataService] Removed non-existent table from tracker: ${tableName}`);
+    }
+
     // Check if table exists and has all required columns
-    const tableExists = duckDBSchemaTracker.hasTable(metadataId);
+    const tableExists = tableExistsInDB;
     const missingColumns = tableExists 
       ? duckDBSchemaTracker.getMissingColumns(metadataId, availableParameterIds)
       : availableParameterIds;
@@ -162,10 +186,10 @@ export class HybridDataService {
         // TODO: Implement incremental data loading in the future
         await this.duckDBInstance.connection.query(`DELETE FROM ${tableName}`);
       } else if (!tableExists) {
-        // Create new table
+        // Create new table (with IF NOT EXISTS for safety)
         const columnDefs = availableParameterIds.map(id => `"${id}" DOUBLE`).join(', ');
         const createTableSQL = `
-          CREATE TABLE ${tableName} (
+          CREATE TABLE IF NOT EXISTS ${tableName} (
             metadata_id INTEGER,
             timestamp TIMESTAMP,
             ${columnDefs}
