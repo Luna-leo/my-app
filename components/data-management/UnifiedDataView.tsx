@@ -857,14 +857,10 @@ export function UnifiedDataView({
       const persistenceService = createDataPersistenceService(connection)
       
       // Clear persistence
-      const result = await persistenceService.clearPersistedData(item.metadata.id!)
+      await persistenceService.clearChunks(item.metadata.id!)
       
-      if (result.success) {
-        showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}の永続化データを削除しました`)
-        await refreshData()
-      } else {
-        throw new Error(result.error || '永続化データの削除に失敗しました')
-      }
+      showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}の永続化データを削除しました`)
+      await refreshData()
     } catch (error) {
       showAlert('error', `永続化データの削除に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`)
     } finally {
