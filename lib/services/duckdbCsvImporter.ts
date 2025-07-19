@@ -125,15 +125,19 @@ export class DuckDBCsvImporter {
       const tableName = `timeseries_${metadataId}`;
       
       // Create column definitions with proper naming and deduplication
-      const columnNames = new Map<string, number>();
+      const columnNameMap = new Map<string, number>();
+      const actualColumnNames: string[] = [];
       const columnDefs = uniqueHeaders.map((header) => {
         // Handle duplicate column names
         let columnName = header;
-        const count = columnNames.get(header) || 0;
+        const count = columnNameMap.get(header) || 0;
         if (count > 0) {
           columnName = `${header}_${count + 1}`;
         }
-        columnNames.set(header, count + 1);
+        columnNameMap.set(header, count + 1);
+        
+        // Store the actual column name for later use
+        actualColumnNames.push(columnName);
         
         // Escape column name
         const escapedName = `"${columnName.replace(/"/g, '""')}"`;
@@ -168,6 +172,7 @@ export class DuckDBCsvImporter {
           tableName,
           metadataId as number,
           uniqueHeaders,
+          actualColumnNames,
           (progress) => {
             // Calculate overall progress
             const fileProgress = (fileIndex + progress / 100) / files.length;
@@ -198,8 +203,8 @@ export class DuckDBCsvImporter {
         `);
       }
 
-      // Register table in schema tracker
-      duckDBSchemaTracker.registerTable(metadataId as number, uniqueHeaders, totalRowsImported);
+      // Register table in schema tracker with actual column names
+      duckDBSchemaTracker.registerTable(metadataId as number, actualColumnNames, totalRowsImported);
       
       // Save parameter information to IndexedDB
       try {
@@ -281,6 +286,7 @@ export class DuckDBCsvImporter {
     tableName: string,
     metadataId: number,
     allHeaders: string[],
+    actualColumnNames: string[],
     onProgress?: (progress: number) => void
   ): Promise<number> {
     const text = await file.text();
@@ -338,8 +344,11 @@ export class DuckDBCsvImporter {
       }).join(', ');
       
       try {
+        // Build column list for INSERT using actual column names from table creation
+        const columnList = ['metadata_id', 'timestamp', ...actualColumnNames.map(name => `"${name.replace(/"/g, '""')}"`)].join(', ');
+        
         await this.connection!.query(`
-          INSERT INTO ${tableName} VALUES ${values}
+          INSERT INTO ${tableName} (${columnList}) VALUES ${values}
         `);
         importedRows += batch.length;
         
@@ -431,15 +440,19 @@ export class DuckDBCsvImporter {
       const tableName = `timeseries_${metadataId}`;
       
       // Create column definitions with proper naming and deduplication
-      const columnNames = new Map<string, number>();
+      const columnNameMap = new Map<string, number>();
+      const actualColumnNames: string[] = [];
       const columnDefs = headers.map((header) => {
         // Handle duplicate column names
         let columnName = header;
-        const count = columnNames.get(header) || 0;
+        const count = columnNameMap.get(header) || 0;
         if (count > 0) {
           columnName = `${header}_${count + 1}`;
         }
-        columnNames.set(header, count + 1);
+        columnNameMap.set(header, count + 1);
+        
+        // Store the actual column name for later use
+        actualColumnNames.push(columnName);
         
         // Escape column name
         const escapedName = `"${columnName.replace(/"/g, '""')}"`;
@@ -509,8 +522,11 @@ export class DuckDBCsvImporter {
         }).join(', ');
         
         try {
+          // Build column list for INSERT using actual column names from table creation
+          const columnList = ['metadata_id', 'timestamp', ...actualColumnNames.map(name => `"${name.replace(/"/g, '""')}"`)].join(', ');
+          
           await this.connection!.query(`
-            INSERT INTO ${tableName} VALUES ${values}
+            INSERT INTO ${tableName} (${columnList}) VALUES ${values}
           `);
           importedRows += batch.length;
           
@@ -547,8 +563,8 @@ export class DuckDBCsvImporter {
         `);
       }
 
-      // Register table in schema tracker
-      duckDBSchemaTracker.registerTable(metadataId as number, headers, rowCount);
+      // Register table in schema tracker with actual column names
+      duckDBSchemaTracker.registerTable(metadataId as number, actualColumnNames, rowCount);
       
       // Save parameter information to IndexedDB
       try {
