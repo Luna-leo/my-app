@@ -314,13 +314,19 @@ export class DuckDBCsvImporter {
       
       if (batch.length === 0) continue;
       
-      const values = batch.map(line => {
+      const values = batch.map((line, batchIndex) => {
         const cols = line.split(',').map(col => col.trim());
         const valueList = [metadataId.toString()];
         
         // Add timestamp (first column)
         const timestampValue = cols[0];
-        valueList.push(timestampValue ? `TIMESTAMP '${timestampValue}'` : 'NULL');
+        // Debug: Log first few timestamps to understand format
+        const currentRowNumber = importedRows + batchIndex + 1;
+        if (currentRowNumber <= 5) {
+          console.log(`[DuckDBCsvImporter] Row ${currentRowNumber} timestamp from CSV:`, timestampValue);
+        }
+        // Force timestamp to be interpreted as local time by removing any timezone info
+        valueList.push(timestampValue ? `TIMESTAMP '${timestampValue}'::TIMESTAMP` : 'NULL');
         
         // Map values to all headers, using NULL for missing columns
         allHeaders.forEach((header) => {
@@ -495,13 +501,19 @@ export class DuckDBCsvImporter {
         
         if (batch.length === 0) continue;
         
-        const values = batch.map(line => {
+        const values = batch.map((line, batchIndex) => {
           const cols = line.split(',').map(col => col.trim());
           const valueList = [metadataId.toString()];
           
           // Add timestamp (first column)
           const timestampValue = cols[0];
-          valueList.push(timestampValue ? `TIMESTAMP '${timestampValue}'` : 'NULL');
+          // Debug: Log first few timestamps to understand format
+          const currentRowNumber = importedRows + batchIndex + 1;
+          if (currentRowNumber <= 5) {
+            console.log(`[DuckDBCsvImporter] Row ${currentRowNumber} timestamp from CSV:`, timestampValue);
+          }
+          // Force timestamp to be interpreted as local time by removing any timezone info
+          valueList.push(timestampValue ? `TIMESTAMP '${timestampValue}'::TIMESTAMP` : 'NULL');
           
           // Process remaining columns (skip timestamp at index 0)
           headers.forEach((header, headerIndex) => {

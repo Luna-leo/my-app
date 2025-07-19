@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { hybridDataService } from '@/lib/services/hybridDataService'
+import { parseDuckDBTimestamp } from '@/lib/utils/duckdbTimestamp'
 
 interface DataPreviewDialogProps {
   open: boolean
@@ -78,9 +79,10 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
               // Convert DuckDB data to TimeSeriesData format
               timeSeriesData = duckdbData.map((row: Record<string, unknown>) => {
                 const { metadata_id, timestamp, ...dataColumns } = row;
+                console.log('[DataPreviewDialog] Raw DuckDB timestamp:', timestamp, 'Type:', typeof timestamp);
                 return {
                   metadataId: metadata_id as number,
-                  timestamp: new Date(timestamp as string),
+                  timestamp: parseDuckDBTimestamp(timestamp as string),
                   data: dataColumns as Record<string, number | null>
                 };
               });
@@ -176,9 +178,10 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
               // Convert DuckDB data to TimeSeriesData format
               exportData = duckdbData.map((row: Record<string, unknown>) => {
                 const { metadata_id, timestamp, ...dataColumns } = row;
+                console.log('[DataPreviewDialog Export] Raw DuckDB timestamp:', timestamp, 'Type:', typeof timestamp);
                 return {
                   metadataId: metadata_id as number,
-                  timestamp: new Date(timestamp as string),
+                  timestamp: parseDuckDBTimestamp(timestamp as string),
                   data: dataColumns as Record<string, number | null>
                 };
               });

@@ -3,6 +3,7 @@ import { TimeSeriesData } from '@/lib/db';
 import { duckDBSchemaTracker } from './duckdbSchemaTracker';
 import { duckDBParquetService, ParquetReadOptions } from './duckdbParquetService';
 import { duckDBQueryCache } from './duckdbQueryCache';
+import { parseDuckDBTimestamp } from '@/lib/utils/duckdbTimestamp';
 
 interface DuckDBInstance {
   connection: duckdb.AsyncDuckDBConnection;
@@ -136,6 +137,11 @@ export class HybridDataService {
     console.log(`[HybridDataService] Available parameter IDs in data:`, availableParameterIds.slice(0, 10), `... (${availableParameterIds.length} total)`);
     console.log(`[HybridDataService] Requested parameter IDs:`, parameterIds);
     
+    // IMPORTANT: Always ensure the table has ALL requested parameters, not just available ones
+    // This ensures consistent column structure regardless of what data is currently available
+    const requiredParameterIds = [...new Set([...availableParameterIds, ...parameterIds])];
+    console.log(`[HybridDataService] Combined required parameter IDs:`, requiredParameterIds.length);
+    
     // Check if table exists in DuckDB
     let tableExistsInDB = false;
     try {
@@ -163,8 +169,8 @@ export class HybridDataService {
     // Check if table exists and has all required columns
     const tableExists = tableExistsInDB;
     const missingColumns = tableExists 
-      ? duckDBSchemaTracker.getMissingColumns(metadataId, availableParameterIds)
-      : availableParameterIds;
+      ? duckDBSchemaTracker.getMissingColumns(metadataId, requiredParameterIds)
+      : requiredParameterIds;
     
     if (tableExists && missingColumns.length === 0) {
       console.log(`[HybridDataService] Table ${tableName} already has all required columns, skipping load`);
@@ -197,7 +203,7 @@ export class HybridDataService {
         await this.duckDBInstance.connection.query(`DELETE FROM ${tableName}`);
       } else if (!tableExists) {
         // Create new table (with IF NOT EXISTS for safety)
-        const columnDefs = availableParameterIds.map(id => `"${id}" DOUBLE`).join(', ');
+        const columnDefs = requiredParameterIds.map(id => `"${id}" DOUBLE`).join(', ');
         const createTableSQL = `
           CREATE TABLE IF NOT EXISTS ${tableName} (
             metadata_id INTEGER,
@@ -207,10 +213,10 @@ export class HybridDataService {
         `;
         
         await this.duckDBInstance.connection.query(createTableSQL);
-        console.log(`[HybridDataService] Created table ${tableName} with ${availableParameterIds.length} columns`);
+        console.log(`[HybridDataService] Created table ${tableName} with ${requiredParameterIds.length} columns`);
         
         // Register table in schema tracker
-        duckDBSchemaTracker.registerTable(metadataId, availableParameterIds, data.length);
+        duckDBSchemaTracker.registerTable(metadataId, requiredParameterIds, data.length);
       }
 
       // Prepare data for bulk insert
@@ -222,7 +228,7 @@ export class HybridDataService {
         
         // Build INSERT statement with proper NULL handling
         const values = batch.map(row => {
-          const params = availableParameterIds.map(id => 
+          const params = requiredParameterIds.map(id => 
             row.data[id] !== null && row.data[id] !== undefined 
               ? row.data[id] 
               : 'NULL'
@@ -230,7 +236,7 @@ export class HybridDataService {
           return `(${metadataId}, TIMESTAMP '${row.timestamp.toISOString()}', ${params})`;
         }).join(', ');
 
-        const columnNames = ['metadata_id', 'timestamp', ...availableParameterIds.map(id => `"${id}"`)].join(', ');
+        const columnNames = ['metadata_id', 'timestamp', ...requiredParameterIds.map(id => `"${id}"`)].join(', ');
         const insertSQL = `INSERT INTO ${tableName} (${columnNames}) VALUES ${values}`;
 
         await this.duckDBInstance.connection.query(insertSQL);
@@ -322,11 +328,27 @@ export class HybridDataService {
         
         // Filter parameterIds to only include columns that exist in the table
         const existingParameterIds = parameterIds.filter(id => availableColumns.has(id));
+        const missingParameterIds = parameterIds.filter(id => !availableColumns.has(id));
+        
+        console.log(`[HybridDataService] Column analysis for table ${tableName}:`, {
+          requested: parameterIds,
+          existing: existingParameterIds,
+          missing: missingParameterIds,
+          availableInTable: Array.from(availableColumns).slice(0, 10),
+          totalAvailable: availableColumns.size
+        });
         
         if (existingParameterIds.length === 0) {
           console.warn(`[HybridDataService] No requested parameter IDs exist in table ${tableName}. Requested: [${parameterIds.join(', ')}], Available: [${Array.from(availableColumns).join(', ')}]`);
           // Still return data with NULL values for all requested parameters
           // This allows charts to display time axis even when parameters are missing
+        } else if (missingParameterIds.length > 0) {
+          console.warn(`[HybridDataService] Some requested parameters are missing in table ${tableName}:`, {
+            requested: parameterIds,
+            existing: existingParameterIds,
+            missing: missingParameterIds,
+            available: Array.from(availableColumns).slice(0, 10)
+          });
         }
         
         // DuckDB requires double quotes for identifiers, especially numeric column names
@@ -417,12 +439,24 @@ export class HybridDataService {
 
       console.log(`[HybridDataService] Executing sampling query for ${metadataIds.length} tables`);
       console.log(`[HybridDataService] Requested parameter IDs:`, parameterIds);
-      console.log(`[HybridDataService] Query: ${finalQuery}`);
+      console.log(`[HybridDataService] Target points per dataset:`, targetPoints);
+      console.log(`[HybridDataService] Sampling method:`, method);
+      
+      // Log detailed query info
+      console.log('[HybridDataService] Query details:');
+      queries.forEach((query, index) => {
+        if (query && index === 0) { // Log first query only to avoid spam
+          console.log(`[HybridDataService] Sample query for metadata ${metadataIds[index]}:`);
+          console.log(query.substring(0, 500) + '...');
+        }
+      });
+      
       const result = await this.duckDBInstance.connection.query(finalQuery);
       
       // Convert DuckDB result to TimeSeriesData format
       const data: TimeSeriesData[] = [];
       const resultArray = result.toArray();
+      console.log(`[HybridDataService] Query returned ${resultArray.length} rows`);
 
       resultArray.forEach((row: Record<string, unknown>, index: number) => {
         // Debug: Log the first row to see actual column names
@@ -434,7 +468,7 @@ export class HybridDataService {
 
         const dataPoint: TimeSeriesData = {
           metadataId: row.metadata_id as number,
-          timestamp: new Date(row.timestamp as string | number),
+          timestamp: parseDuckDBTimestamp(row.timestamp as string),
           data: {}
         };
 
@@ -469,6 +503,24 @@ export class HybridDataService {
       console.log(`[HybridDataService] Sampled ${data.length} points in ${duration.toFixed(2)}ms`);
       console.log(`[HybridDataService] Target: ${targetPoints} points per dataset`);
       console.log(`[HybridDataService] Actual points per metadata:`, pointsPerMetadata);
+      
+      // Log parameter coverage analysis
+      if (data.length > 0) {
+        const parameterCoverage: { [key: string]: number } = {};
+        parameterIds.forEach(id => {
+          parameterCoverage[id] = 0;
+        });
+        
+        data.forEach(point => {
+          parameterIds.forEach(id => {
+            if (point.data[id] !== null && point.data[id] !== undefined) {
+              parameterCoverage[id]++;
+            }
+          });
+        });
+        
+        console.log('[HybridDataService] Parameter coverage in sampled data:', parameterCoverage);
+      }
 
       // Cache the result
       if (useCache && data.length > 0) {

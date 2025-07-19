@@ -331,9 +331,13 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                 console.log(`[ChartDataContext] DuckDB table ${tableName} exists, loading from DuckDB`);
                 
                 // Load data from DuckDB
+                // IMPORTANT: Use all required parameters, not just the ones passed to fetchRawData
+                const allParams = parameterIds || [];
+                console.log(`[ChartDataContext] Loading from DuckDB with parameters:`, allParams);
+                
                 const duckdbData = await hybridDataService.sampleData(
                   [metadataId],
-                  parameterIds || [],
+                  allParams,
                   maxPointsPerDataset || 10000,
                   {
                     startTime: metadata.startTime ? new Date(metadata.startTime) : undefined,
@@ -342,11 +346,15 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                   }
                 );
                 
-                console.log(`[ChartDataContext] Loaded ${duckdbData.length} points from DuckDB`);
+                console.log(`[ChartDataContext] Loaded ${duckdbData.length} points from DuckDB for metadataId ${metadataId}`, {
+                  requestedParams: allParams,
+                  sampleDataKeys: duckdbData[0] ? Object.keys(duckdbData[0].data) : []
+                });
                 
                 // Update parameter tracker
                 if (duckdbData.length > 0) {
                   const actualKeys = Object.keys(duckdbData[0].data);
+                  console.log(`[ChartDataContext] DuckDB returned data with keys:`, actualKeys);
                   parameterTracker.addLoadedParameters(metadataId, actualKeys);
                 }
                 
@@ -506,20 +514,28 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
               console.log(`[ChartDataContext] DuckDB table ${tableName} exists, loading from DuckDB`);
               
               // Load data from DuckDB
+              // IMPORTANT: Use all required parameters, not just the ones passed to fetchRawData
+              const allParams = parameterIds || [];
+              console.log(`[ChartDataContext] Loading from DuckDB with parameters:`, allParams);
+              
               const duckdbData = await hybridDataService.sampleData(
                 [metadataId],
-                parameterIds || [],
+                allParams,
                 maxPointsPerDataset || 10000,
                 {
                   method: 'nth'
                 }
               );
               
-              console.log(`[ChartDataContext] Loaded ${duckdbData.length} points from DuckDB`);
+              console.log(`[ChartDataContext] Loaded ${duckdbData.length} points from DuckDB for metadataId ${metadataId}`, {
+                requestedParams: allParams,
+                sampleDataKeys: duckdbData[0] ? Object.keys(duckdbData[0].data) : []
+              });
               
               // Update parameter tracker and cache
               if (duckdbData.length > 0) {
                 const actualKeys = Object.keys(duckdbData[0].data);
+                console.log(`[ChartDataContext] DuckDB returned data with keys:`, actualKeys);
                 parameterTracker.addLoadedParameters(metadataId, actualKeys);
                 timeSeriesCache.set(metadataId, duckdbData);
               }
@@ -633,6 +649,12 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
   const getChartData = async (config: ChartConfigurationWithData, enableSampling: boolean | SamplingConfig = true, onProgress?: (progress: number) => void) => {
     const startTime = performance.now();
     
+    console.log('[ChartDataContext] getChartData called with:', {
+      xAxisParameter: config.xAxisParameter,
+      yAxisParameters: config.yAxisParameters,
+      xAxisMode: config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter',
+      selectedDataIds: config.selectedDataIds
+    });
     
     const configHash = getConfigHash(config, enableSampling);
     
@@ -673,7 +695,12 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
         ...config.yAxisParameters,
       ];
       
-      console.log(`[ChartDataContext] Loading chart "${config.title}" with ${parameterIds.length} parameters`);
+      console.log(`[ChartDataContext] Loading chart "${config.title}" with ${parameterIds.length} parameters`, {
+        xAxisMode: config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter',
+        xAxisParameter: config.xAxisParameter,
+        yAxisParameters: config.yAxisParameters,
+        allParameterIds: parameterIds
+      });
       
       // Fetch raw data (with caching)
       // Re-enable selective column loading with debug mode
@@ -746,6 +773,14 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
         ...config.yAxisParameters,
       ];
       
+      console.log('[ChartDataContext] Before DuckDB processing:', {
+        xAxisMode: config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter',
+        xAxisParameter: config.xAxisParameter,
+        processedTimeSeriesLength: processedTimeSeries.length,
+        samplingParameterIds,
+        targetPointsPerDataset
+      });
+      
       if (targetPointsPerDataset && useDuckDB && isDuckDBReady) {
         console.log(`[ChartDataContext] DuckDB sampling: ${processedTimeSeries.length} → ${targetPointsPerDataset * config.selectedDataIds.length}`);
         const samplingStartTime = performance.now();
@@ -764,11 +799,22 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                 sampleValues: Object.entries(firstDataPoint.data).slice(0, 3).map(([k, v]) => ({ key: k, value: v }))
               });
               
+              // IMPORTANT: Always pass all required parameters (including X-axis parameter)
+              // This ensures the DuckDB table has all necessary columns regardless of axis configuration
+              const allRequiredParams = [...new Set(parameterIds)]; // Remove duplicates
+              console.log(`[ChartDataContext] Loading with all required parameters:`, {
+                xAxisMode: config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter',
+                xAxisParameter: config.xAxisParameter,
+                allRequiredParams,
+                samplingParameterIds,
+                dataPointsToLoad: dataForMetadata.length
+              });
+              
               // hybridDataService will now check if columns exist and only add missing ones
               await hybridDataService.loadTimeSeriesData(
                 metadataId,
                 dataForMetadata,
-                samplingParameterIds  // Pass required parameters for tracking
+                allRequiredParams  // Pass ALL required parameters for tracking
               );
               duckDBLoadedData.current.add(metadataId);
             } else {
@@ -798,6 +844,14 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
           
           // Perform SQL-based sampling with per-dataset targets
           const pointsPerDataset = Math.floor(targetPointsPerDataset);
+          console.log('[ChartDataContext] Calling hybridDataService.sampleData with:', {
+            xAxisMode: config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter',
+            xAxisParameter: config.xAxisParameter,
+            metadataIds: config.selectedDataIds,
+            samplingParameterIds,
+            pointsPerDataset
+          });
+          
           processedTimeSeries = await hybridDataService.sampleData(
             config.selectedDataIds,
             samplingParameterIds,
@@ -806,6 +860,18 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
               method: 'nth' // DuckDB supports nth-point and random
             }
           );
+          
+          console.log('[ChartDataContext] After hybridDataService.sampleData:', {
+            xAxisMode: config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter',
+            xAxisParameter: config.xAxisParameter,
+            returnedPointsCount: processedTimeSeries.length,
+            sampleDataPoint: processedTimeSeries[0] ? {
+              metadataId: processedTimeSeries[0].metadataId,
+              timestamp: processedTimeSeries[0].timestamp,
+              dataKeys: Object.keys(processedTimeSeries[0].data),
+              dataValues: Object.entries(processedTimeSeries[0].data).slice(0, 3)
+            } : null
+          });
             
           
           samplingInfo = {
@@ -845,6 +911,11 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       let chartData: ChartPlotData;
 
       if (config.xAxisParameter === 'timestamp') {
+        console.log('[ChartDataContext] Transforming data for timestamp X-axis:', {
+          processedTimeSeriesLength: processedTimeSeries.length,
+          yAxisParameters: config.yAxisParameters
+        });
+        
         // Time-based chart
         const timeChartData = await transformDataForChart(
           processedTimeSeries,
@@ -921,6 +992,12 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
           samplingInfo,
         };
       } else {
+        console.log('[ChartDataContext] Transforming data for parameter X-axis:', {
+          processedTimeSeriesLength: processedTimeSeries.length,
+          xAxisParameter: config.xAxisParameter,
+          yAxisParameters: config.yAxisParameters
+        });
+        
         // XY chart
         const xyData = await transformDataForXYChart(
           processedTimeSeries,
@@ -993,11 +1070,16 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
 
       console.log(`[ChartDataContext] Total processing time for "${config.title}": ${performance.now() - startTime}ms`);
       console.log(`[ChartDataContext] Returning data for "${config.title}":`, {
+        xAxisMode: config.xAxisParameter === 'timestamp' ? 'timestamp' : 'parameter',
+        xAxisParameter: config.xAxisParameter,
         hasPlotData: !!chartData,
         seriesCount: chartData?.series?.length || 0,
         hasDataViewport: !!dataViewport,
         dataViewport,
-        firstSeriesDataLength: chartData?.series?.[0]?.xValues?.length || 0
+        firstSeriesDataLength: chartData?.series?.[0]?.xValues?.length || 0,
+        totalProcessedPoints: processedTimeSeries.length,
+        originalCount: samplingInfo?.originalCount,
+        sampledCount: samplingInfo?.sampledCount
       });
 
       return { plotData: chartData, dataViewport };

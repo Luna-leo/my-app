@@ -203,7 +203,7 @@ export async function transformDataForChart(
           if (i === 0) {
             console.warn(`[transformDataForChart] Invalid data object at index ${i}:`, dataPoint);
           }
-          values[i] = null;
+          values.push(null);
         }
       }
       
@@ -212,6 +212,11 @@ export async function transformDataForChart(
         console.warn(`[transformDataForChart] Skipped ${invalidTimestampCount} points with invalid timestamps`);
       }
       console.log(`[transformDataForChart] Processed ${timestamps.length}/${dataPoints.length} valid points for parameterId "${parameterId}"`);
+      
+      // 配列サイズの整合性チェック
+      if (timestamps.length !== values.length) {
+        console.error(`[transformDataForChart] Array size mismatch! timestamps: ${timestamps.length}, values: ${values.length}`);
+      }
       
       // デバッグ: 処理されたデータの時間範囲を確認
       if (timestamps.length > 0) {
@@ -327,6 +332,10 @@ export async function transformDataForXYChart(
       const yValues = new Array<number | null>(dataPoints.length);
       
       // Fill arrays without creating intermediate objects
+      let validPointCount = 0;
+      let invalidXCount = 0;
+      let invalidYCount = 0;
+      
       for (let i = 0; i < dataPoints.length; i++) {
         const dataPoint = dataPoints[i];
         if (!dataPoint || !dataPoint.data) {
@@ -336,13 +345,42 @@ export async function transformDataForXYChart(
           }
           xValues[i] = NaN;
           yValues[i] = null;
+          invalidXCount++;
+          invalidYCount++;
           continue;
         }
         
         const xValue = dataPoint.data[xAxisParameter];
-        xValues[i] = xValue !== null && xValue !== undefined ? Number(xValue) : NaN;
-        yValues[i] = dataPoint.data[parameterId] ?? null;
+        const yValue = dataPoint.data[parameterId];
+        
+        if (xValue === null || xValue === undefined) {
+          invalidXCount++;
+          xValues[i] = NaN;
+        } else {
+          xValues[i] = Number(xValue);
+        }
+        
+        if (yValue === null || yValue === undefined) {
+          invalidYCount++;
+          yValues[i] = null;
+        } else {
+          yValues[i] = yValue;
+          if (!isNaN(xValues[i])) {
+            validPointCount++;
+          }
+        }
       }
+      
+      // Log statistics for this series
+      console.log(`[transformDataForXYChart] Series ${metadataLabel} - ${parameterId}:`, {
+        totalPoints: dataPoints.length,
+        validPoints: validPointCount,
+        invalidXValues: invalidXCount,
+        invalidYValues: invalidYCount,
+        xAxisParameter: xAxisParameter,
+        firstXValue: xValues[0],
+        firstYValue: yValues[0]
+      });
 
       series.push({
         metadataId,
