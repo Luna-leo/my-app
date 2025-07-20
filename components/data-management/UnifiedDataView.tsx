@@ -280,7 +280,7 @@ export function UnifiedDataView({
 
         // Convert data format for worker
         const timeSeriesDataForWorker = timeSeriesData.map(row => ({
-          metadataId: item.metadata.id!,
+          metadataId: item.metadata!.id!,
           timestamp: row.timestamp,
           data: Object.fromEntries(
             parameterIds.map(pid => [pid, row[pid] ?? null])
@@ -598,7 +598,11 @@ export function UnifiedDataView({
       setDownloadConfirm(prev => ({ ...prev, progress: 80 }))
       setDownloadProgress(prev => ({ ...prev, [item.id]: 80 }))
       
-      await db.timeSeries.bulkAdd(timeSeriesData)
+      // TODO: Implement proper data persistence for downloaded data
+      // For now, we need to:
+      // 1. Load data into DuckDB
+      // 2. Persist using DataPersistenceService
+      console.log(`Downloaded ${timeSeriesData.length} time series records, persistence implementation pending`)
       
       // Update progress to 100%
       setDownloadConfirm(prev => ({ ...prev, progress: 100 }))
@@ -677,8 +681,8 @@ export function UnifiedDataView({
       // Set delete progress
       setDeleteProgress(prev => ({ ...prev, [item.id]: 0 }))
       
-      // Delete time series data
-      await db.timeSeries.where('metadataId').equals(item.metadata.id!).delete()
+      // Delete persisted data chunks
+      await db.dataChunks.where('metadataId').equals(item.metadata.id!).delete()
       setDeleteProgress(prev => ({ ...prev, [item.id]: 50 }))
       
       // Delete metadata

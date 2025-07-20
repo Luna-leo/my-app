@@ -472,27 +472,9 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
           }
         }
         
-        // Fall back to IndexedDB
-        const result = await db.getTimeSeriesDataSampled(metadataId, {
-          startTime: metadata.startTime,
-          endTime: metadata.endTime,
-          parameterIds: parameterIds,
-          maxPoints: maxPointsPerDataset
-        });
-        const data = result.data;
-        console.log(`[ChartDataContext] DB-sampled data count: ${data.length} from total: ${result.totalCount} (max: ${maxPointsPerDataset || 'unlimited'})`);
-        
-        // Update parameter tracker even for time-filtered data
-        if (data.length > 0) {
-          const actualKeys = data[0]?.data ? Object.keys(data[0].data) : [];
-          if (parameterIds) {
-            parameterTracker.addLoadedParameters(metadataId, parameterIds);
-          } else {
-            parameterTracker.addLoadedParameters(metadataId, actualKeys);
-          }
-        }
-        
-        return { metadataId, data, totalCount: result.totalCount };
+        // No data available without DuckDB or persisted data
+        console.log(`[ChartDataContext] No data available - DuckDB not ready and no persisted data to restore`);
+        return { metadataId, data: [], totalCount: 0 };
       }
       
       // For data without time range, use intelligent caching with parameter tracking
@@ -742,45 +724,9 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
         }
       }
       
-      // Fall back to IndexedDB
-      const result = await db.getTimeSeriesDataSampled(metadataId, {
-        parameterIds: parameterIds,
-        maxPoints: maxPointsPerDataset // Pass undefined for full data
-      });
-      const data = result.data;
-      
-      console.log(`[ChartDataContext] getTimeSeriesDataSampled returned ${data.length} points from total: ${result.totalCount} for metadataId ${metadataId}`);
-      
-      // Debug: Check data structure
-      if (data.length > 0) {
-        const actualKeys = data[0]?.data ? Object.keys(data[0].data) : [];
-        const requestedKeys = parameterIds || [];
-        
-        // Check for mismatches
-        const missingRequested = requestedKeys.filter(id => !actualKeys.includes(id));
-        const unexpectedReturned = actualKeys.filter(key => !requestedKeys.includes(key));
-        
-        if (missingRequested.length > 0 || unexpectedReturned.length > 0) {
-          console.warn(`[ChartDataContext] Parameter mismatch for metadataId ${metadataId}:`, {
-            requested: parameterIds,
-            missing: missingRequested,
-            unexpected: unexpectedReturned.slice(0, 5)
-          });
-        }
-        
-        // CRITICAL: Update parameter tracker with ACTUAL keys, not requested ones
-        // The database might return different keys than requested
-        if (actualKeys.length > 0) {
-          parameterTracker.addLoadedParameters(metadataId, actualKeys);
-        }
-      }
-      
-      // Only cache full data to prevent partial data pollution
-      if (!parameterIds) {
-        timeSeriesCache.set(metadataId, data);
-      }
-      
-      return { metadataId, data, totalCount: result.totalCount };
+      // No data available without DuckDB
+      console.log(`[ChartDataContext] No data available - data needs to be loaded into DuckDB or restored from persisted storage`);
+      return { metadataId, data: [], totalCount: 0 };
     });
 
     const timeSeriesResults = await Promise.all(timeSeriesPromises);

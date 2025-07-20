@@ -156,7 +156,7 @@ export function DownloadContent() {
           }
 
           // Save to IndexedDB with full transaction
-          await db.transaction('rw', db.metadata, db.parameters, db.timeSeries, async () => {
+          await db.transaction('rw', db.metadata, db.parameters, async () => {
             // Save metadata (exclude ID to allow auto-increment)
             const metadataId = await db.metadata.add({
               ...data.metadata,
@@ -184,17 +184,12 @@ export function DownloadContent() {
             })
             await Promise.all(parameterPromises)
 
-            // Save time series data (convert to correct format)
-            const timeSeriesData = data.timeSeriesData.map((item: { timestamp: string; [key: string]: unknown }) => {
-              // eslint-disable-next-line @typescript-eslint/no-unused-vars
-              const { timestamp, id, ...parameterValues } = item;
-              return {
-                metadataId,
-                timestamp: new Date(timestamp),
-                data: parameterValues  // Store parameter values in 'data' field
-              };
-            });
-            await db.timeSeries.bulkAdd(timeSeriesData)
+            // TODO: Implement data persistence for downloaded data
+            // The downloaded timeSeriesData should be:
+            // 1. Loaded into DuckDB for immediate use
+            // 2. Persisted using DataPersistenceService for offline usage
+            // For now, we're only saving the metadata
+            console.log(`Downloaded ${data.timeSeriesData.length} time series records for metadata ${metadataId}`)
           })
 
           successCount++
