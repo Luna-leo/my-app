@@ -9,7 +9,7 @@
 
 import { hybridDataService } from '@/lib/services/hybridDataService';
 import { duckDBSchemaTracker } from '@/lib/services/duckdbSchemaTracker';
-import { TimeSeriesData } from '@/lib/db';
+import { TimeSeriesData } from '@/lib/db/schema';
 
 interface TestResult {
   testName: string;

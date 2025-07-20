@@ -5,6 +5,7 @@
  */
 
 import { db } from '@/lib/db';
+import { TimeSeriesData } from '@/lib/db/schema';
 import { hybridDataService } from './hybridDataService';
 import { duckDBSchemaTracker } from './duckdbSchemaTracker';
 
@@ -104,11 +105,8 @@ export class DuckDBMigrationService {
             continue;
           }
           
-          // Get time series data for this metadata
-          const timeSeriesData = await db.timeSeries
-            .where('metadataId')
-            .equals(metadata.id)
-            .toArray();
+          // TODO: Update to use new persistence model
+          const timeSeriesData: TimeSeriesData[] = []; // await db.timeSeries.where('metadataId').equals(metadata.id).toArray();
           
           if (timeSeriesData.length === 0) {
             console.log(`[Migration] No data for metadata ${metadata.id}, skipping`);
@@ -223,11 +221,8 @@ export class DuckDBMigrationService {
             message: `Migrating dataset ${i + 1} of ${totalCount}`
           });
           
-          // Get time series data
-          const timeSeriesData = await db.timeSeries
-            .where('metadataId')
-            .equals(metadataId)
-            .toArray();
+          // TODO: Update to use new persistence model
+          const timeSeriesData: TimeSeriesData[] = []; // await db.timeSeries.where('metadataId').equals(metadataId).toArray();
           
           if (timeSeriesData.length === 0) {
             console.log(`[Migration] No data for metadata ${metadataId}, skipping`);

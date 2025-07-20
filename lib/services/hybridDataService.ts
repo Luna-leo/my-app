@@ -1,5 +1,5 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
-import { TimeSeriesData } from '@/lib/db';
+import { TimeSeriesData } from '@/lib/db/schema';
 import { duckDBSchemaTracker } from './duckdbSchemaTracker';
 import { duckDBParquetService, ParquetReadOptions } from './duckdbParquetService';
 import { duckDBQueryCache } from './duckdbQueryCache';

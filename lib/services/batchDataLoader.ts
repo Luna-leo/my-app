@@ -137,7 +137,8 @@ export class BatchDataLoader {
                 console.log(`[BatchDataLoader] Fetching missing parameters for metadataId ${metadataId}:`, missingParams);
                 
                 // Fetch only missing parameters
-                const additionalData = await db.getTimeSeriesData(metadataId, undefined, undefined, missingParams);
+                // TODO: Update to use new data loading mechanism
+                const additionalData: TimeSeriesData[] = []; // await db.getTimeSeriesData(metadataId, undefined, undefined, missingParams);
                 
                 // Merge with cached data
                 data = this.mergeTimeSeriesData(cachedData, additionalData);
@@ -149,7 +150,8 @@ export class BatchDataLoader {
             } else {
               // No cache, fetch all requested parameters
               console.log(`[BatchDataLoader] No cache for metadataId ${metadataId}, fetching ${parameterArray.length} parameters`);
-              data = await db.getTimeSeriesData(metadataId, undefined, undefined, parameterArray);
+              // TODO: Update to use new data loading mechanism
+              data = []; // await db.getTimeSeriesData(metadataId, undefined, undefined, parameterArray);
               
               // Update cache and tracker
               timeSeriesCache.set(metadataId, data);

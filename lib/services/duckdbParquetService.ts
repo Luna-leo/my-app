@@ -6,7 +6,7 @@
  */
 
 import * as duckdb from '@duckdb/duckdb-wasm';
-import { TimeSeriesData } from '@/lib/db';
+import { TimeSeriesData } from '@/lib/db/schema';
 
 export interface ParquetReadOptions {
   columns?: string[];  // Specific columns to read (column pruning)

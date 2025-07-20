@@ -302,7 +302,7 @@ export class DataPersistenceService {
                   valueList.push(`TIMESTAMP '${value}'`);
                 }
               } else {
-                valueList.push(value);
+                valueList.push(String(value));
               }
             });
             
