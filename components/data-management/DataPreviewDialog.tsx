@@ -92,15 +92,9 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
           }
         }
         
-        // Fall back to IndexedDB if no data from DuckDB
+        // Fall back to persisted data if no data from DuckDB
         if (timeSeriesData.length === 0) {
-          console.log('[DataPreviewDialog] Falling back to IndexedDB');
-          timeSeriesData = await db.timeSeries
-            .where('metadataId')
-            .equals(metadata.id!)
-            .limit(100)
-            .toArray();
-          console.log(`[DataPreviewDialog] Loaded ${timeSeriesData.length} rows from IndexedDB`);
+          console.log('[DataPreviewDialog] No data available in DuckDB, data may need to be restored from persisted chunks');
         }
         
         setData(timeSeriesData);
@@ -186,26 +180,18 @@ export function DataPreviewDialog({ open, onOpenChange, metadata }: DataPreviewD
                 };
               });
             } else {
-              // Fall back to IndexedDB
-              exportData = await db.timeSeries
-                .where('metadataId')
-                .equals(metadata.id!)
-                .toArray();
+              // No data available in DuckDB
+              alert('データをエクスポートするには、まずデータを復元してください。');
+              return;
             }
           } catch (err) {
             console.warn('[DataPreviewDialog] Failed to export from DuckDB:', err);
-            // Fall back to IndexedDB
-            exportData = await db.timeSeries
-              .where('metadataId')
-              .equals(metadata.id!)
-              .toArray();
+            alert('データをエクスポートするには、まずデータを復元してください。');
+            return;
           }
         } else {
-          // Fall back to IndexedDB
-          exportData = await db.timeSeries
-            .where('metadataId')
-            .equals(metadata.id!)
-            .toArray();
+          alert('データをエクスポートするには、まずデータを復元してください。');
+          return;
         }
       }
       

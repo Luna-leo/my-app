@@ -195,11 +195,17 @@ export function UnifiedDataView({
         message: 'データを準備中...'
       }))
 
-      // Get time series data
-      const timeSeriesData = await db.timeSeries
-        .where('metadataId')
-        .equals(item.metadata.id!)
-        .toArray()
+      // Get time series data from persisted chunks
+      const { hybridDataService } = await import('@/lib/services/hybridDataService')
+      const { createDataPersistenceService } = await import('@/lib/services/dataPersistenceService')
+      
+      const connection = await hybridDataService.getConnection()
+      if (!connection) {
+        throw new Error('DuckDB connection not available')
+      }
+      
+      const persistenceService = createDataPersistenceService(connection)
+      const { data: timeSeriesData, columns: parameterIds } = await persistenceService.getDataForUpload(item.metadata.id!)
       
       if (timeSeriesData.length === 0) {
         throw new Error('時系列データが見つかりません')
@@ -213,8 +219,7 @@ export function UnifiedDataView({
 
       // Get parameters
       let parameters: { parameterId: string; parameterName: string; unit: string }[] = []
-      if (timeSeriesData.length > 0) {
-        const parameterIds = Object.keys(timeSeriesData[0].data)
+      if (parameterIds.length > 0) {
         const { plant, machineNo } = item.metadata
         const allParameters = await db.parameters
           .where('plant')
@@ -273,12 +278,21 @@ export function UnifiedDataView({
           reject(new Error(`Worker error: ${error.message}`))
         }
 
+        // Convert data format for worker
+        const timeSeriesDataForWorker = timeSeriesData.map(row => ({
+          metadataId: item.metadata.id!,
+          timestamp: row.timestamp,
+          data: Object.fromEntries(
+            parameterIds.map(pid => [pid, row[pid] ?? null])
+          )
+        }))
+        
         // Send data to worker
         worker.postMessage({
           type: 'PREPARE_UPLOAD',
           data: {
             id: item.id,
-            timeSeriesData,
+            timeSeriesData: timeSeriesDataForWorker,
             metadata: item.metadata,
             parameters
           }
@@ -348,7 +362,9 @@ export function UnifiedDataView({
           uploadedRecords += chunk.data.length
           
           // Check if this was the final chunk and upload is complete
-          if (result.complete) {
+          if (result.complete && result.dataKey) {
+            // Update local metadata with dataKey
+            await db.metadata.update(item.metadata.id!, { dataKey: result.dataKey })
             showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}のアップロードが完了しました`)
           }
         }
@@ -384,6 +400,11 @@ export function UnifiedDataView({
         }
 
         const result = await response.json()
+        
+        // Update local metadata with dataKey if provided
+        if (result.dataKey) {
+          await db.metadata.update(item.metadata.id!, { dataKey: result.dataKey })
+        }
         
         if (result.duplicate) {
           showAlert('success', `${item.metadata.plant} - ${item.metadata.machineNo}のデータは既にサーバーに存在します`)

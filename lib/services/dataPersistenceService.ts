@@ -67,7 +67,7 @@ export class DataPersistenceService {
       // Check if table exists
       try {
         await this.connection.query(`SELECT 1 FROM ${tableName} LIMIT 1`);
-      } catch (error) {
+      } catch {
         console.error(`[DataPersistence] Table ${tableName} does not exist`);
         return {
           success: false,
@@ -458,6 +458,57 @@ export class DataPersistenceService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Get data for upload from persisted chunks
+   */
+  async getDataForUpload(metadataId: number): Promise<{
+    data: Array<{ timestamp: Date; [key: string]: unknown }>;
+    columns: string[];
+  }> {
+    const chunks = await db.dataChunks
+      .where('metadataId')
+      .equals(metadataId)
+      .sortBy('chunkIndex');
+
+    if (chunks.length === 0) {
+      throw new Error('No persisted data found for upload');
+    }
+
+    const allData: Array<{ timestamp: Date; [key: string]: unknown }> = [];
+    const columns = chunks[0].columns.filter(col => col !== 'timestamp');
+
+    for (const chunk of chunks) {
+      // Decompress chunk
+      const decompressed = await this.decompressChunk(chunk);
+      const rows = JSON.parse(decompressed);
+
+      // Convert each row to the expected format
+      for (const row of rows) {
+        const dataRow: { timestamp: Date; [key: string]: unknown } = {
+          timestamp: new Date(row.timestamp)
+        };
+
+        // Add all parameter columns
+        for (const col of columns) {
+          dataRow[col] = row[col] ?? null;
+        }
+
+        allData.push(dataRow);
+      }
+    }
+
+    return { data: allData, columns };
+  }
+
+  /**
+   * Decompress a data chunk
+   */
+  private async decompressChunk(chunk: DataChunk): Promise<string> {
+    const compressedArray = await chunk.compressedData.arrayBuffer();
+    const decompressed = pako.ungzip(new Uint8Array(compressedArray));
+    return new TextDecoder().decode(decompressed);
   }
 }
 

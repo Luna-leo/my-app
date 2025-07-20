@@ -199,7 +199,7 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
         .then(async () => {
           console.log('[ChartDataContext] DuckDB initialized successfully');
           
-          // Restore persisted data
+          // Don't auto-restore data - wait for on-demand restoration
           try {
             const connection = await hybridDataService.getConnection();
             if (connection) {
@@ -207,23 +207,11 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
               const persistedIds = await persistenceService.getPersistedMetadataIds();
               
               if (persistedIds.length > 0) {
-                console.log(`[ChartDataContext] Found ${persistedIds.length} persisted datasets, restoring...`);
-                
-                for (const metadataId of persistedIds) {
-                  try {
-                    const result = await persistenceService.restoreTable(metadataId);
-                    if (result.success) {
-                      console.log(`[ChartDataContext] Restored ${result.rowsRestored} rows for metadata ${metadataId}`);
-                      duckDBLoadedData.current.add(metadataId);
-                    }
-                  } catch (error) {
-                    console.error(`[ChartDataContext] Failed to restore metadata ${metadataId}:`, error);
-                  }
-                }
+                console.log(`[ChartDataContext] Found ${persistedIds.length} persisted datasets available for on-demand restoration`);
               }
             }
           } catch (error) {
-            console.error('[ChartDataContext] Failed to restore persisted data:', error);
+            console.error('[ChartDataContext] Failed to check persisted data:', error);
           }
           
           setIsDuckDBReady(true);
@@ -390,6 +378,49 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                 
                 return { metadataId, data: duckdbData, totalCount: duckdbData.length };
               } else {
+                // Table doesn't exist - check for persisted data and restore on-demand
+                console.log(`[ChartDataContext] DuckDB table ${tableName} doesn't exist, checking for persisted data`);
+                
+                const persistenceService = createDataPersistenceService(connection);
+                const persistenceStatus = await persistenceService.getPersistenceStatus(metadataId);
+                
+                if (persistenceStatus.isPersisted) {
+                  console.log(`[ChartDataContext] Found persisted data for metadataId ${metadataId}, restoring on-demand...`);
+                  
+                  try {
+                    const restoreResult = await persistenceService.restoreTable(metadataId);
+                    if (restoreResult.success) {
+                      console.log(`[ChartDataContext] Successfully restored ${restoreResult.rowsRestored} rows for metadataId ${metadataId}`);
+                      duckDBLoadedData.current.add(metadataId);
+                      
+                      // Now load the data from the restored table
+                      const allParams = parameterIds || [];
+                      const duckdbData = await hybridDataService.sampleData(
+                        [metadataId],
+                        allParams,
+                        maxPointsPerDataset || 10000,
+                        {
+                          startTime: metadata.startTime ? new Date(metadata.startTime) : undefined,
+                          endTime: metadata.endTime ? new Date(metadata.endTime) : undefined,
+                          method: 'nth'
+                        }
+                      );
+                      
+                      // Update parameter tracker
+                      if (duckdbData.length > 0) {
+                        const actualKeys = Object.keys(duckdbData[0].data);
+                        parameterTracker.addLoadedParameters(metadataId, actualKeys);
+                      }
+                      
+                      return { metadataId, data: duckdbData, totalCount: duckdbData.length };
+                    } else {
+                      console.error(`[ChartDataContext] Failed to restore persisted data: ${restoreResult.error}`);
+                    }
+                  } catch (err) {
+                    console.error(`[ChartDataContext] Error restoring persisted data:`, err);
+                  }
+                }
+                
                 // Check for Parquet files when table doesn't exist
                 const parquetFiles = await db.parquetFiles
                   .where('metadataId')
@@ -617,6 +648,48 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
               
               return { metadataId, data: duckdbData, totalCount: duckdbData.length };
             } else {
+              // Table doesn't exist - check for persisted data and restore on-demand
+              console.log(`[ChartDataContext] DuckDB table ${tableName} doesn't exist, checking for persisted data`);
+              
+              const persistenceService = createDataPersistenceService(connection);
+              const persistenceStatus = await persistenceService.getPersistenceStatus(metadataId);
+              
+              if (persistenceStatus.isPersisted) {
+                console.log(`[ChartDataContext] Found persisted data for metadataId ${metadataId}, restoring on-demand...`);
+                
+                try {
+                  const restoreResult = await persistenceService.restoreTable(metadataId);
+                  if (restoreResult.success) {
+                    console.log(`[ChartDataContext] Successfully restored ${restoreResult.rowsRestored} rows for metadataId ${metadataId}`);
+                    duckDBLoadedData.current.add(metadataId);
+                    
+                    // Now load the data from the restored table
+                    const allParams = parameterIds || [];
+                    const duckdbData = await hybridDataService.sampleData(
+                      [metadataId],
+                      allParams,
+                      maxPointsPerDataset || 10000,
+                      {
+                        method: 'nth'
+                      }
+                    );
+                    
+                    // Update parameter tracker and cache
+                    if (duckdbData.length > 0) {
+                      const actualKeys = Object.keys(duckdbData[0].data);
+                      parameterTracker.addLoadedParameters(metadataId, actualKeys);
+                      timeSeriesCache.set(metadataId, duckdbData);
+                    }
+                    
+                    return { metadataId, data: duckdbData, totalCount: duckdbData.length };
+                  } else {
+                    console.error(`[ChartDataContext] Failed to restore persisted data: ${restoreResult.error}`);
+                  }
+                } catch (err) {
+                  console.error(`[ChartDataContext] Error restoring persisted data:`, err);
+                }
+              }
+              
               // Check for Parquet files when table doesn't exist
               const parquetFiles = await db.parquetFiles
                 .where('metadataId')
@@ -954,8 +1027,27 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                     console.log(`[ChartDataContext] Data already exists in DuckDB table ${tableName}`);
                     duckDBLoadedData.current.add(metadataId);
                   } else {
-                    // Table doesn't exist after page reload - check for Parquet files
-                    console.log(`[ChartDataContext] DuckDB table ${tableName} doesn't exist (page was reloaded)`);
+                    // Table doesn't exist - check for persisted data and restore on-demand
+                    console.log(`[ChartDataContext] DuckDB table ${tableName} doesn't exist, checking for persisted data`);
+                    
+                    const persistenceService = createDataPersistenceService(connection);
+                    const persistenceStatus = await persistenceService.getPersistenceStatus(metadataId);
+                    
+                    if (persistenceStatus.isPersisted) {
+                      console.log(`[ChartDataContext] Found persisted data for metadataId ${metadataId}, restoring on-demand...`);
+                      
+                      try {
+                        const restoreResult = await persistenceService.restoreTable(metadataId);
+                        if (restoreResult.success) {
+                          console.log(`[ChartDataContext] Successfully restored ${restoreResult.rowsRestored} rows for metadataId ${metadataId}`);
+                          duckDBLoadedData.current.add(metadataId);
+                        } else {
+                          console.error(`[ChartDataContext] Failed to restore persisted data: ${restoreResult.error}`);
+                        }
+                      } catch (err) {
+                        console.error(`[ChartDataContext] Error restoring persisted data:`, err);
+                      }
+                    }
                     
                     // Check if Parquet file exists in IndexedDB
                     const parquetFiles = await db.parquetFiles
@@ -996,7 +1088,9 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                       }
                     }
                     
-                    console.log(`[ChartDataContext] No Parquet files found - please re-import the CSV data for metadataId ${metadataId}`);
+                    if (!persistenceStatus.isPersisted && parquetFiles.length === 0) {
+                      console.log(`[ChartDataContext] No persisted data or Parquet files found - please re-import the CSV data for metadataId ${metadataId}`);
+                    }
                   }
                 }
               } catch (err) {

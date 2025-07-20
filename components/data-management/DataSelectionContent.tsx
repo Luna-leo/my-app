@@ -72,8 +72,8 @@ export function DataSelectionContent({
     if (!deleteMetadata) return
 
     try {
-      // Delete time series data
-      await db.timeSeries.where('metadataId').equals(deleteMetadata.id!).delete()
+      // Delete persisted data chunks
+      await db.dataChunks.where('metadataId').equals(deleteMetadata.id!).delete()
       // Delete metadata
       await db.metadata.delete(deleteMetadata.id!)
       

@@ -198,7 +198,7 @@ export class AppDatabase extends Dexie {
       workspaces: '++id, name, isActive, createdAt, selectedDataKeys',
       parquetFiles: '++id, metadataId, filename, createdAt',
       dataChunks: '++id, metadataId, chunkIndex, [metadataId+chunkIndex], createdAt'
-    }).upgrade(async tx => {
+    }).upgrade(async () => {
       // Drop timeSeries table data
       console.log('[DB Migration v10] Removing unused timeSeries table');
     });

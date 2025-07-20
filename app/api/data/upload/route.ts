@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
           console.log('Duplicate data found:', duplicateEntry[0]);
           return NextResponse.json({
             uploadId: duplicateEntry[0],
+            dataKey: dataKey,
             message: 'Data already exists on server',
             duplicate: true
           });
@@ -199,6 +200,7 @@ export async function POST(request: NextRequest) {
         
         return NextResponse.json({
           uploadId,
+          dataKey: fullDataKey,
           message: 'All chunks uploaded successfully',
           complete: true
         });
@@ -223,6 +225,7 @@ export async function POST(request: NextRequest) {
       console.log('Duplicate data found:', duplicateEntry[0]);
       return NextResponse.json({
         uploadId: duplicateEntry[0],
+        dataKey: dataKey,
         message: 'Data already exists on server',
         duplicate: true
       });
@@ -317,6 +320,7 @@ export async function POST(request: NextRequest) {
     // Generate response
     return NextResponse.json({
       uploadId,
+      dataKey: dataKey,
       message: 'Data uploaded successfully'
     });
 

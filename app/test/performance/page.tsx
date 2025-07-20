@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Play, AlertCircle, CheckCircle2, Clock, Database, Zap } from 'lucide-react';
 import { hybridDataService } from '@/lib/services/hybridDataService';
 import { duckDBSchemaTracker } from '@/lib/services/duckdbSchemaTracker';
-import { TimeSeriesData } from '@/lib/db';
+import { TimeSeriesData } from '@/lib/db/schema';
 
 interface TestResult {
   testName: string;
