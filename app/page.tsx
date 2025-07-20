@@ -124,7 +124,10 @@ function HomeContent() {
     totalPoints: rawDataPointsInfo.original,
     sampledPoints: rawDataPointsInfo.sampled,
     samplingRate: rawDataPointsInfo.original > 0 ? rawDataPointsInfo.sampled / rawDataPointsInfo.original : 1,
-    isLoading: rawDataPointsInfo.isLoading
+    isLoading: rawDataPointsInfo.isLoading,
+    // For ResolutionControls compatibility
+    original: rawDataPointsInfo.original,
+    sampled: rawDataPointsInfo.sampled
   }
   
   // Update chart management with workspaceId

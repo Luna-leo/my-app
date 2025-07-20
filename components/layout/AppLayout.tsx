@@ -33,6 +33,8 @@ interface AppLayoutProps {
     sampledPoints: number
     samplingRate: number
     isLoading: boolean
+    original: number
+    sampled: number
   }
   isUpdatingResolution: boolean
   mounted: boolean
