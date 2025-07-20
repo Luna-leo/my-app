@@ -17,6 +17,7 @@ import { createParquetDataManager } from '@/lib/services/parquetDataManager';
 import { parameterTracker } from '@/lib/services/parameterTracker';
 import { mergeTimeSeriesData } from '@/lib/utils/chartDataUtils';
 import { createLogger } from './logger';
+import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
 
 export interface FetchRawDataResult {
   timeSeries: TimeSeriesData[];
@@ -184,7 +185,7 @@ export class DataFetchService {
   /**
    * DuckDBテーブルの存在チェック
    */
-  private async checkTableExists(connection: any, tableName: string): Promise<boolean> {
+  private async checkTableExists(connection: AsyncDuckDBConnection, tableName: string): Promise<boolean> {
     try {
       const result = await connection.query(`
         SELECT COUNT(*) as count 
@@ -235,7 +236,7 @@ export class DataFetchService {
    * 永続化データまたはParquetから復元
    */
   private async restoreDataIfAvailable(
-    connection: any,
+    connection: AsyncDuckDBConnection,
     metadataId: number,
     metadata: Metadata | undefined,
     parameterIds?: string[],
@@ -279,9 +280,9 @@ export class DataFetchService {
    * Parquetファイルからデータをロード
    */
   private async loadFromParquet(
-    connection: any,
+    connection: AsyncDuckDBConnection,
     metadataId: number,
-    parquetFile: any,
+    parquetFile: { id?: string; rowCount: number },
     parameterIds?: string[]
   ): Promise<{ data: TimeSeriesData[]; totalCount: number }> {
     this.logger.info(`Loading from Parquet file for metadataId ${metadataId}`);
