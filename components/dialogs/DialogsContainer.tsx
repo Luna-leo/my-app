@@ -34,6 +34,7 @@ interface DialogsContainerProps {
   editDialogOpen: boolean
   setEditDialogOpen: (open: boolean) => void
   editingChart: (ChartConfiguration & { id: string }) | null
+  setEditingChart: (chart: (ChartConfiguration & { id: string }) | null) => void
   onUpdateChart: (updatedChart: ChartConfiguration & { id: string }) => void
   
   // Welcome Dialog
@@ -83,6 +84,7 @@ export function DialogsContainer({
   editDialogOpen,
   setEditDialogOpen,
   editingChart,
+  setEditingChart,
   onUpdateChart,
   showWelcomeDialog,
   onWelcomeSelectWorkspace,

@@ -28,7 +28,7 @@ function HomeContent() {
   const [showLoadingProgress, setShowLoadingProgress] = useState(false)
   const [totalChartsToLoad, setTotalChartsToLoad] = useState(0)
   const [waterfallLoadedCharts, setWaterfallLoadedCharts] = useState(0)
-  const [, setInitialLoadComplete] = useState(false)
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false)
   
   // Use custom hooks
   const {
@@ -43,9 +43,24 @@ function HomeContent() {
   
   const dialogProps = useDialogManagement()
   
-  // Initialize with empty values first
-  const [tempCharts, setTempCharts] = useState<(ChartConfiguration & { id: string })[]>([])
-  const [tempWorkspaceId, setTempWorkspaceId] = useState('')
+  const {
+    workspaceId,
+    workspaceName,
+    currentWorkspace,
+    loading,
+    charts,
+    setCharts,
+    loadWorkspaceAndCharts,
+    saveSession,
+    importWorkspace,
+    exportWorkspace,
+  } = useWorkspaceManagement({
+    onSelectedDataKeysChange: setSelectedDataKeys,
+    onSelectedDataIdsChange: setSelectedDataIds,
+    setIsPreloadingData,
+    setPreloadProgress,
+    setInitialLoadComplete,
+  })
   
   const {
     layoutOption,
@@ -60,35 +75,11 @@ function HomeContent() {
     visibleCharts,
     handleLayoutChange,
     handleResolutionConfigChange,
-  } = useLayoutAndPagination({ charts: tempCharts })
+  } = useLayoutAndPagination({ charts })
   
   const {
-    workspaceId,
-    workspaceName,
-    currentWorkspace,
-    loading,
-    loadWorkspaceAndCharts,
-    saveSession,
-    importWorkspace,
-    exportWorkspace,
-  } = useWorkspaceManagement({
-    onChartsLoaded: setTempCharts,
-    onSelectedDataKeysChange: setSelectedDataKeys,
-    onSelectedDataIdsChange: setSelectedDataIds,
-    layoutOption,
-    currentPage,
-    paginationEnabled,
-    setIsPreloadingData,
-    setPreloadProgress,
-    setShowLoadingProgress,
-    setTotalChartsToLoad,
-    setWaterfallLoadedCharts,
-    setInitialLoadComplete,
-  })
-  
-  const {
-    charts,
     editingChart,
+    setEditingChart,
     deleteConfirmation,
     setDeleteConfirmation,
     createChart,
@@ -98,7 +89,9 @@ function HomeContent() {
     handleDeleteChart,
     confirmDelete,
   } = useChartManagement({
-    workspaceId: workspaceId || tempWorkspaceId,
+    workspaceId,
+    charts,
+    setCharts,
     layoutOption,
     currentPage,
     paginationEnabled,
@@ -106,17 +99,6 @@ function HomeContent() {
     setShowLoadingProgress,
     setWaterfallLoadedCharts,
   })
-  
-  // Sync temp values with actual values
-  useEffect(() => {
-    if (workspaceId) {
-      setTempWorkspaceId(workspaceId)
-    }
-  }, [workspaceId])
-  
-  useEffect(() => {
-    setTempCharts(charts)
-  }, [charts])
   
   // Get data points info for visible charts
   const rawDataPointsInfo = useDataPointsInfo(visibleCharts, samplingConfig, selectedDataIds)
@@ -129,14 +111,6 @@ function HomeContent() {
     original: rawDataPointsInfo.original,
     sampled: rawDataPointsInfo.sampled
   }
-  
-  // Update chart management with workspaceId
-  useEffect(() => {
-    if (workspaceId) {
-      // Re-initialize chart management with workspaceId
-      // This is a workaround since hooks can't be called conditionally
-    }
-  }, [workspaceId])
   
   // Auto-save workspace
   useAutoSaveWorkspace({
@@ -213,6 +187,21 @@ function HomeContent() {
       setShowLoadingProgress(true)
     }
   }, [currentPage, charts.length, chartsPerPage, paginationEnabled])
+  
+  // Set up waterfall loading when charts are loaded initially
+  useEffect(() => {
+    if (initialLoadComplete && charts.length > 0) {
+      const chartsPerPageCalc = layoutOption ? layoutOption.rows * layoutOption.cols : charts.length
+      const startIndex = (currentPage - 1) * chartsPerPageCalc
+      const visibleChartCount = paginationEnabled && layoutOption 
+        ? Math.min(chartsPerPageCalc, Math.max(0, charts.length - startIndex))
+        : charts.length
+      
+      setTotalChartsToLoad(visibleChartCount)
+      setWaterfallLoadedCharts(0)
+      setShowLoadingProgress(true)
+    }
+  }, [initialLoadComplete, charts.length, layoutOption, currentPage, paginationEnabled])
 
   const handleImportComplete = () => {
     console.log('CSV import completed successfully')
@@ -239,7 +228,7 @@ function HomeContent() {
   }
 
   const handleSaveSession = async (name: string, description: string, saveAsNew: boolean) => {
-    await saveSession(name, description, saveAsNew, selectedDataKeys)
+    await saveSession(name, description, saveAsNew, selectedDataKeys, charts)
   }
 
   const handleLoadSession = async (selectedWorkspaceId: string) => {
@@ -288,6 +277,7 @@ function HomeContent() {
         onImportComplete={handleImportComplete}
         onCreateChart={handleCreateChart}
         editingChart={editingChart}
+        setEditingChart={setEditingChart}
         onUpdateChart={updateChart}
         onWelcomeSelectWorkspace={handleWelcomeSelectWorkspace}
         onWelcomeCreateNew={handleWelcomeCreateNew}

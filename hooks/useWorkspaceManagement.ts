@@ -17,38 +17,25 @@ interface StartupOptions {
 }
 
 interface UseWorkspaceManagementProps {
-  onChartsLoaded: (charts: (ChartConfiguration & { id: string })[]) => void
   onSelectedDataKeysChange: (keys: string[]) => void
   onSelectedDataIdsChange: (ids: number[]) => void
-  layoutOption: any
-  currentPage: number
-  paginationEnabled: boolean
   setIsPreloadingData: (loading: boolean) => void
   setPreloadProgress: (progress: { loaded: number; total: number }) => void
-  setShowLoadingProgress: (show: boolean) => void
-  setTotalChartsToLoad: (total: number) => void
-  setWaterfallLoadedCharts: (count: number) => void
   setInitialLoadComplete: (complete: boolean) => void
 }
 
 export function useWorkspaceManagement({
-  onChartsLoaded,
   onSelectedDataKeysChange,
   onSelectedDataIdsChange,
-  layoutOption,
-  currentPage,
-  paginationEnabled,
   setIsPreloadingData,
   setPreloadProgress,
-  setShowLoadingProgress,
-  setTotalChartsToLoad,
-  setWaterfallLoadedCharts,
   setInitialLoadComplete,
 }: UseWorkspaceManagementProps) {
   const [workspaceId, setWorkspaceId] = useState<string>('')
   const [workspaceName, setWorkspaceName] = useState<string>('')
   const [currentWorkspace, setCurrentWorkspace] = useState<WorkspaceData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [charts, setCharts] = useState<(ChartConfiguration & { id: string })[]>([])
   
   const { preloadChartData, clearCache } = useChartDataContext()
 
@@ -195,23 +182,9 @@ export function useWorkspaceManagement({
         }
         
         // Now set the charts (data is already cached)
-        onChartsLoaded(convertedCharts)
-        
-        // Set up waterfall loading progress
-        if (convertedCharts.length > 0) {
-          // Calculate visible charts based on pagination
-          const chartsPerPage = layoutOption ? layoutOption.rows * layoutOption.cols : convertedCharts.length
-          const startIndex = (currentPage - 1) * chartsPerPage
-          const visibleChartCount = paginationEnabled && layoutOption 
-            ? Math.min(chartsPerPage, Math.max(0, convertedCharts.length - startIndex))
-            : convertedCharts.length
-          
-          setTotalChartsToLoad(visibleChartCount)
-          setWaterfallLoadedCharts(0)
-          setShowLoadingProgress(true)
-        }
+        setCharts(convertedCharts)
       } else {
-        onChartsLoaded([])
+        setCharts([])
         console.log(`[Initial Load] Clean start - no charts loaded`)
       }
       
@@ -221,7 +194,7 @@ export function useWorkspaceManagement({
     } catch (error) {
       console.error('Failed to load charts:', error)
       // Set some reasonable defaults on error
-      onChartsLoaded([])
+      setCharts([])
       setWorkspaceId('')
       setWorkspaceName('Default Workspace')
       setCurrentWorkspace(null)
@@ -231,31 +204,24 @@ export function useWorkspaceManagement({
       console.log('[loadWorkspaceAndCharts] Finally block - cleaning up')
       setLoading(false)
       setIsPreloadingData(false)
-      setShowLoadingProgress(false)
       console.log('[loadWorkspaceAndCharts] Cleanup complete')
     }
   }, [
     clearCache,
-    currentPage,
-    layoutOption,
-    onChartsLoaded,
     onSelectedDataIdsChange,
     onSelectedDataKeysChange,
-    paginationEnabled,
     preloadChartData,
     setInitialLoadComplete,
     setIsPreloadingData,
     setPreloadProgress,
-    setShowLoadingProgress,
-    setTotalChartsToLoad,
-    setWaterfallLoadedCharts,
   ])
 
   const saveSession = useCallback(async (
     name: string, 
     description: string, 
     saveAsNew: boolean,
-    selectedDataKeys: string[]
+    selectedDataKeys: string[],
+    currentCharts: (ChartConfiguration & { id: string })[]
   ) => {
     if (!workspaceId) return
     
@@ -270,7 +236,6 @@ export function useWorkspaceManagement({
         })
         
         // Copy all charts from current workspace to new workspace
-        const currentCharts = await chartConfigService.loadChartConfigurations(workspaceId)
         for (const chart of currentCharts) {
           await chartConfigService.saveChartConfiguration({
             ...chart,
@@ -328,7 +293,7 @@ export function useWorkspaceManagement({
       xAxisParameter: chart.xAxisParameter,
       yAxisParameters: chart.yAxisParameters
     }))
-    onChartsLoaded(convertedCharts)
+    setCharts(convertedCharts)
     
     // Clear all caches before loading new workspace
     clearCache()
@@ -365,6 +330,8 @@ export function useWorkspaceManagement({
     workspaceName,
     currentWorkspace,
     loading,
+    charts,
+    setCharts,
     loadWorkspaceAndCharts,
     saveSession,
     importWorkspace,

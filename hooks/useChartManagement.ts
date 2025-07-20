@@ -6,6 +6,8 @@ import { useChartDataContext } from '@/contexts/ChartDataContext'
 
 interface UseChartManagementProps {
   workspaceId: string
+  charts: (ChartConfiguration & { id: string })[]
+  setCharts: (charts: (ChartConfiguration & { id: string })[]) => void
   layoutOption: any
   currentPage: number
   paginationEnabled: boolean
@@ -16,6 +18,8 @@ interface UseChartManagementProps {
 
 export function useChartManagement({
   workspaceId,
+  charts,
+  setCharts,
   layoutOption,
   currentPage,
   paginationEnabled,
@@ -23,7 +27,6 @@ export function useChartManagement({
   setShowLoadingProgress,
   setWaterfallLoadedCharts,
 }: UseChartManagementProps) {
-  const [charts, setCharts] = useState<(ChartConfiguration & { id: string })[]>([])
   const [editingChart, setEditingChart] = useState<(ChartConfiguration & { id: string }) | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ open: boolean; chartId: string | null }>({
     open: false,
@@ -152,8 +155,6 @@ export function useChartManagement({
   }, [deleteConfirmation.chartId, deleteChart])
 
   return {
-    charts,
-    setCharts,
     editingChart,
     setEditingChart,
     deleteConfirmation,
