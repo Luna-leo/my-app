@@ -1,7 +1,7 @@
 import { db } from './index';
 
 /**
- * Calculate the actual data period from time series data
+ * Calculate the actual data period from persisted data chunks
  * @param metadataId - The metadata ID to calculate data period for
  * @returns Object with dataStartTime and dataEndTime, or null if no data exists
  */
@@ -10,19 +10,36 @@ export async function calculateDataPeriodFromTimeSeries(metadataId: number): Pro
   dataEndTime: Date;
 } | null> {
   try {
-    // Get all timestamps for this metadata ID, sorted
-    const timeSeries = await db.timeSeries
+    // Get all data chunks for this metadata ID
+    const chunks = await db.dataChunks
       .where('metadataId')
       .equals(metadataId)
-      .sortBy('timestamp');
+      .toArray();
 
-    if (!timeSeries || timeSeries.length === 0) {
+    if (!chunks || chunks.length === 0) {
       return null;
     }
 
-    // First and last timestamps represent the data period
-    const dataStartTime = new Date(timeSeries[0].timestamp);
-    const dataEndTime = new Date(timeSeries[timeSeries.length - 1].timestamp);
+    // Find the earliest start timestamp and latest end timestamp
+    let dataStartTime: Date | null = null;
+    let dataEndTime: Date | null = null;
+
+    for (const chunk of chunks) {
+      if (chunk.startTimestamp) {
+        if (!dataStartTime || chunk.startTimestamp < dataStartTime) {
+          dataStartTime = chunk.startTimestamp;
+        }
+      }
+      if (chunk.endTimestamp) {
+        if (!dataEndTime || chunk.endTimestamp > dataEndTime) {
+          dataEndTime = chunk.endTimestamp;
+        }
+      }
+    }
+
+    if (!dataStartTime || !dataEndTime) {
+      return null;
+    }
 
     return {
       dataStartTime,

@@ -786,7 +786,10 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
     return parameterMap;
   };
 
-  const getChartData = async (config: ChartConfigurationWithData, enableSampling: boolean | SamplingConfig = true, onProgress?: (progress: number) => void) => {
+  const getChartData = async (config: ChartConfigurationWithData, enableSampling: boolean | SamplingConfig = true, onProgress?: (progress: number) => void): Promise<{
+    plotData: ChartPlotData | null;
+    dataViewport: ChartViewport | null;
+  }> => {
     const startTime = performance.now();
     
     console.log('[ChartDataContext] getChartData called with:', {
@@ -823,7 +826,10 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
     }
 
     // Use request queue to limit concurrent data fetches
-    return requestQueue.enqueue(configHash, async () => {
+    return requestQueue.enqueue(configHash, async (): Promise<{
+      plotData: ChartPlotData | null;
+      dataViewport: ChartViewport | null;
+    }> => {
       
       try {
       // Report initial progress
@@ -1028,7 +1034,7 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
                           };
                         });
                         
-                        return { metadataId, data: timeSeriesData, totalCount: parquetFile.rowCount };
+                        // Continue with normal flow - data will be processed below
                       } catch (err) {
                         console.error(`[ChartDataContext] Failed to load from Parquet:`, err);
                       }

@@ -285,7 +285,7 @@ export class DataPersistenceService {
           const batch = chunkData.slice(j, Math.min(j + batchSize, chunkData.length));
           
           const values = batch.map((row: Record<string, unknown>) => {
-            const valueList = [metadataId];
+            const valueList: (string | number)[] = [metadataId];
             
             columns.forEach(col => {
               const value = row[col];
