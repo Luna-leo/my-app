@@ -24,6 +24,8 @@ import { memoryMonitor } from '@/lib/services/memoryMonitor';
 import { hashChartConfig } from '@/lib/utils/hashUtils';
 import { getSimpleWorkerPool } from '@/lib/services/simpleWorkerPool';
 import { DB_SAMPLING_CONFIG, SAMPLING_STRATEGY } from '@/lib/constants/samplingConfig';
+import { dataFetchService } from '@/lib/services/dataFetchService';
+import { createLogger } from '@/lib/services/logger';
 
 interface ChartDataProviderState {
   // Cache for transformed chart data keyed by configuration hash
@@ -190,14 +192,15 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
   });
   const [isDuckDBReady, setIsDuckDBReady] = useState(false);
   const duckDBLoadedData = useRef(new Set<number>());
+  const logger = useMemo(() => createLogger('ChartDataContext'), []);
   
   // Initialize DuckDB if enabled
   useEffect(() => {
     if (useDuckDB) {
-      console.log('[ChartDataContext] Initializing DuckDB...');
+      logger.info('Initializing DuckDB...');
       hybridDataService.initialize()
         .then(async () => {
-          console.log('[ChartDataContext] DuckDB initialized successfully');
+          logger.info('DuckDB initialized successfully');
           
           // Don't auto-restore data - wait for on-demand restoration
           try {
@@ -272,6 +275,13 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
 
   // Fetch and cache raw data for given metadata IDs
   const fetchRawData = async (metadataIds: number[], parameterIds?: string[], maxPointsPerDataset?: number) => {
+    // DataFetchServiceに委譲
+    const result = await dataFetchService.fetchRawData(metadataIds, parameterIds, maxPointsPerDataset);
+    return result;
+  };
+
+  // 元のfetchRawData関数（後で削除予定）
+  const fetchRawDataOld = async (metadataIds: number[], parameterIds?: string[], maxPointsPerDataset?: number) => {
     // Handle empty data case
     if (!metadataIds || metadataIds.length === 0) {
       return {
@@ -758,32 +768,8 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
 
   // Fetch parameter info with caching
   const fetchParameters = async (parameterIds: string[]) => {
-    const parameterPromises = parameterIds.map(async (parameterId) => {
-      const cached = parameterCache.get(parameterId);
-      if (cached) {
-        return { parameterId, paramInfo: cached };
-      }
-      
-      const paramInfo = await db.parameters
-        .where('parameterId')
-        .equals(parameterId)
-        .first();
-      
-      if (paramInfo) {
-        parameterCache.set(parameterId, paramInfo);
-      }
-      return { parameterId, paramInfo };
-    });
-
-    const results = await Promise.all(parameterPromises);
-    const parameterMap = new Map<string, ParameterInfo>();
-    results.forEach(({ parameterId, paramInfo }) => {
-      if (paramInfo) {
-        parameterMap.set(parameterId, paramInfo);
-      }
-    });
-    
-    return parameterMap;
+    // DataFetchServiceに委譲
+    return await dataFetchService.fetchParameters(parameterIds);
   };
 
   const getChartData = async (config: ChartConfigurationWithData, enableSampling: boolean | SamplingConfig = true, onProgress?: (progress: number) => void): Promise<{
