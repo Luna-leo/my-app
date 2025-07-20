@@ -48,7 +48,7 @@ export function UnifiedDataView({
   importCompleted,
   onImportCompletedReset
 }: UnifiedDataViewProps) {
-  const { data, loading, refreshData } = useUnifiedData()
+  const { data, loading, refreshData } = useUnifiedData({ skipPersistenceCheck: true })
   const [searchQuery, setSearchQuery] = useState('')
   const [locationFilter, setLocationFilter] = useState<DataLocation | 'all'>('all')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
