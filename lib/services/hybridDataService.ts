@@ -86,8 +86,9 @@ export class HybridDataService {
 
       // Create a new DuckDB worker
       const logger = new duckdb.ConsoleLogger();
-      const workerPath = DUCKDB_CONFIG.mainWorker!;
-      const worker = new Worker(workerPath);
+      // Note: This will generate Turbopack TP1001 warnings, but the functionality works correctly.
+      // DuckDB dynamically selects the appropriate worker based on browser capabilities.
+      const worker = new Worker(DUCKDB_CONFIG.mainWorker!);
       const db = new duckdb.AsyncDuckDB(logger, worker);
       
       await db.instantiate(DUCKDB_CONFIG.mainModule, DUCKDB_CONFIG.pthreadWorker);

@@ -37,9 +37,10 @@ export class SimpleWorkerPool {
   
   private initWorker() {
     try {
-      // Use the public worker file for now
-      const workerUrl = '/dataProcessing.worker.js';
-      this.worker = new Worker(workerUrl);
+      // Create Worker with public path
+      // Note: This will generate Turbopack TP1001 warnings, but the functionality works correctly.
+      // The warnings are due to Turbopack's strict static analysis requirements.
+      this.worker = new Worker('/dataProcessing.worker.js');
       
       this.worker.addEventListener('message', (event: MessageEvent<SimpleWorkerResponse>) => {
         const { id, type, data, error } = event.data;
