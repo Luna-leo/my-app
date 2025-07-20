@@ -86,7 +86,8 @@ export class HybridDataService {
 
       // Create a new DuckDB worker
       const logger = new duckdb.ConsoleLogger();
-      const worker = new Worker(DUCKDB_CONFIG.mainWorker!);
+      const workerPath = DUCKDB_CONFIG.mainWorker!;
+      const worker = new Worker(workerPath);
       const db = new duckdb.AsyncDuckDB(logger, worker);
       
       await db.instantiate(DUCKDB_CONFIG.mainModule, DUCKDB_CONFIG.pthreadWorker);
