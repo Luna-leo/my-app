@@ -305,7 +305,7 @@ export function useWorkspaceManagement({
     setLoading(false)
     
     setInitialLoadComplete(true)
-  }, [clearCache, onChartsLoaded, setInitialLoadComplete])
+  }, [clearCache, setInitialLoadComplete])
 
   const exportWorkspace = useCallback(async (filename: string) => {
     try {
