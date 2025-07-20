@@ -325,6 +325,7 @@ export class DuckDBCsvImporter {
     onProgress?: (progress: DuckDBImportProgress) => void
   ): Promise<DuckDBImportResult> {
     const startTime = performance.now();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const errors: string[] = [];
     
     const progressTracker = new ProgressTracker({

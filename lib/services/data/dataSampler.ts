@@ -280,6 +280,7 @@ export class DataSampler {
    * Convert DuckDB result to TimeSeriesData format
    */
   private convertResultToTimeSeriesData(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     result: any,
     parameterIds: string[]
   ): TimeSeriesData[] {

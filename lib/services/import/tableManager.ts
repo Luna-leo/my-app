@@ -10,8 +10,10 @@ import { SchemaManager } from '@/lib/services/schemaManager';
 import { 
   buildTableName, 
   TableColumn,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   escapeColumnName,
   getSqlDataType,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   buildCreateIndexStatement
 } from '@/lib/utils/sqlBuilder';
 

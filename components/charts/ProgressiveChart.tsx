@@ -6,23 +6,11 @@ import { useProgressiveChartData, DataResolution } from '@/hooks/useProgressiveC
 import { UplotChart } from './UplotChart'
 import { ChartLoadingState } from './ChartStates'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Trash2, Copy, Edit, Loader2, MoreVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { buildUplotOptions, transformToUplotData } from '@/lib/utils/uplotUtils'
+import { buildUplotOptions } from '@/lib/utils/uplotUtils'
+import { transformPlotDataToUplot } from '@/lib/utils/chartDataTransform'
 import { AspectRatioPreset, ASPECT_RATIOS } from '@/hooks/useChartDimensions'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-} from '@/components/ui/dropdown-menu'
+import { ChartMenu } from './ChartMenu'
 
 interface ProgressiveChartProps {
   config: ChartConfiguration
@@ -113,15 +101,6 @@ function ProgressiveChartComponent({
   })() : null;
 
 
-  // Resolution labels and info (per dataset)
-  const resolutionInfo: Record<DataResolution, { label: string; description: string }> = {
-    preview: { label: 'Preview', description: '100 pts/dataset - Ultra fast' },
-    normal: { label: 'Normal', description: '500 pts/dataset - Balanced' },
-    high: { label: 'High-Res', description: '1,000 pts/dataset - Detailed' },
-    full: { label: 'Full', description: 'All points - Maximum detail' }
-  };
-  
-
   // Handle resolution change
   const handleResolutionChange = (value: string) => {
     setResolution(value as DataResolution);
@@ -154,192 +133,7 @@ function ProgressiveChartComponent({
         {plotData && plotData.series.length > 0 && uplotOptions ? (
           <div className="relative h-full w-full">
             <UplotChart
-              data={(() => {
-                if (config.xAxisParameter === 'timestamp') {
-                  // Check if series have overlapping time ranges
-                  const seriesTimeRanges = plotData.series.map(series => ({
-                    min: Math.min(...series.xValues),
-                    max: Math.max(...series.xValues),
-                    count: series.xValues.length,
-                    label: series.metadataLabel
-                  }));
-                  
-                  
-                  // Check for time range overlap between series
-                  let hasOverlap = false;
-                  for (let i = 0; i < seriesTimeRanges.length - 1; i++) {
-                    for (let j = i + 1; j < seriesTimeRanges.length; j++) {
-                      const range1 = seriesTimeRanges[i];
-                      const range2 = seriesTimeRanges[j];
-                      if (range1.max >= range2.min && range2.max >= range1.min) {
-                        hasOverlap = true;
-                        break;
-                      }
-                    }
-                    if (hasOverlap) break;
-                  }
-                  
-                  // If series don't overlap and we have multiple series, use sparse array approach
-                  // to avoid creating large arrays with mostly null values
-                  if (!hasOverlap && plotData.series.length > 1) {
-                    // Collect all unique timestamps from all series
-                    const allTimestamps = new Set<number>();
-                    plotData.series.forEach(series => {
-                      series.xValues.forEach(x => allTimestamps.add(x));
-                    });
-                    
-                    const unifiedXValues = Array.from(allTimestamps).sort((a, b) => a - b);
-                    const xValues = unifiedXValues.map(x => x / 1000);
-                    
-                    // Create sparse arrays to minimize memory usage
-                    const ySeriesData: (number | null)[][] = plotData.series.map(series => {
-                      // Initialize array with nulls
-                      const sparseArray = new Array(unifiedXValues.length).fill(null);
-                      
-                      // Fill only the indices where this series has data
-                      series.xValues.forEach((x, i) => {
-                        const unifiedIdx = unifiedXValues.indexOf(x);
-                        if (unifiedIdx !== -1) {
-                          sparseArray[unifiedIdx] = series.yValues[i];
-                        }
-                      });
-                      
-                      return sparseArray;
-                    });
-                    
-                    return transformToUplotData(xValues, ySeriesData);
-                  }
-                  
-                  // For overlapping series or single series, use unified x-axis approach
-                  const allTimestamps = new Set<number>();
-                  plotData.series.forEach(series => {
-                    series.xValues.forEach(x => allTimestamps.add(x));
-                  });
-                  
-                  const unifiedXValues = Array.from(allTimestamps).sort((a, b) => a - b);
-                  const xValues = unifiedXValues.map(x => x / 1000);
-                  
-                  
-                  const ySeriesData: (number | null)[][] = plotData.series.map(series => {
-                    // Create a map for O(1) lookup performance
-                    const valueMap = new Map<number, number>();
-                    series.xValues.forEach((x, i) => {
-                      valueMap.set(x, series.yValues[i]);
-                    });
-                    
-                    // Map values to unified x-axis, using null for missing values
-                    return unifiedXValues.map(x => {
-                      const value = valueMap.get(x);
-                      return value !== undefined ? value : null;
-                    });
-                  });
-                  
-                  return transformToUplotData(xValues, ySeriesData);
-                } else {
-                  // For non-time series (XY charts)
-                  // Check if all series have the same x values (optimization for common case)
-                  const firstSeries = plotData.series[0];
-                  if (!firstSeries) {
-                    return transformToUplotData([], []);
-                  }
-                  
-                  // Check if X and Y use the same parameter
-                  const isXYSameParameter = config.yAxisParameters.includes(config.xAxisParameter);
-                  
-                  const allSameXValues = plotData.series.every(s => 
-                    s.xValues.length === firstSeries.xValues.length &&
-                    s.xValues.every((x, i) => x === firstSeries.xValues[i])
-                  );
-                  
-                  if (allSameXValues) {
-                    // All series share the same x values - optimize by sharing x array
-                    const xValues = firstSeries.xValues || [];
-                    const ySeriesData = plotData.series.map(s => s.yValues || []);
-                    return transformToUplotData(xValues, ySeriesData);
-                  } else {
-                    // Different x values for each series - need to create unified x-axis
-                    // This happens when using the same parameter for both X and Y axes with different datasets
-                    console.log('[ProgressiveChart] Series have different X values, creating unified axis');
-                    
-                    // Special handling when X and Y use the same parameter
-                    if (isXYSameParameter) {
-                      console.log('[ProgressiveChart] X and Y use the same parameter, preserving diagonal relationship');
-                      
-                      // For X=Y case, we need to ensure that each point maintains x[i] = y[i]
-                      // Collect all unique values from both x and y arrays of all series
-                      const allValues = new Set<number>();
-                      plotData.series.forEach(series => {
-                        series.xValues.forEach(x => {
-                          if (!isNaN(x)) {
-                            allValues.add(x);
-                          }
-                        });
-                        // Also add y values since they should be the same as x values
-                        series.yValues.forEach(y => {
-                          if (y !== null && !isNaN(y)) {
-                            allValues.add(y);
-                          }
-                        });
-                      });
-                      
-                      // Sort values
-                      const unifiedValues = Array.from(allValues).sort((a, b) => a - b);
-                      
-                      // Map each series' data
-                      const ySeriesData: (number | null)[][] = plotData.series.map(series => {
-                        // Create a set of values that exist in this series
-                        const seriesValues = new Set<number>();
-                        series.xValues.forEach((x, i) => {
-                          if (!isNaN(x) && series.yValues[i] !== null && !isNaN(series.yValues[i])) {
-                            // For X=Y, both should have the same value
-                            seriesValues.add(x);
-                          }
-                        });
-                        
-                        // Map to unified axis, using the value itself for Y when it exists
-                        return unifiedValues.map(value => {
-                          return seriesValues.has(value) ? value : null;
-                        });
-                      });
-                      
-                      return transformToUplotData(unifiedValues, ySeriesData);
-                    } else {
-                      // Different parameters for X and Y - use original logic
-                      // Collect all unique x values from all series
-                      const allXValues = new Set<number>();
-                      plotData.series.forEach(series => {
-                        series.xValues.forEach(x => {
-                          if (!isNaN(x)) {
-                            allXValues.add(x);
-                          }
-                        });
-                      });
-                      
-                      // Sort x values
-                      const unifiedXValues = Array.from(allXValues).sort((a, b) => a - b);
-                      
-                      // Map each series' y values to the unified x-axis
-                      const ySeriesData: (number | null)[][] = plotData.series.map(series => {
-                        // Create a map for fast lookup
-                        const valueMap = new Map<number, number>();
-                        series.xValues.forEach((x, i) => {
-                          if (!isNaN(x) && series.yValues[i] !== null && !isNaN(series.yValues[i])) {
-                            valueMap.set(x, series.yValues[i]);
-                          }
-                        });
-                        
-                        // Map to unified x-axis
-                        return unifiedXValues.map(x => {
-                          const value = valueMap.get(x);
-                          return value !== undefined ? value : null;
-                        });
-                      });
-                      
-                      return transformToUplotData(unifiedXValues, ySeriesData);
-                    }
-                  }
-                }
-              })()}
+              data={transformPlotDataToUplot(plotData, config)}
               options={uplotOptions}
               className="h-full"
             />
@@ -352,61 +146,17 @@ function ProgressiveChartComponent({
               </div>
             )}
             {/* Overlay menu button */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "absolute top-2 right-2 h-8 w-8 transition-opacity",
-                    isHovered ? "opacity-100" : "opacity-30 hover:opacity-100"
-                  )}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {enableProgressive && !globalResolution && (
-                  <>
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>
-                        {isUpgrading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Resolution: {resolutionInfo[resolution].label}
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent>
-                        <DropdownMenuRadioGroup value={resolution} onValueChange={handleResolutionChange}>
-                          {Object.entries(resolutionInfo).map(([key, info]) => (
-                            <DropdownMenuRadioItem key={key} value={key} className="flex flex-col items-start py-2">
-                              <span className="font-medium">{info.label}</span>
-                              <span className="text-xs text-muted-foreground">{info.description}</span>
-                            </DropdownMenuRadioItem>
-                          ))}
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                {onEdit && (
-                  <DropdownMenuItem onClick={onEdit}>
-                    <Edit className="mr-2 h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                )}
-                {onDuplicate && (
-                  <DropdownMenuItem onClick={onDuplicate}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    Duplicate
-                  </DropdownMenuItem>
-                )}
-                {onDelete && (
-                  <DropdownMenuItem onClick={onDelete} className="text-destructive">
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <ChartMenu
+              isHovered={isHovered}
+              enableProgressive={enableProgressive}
+              globalResolution={globalResolution}
+              resolution={resolution}
+              isUpgrading={isUpgrading}
+              onResolutionChange={handleResolutionChange}
+              onEdit={onEdit}
+              onDuplicate={onDuplicate}
+              onDelete={onDelete}
+            />
           </div>
         ) : (
           <div className="flex items-center justify-center h-full">
@@ -418,41 +168,13 @@ function ProgressiveChartComponent({
           </div>
         )}
         {/* Overlay menu button for empty state */}
-        {(!plotData || plotData.series.length === 0) && (onEdit || onDuplicate || onDelete) && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "absolute top-2 right-2 h-8 w-8 transition-opacity",
-                  isHovered ? "opacity-100" : "opacity-30 hover:opacity-100"
-                )}
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onEdit && (
-                <DropdownMenuItem onClick={onEdit}>
-                  <Edit className="mr-2 h-4 w-4" />
-                  Edit
-                </DropdownMenuItem>
-              )}
-              {onDuplicate && (
-                <DropdownMenuItem onClick={onDuplicate}>
-                  <Copy className="mr-2 h-4 w-4" />
-                  Duplicate
-                </DropdownMenuItem>
-              )}
-              {onDelete && (
-                <DropdownMenuItem onClick={onDelete} className="text-destructive">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+        {(!plotData || plotData.series.length === 0) && (
+          <ChartMenu
+            isHovered={isHovered}
+            onEdit={onEdit}
+            onDuplicate={onDuplicate}
+            onDelete={onDelete}
+          />
         )}
       </CardContent>
     </Card>

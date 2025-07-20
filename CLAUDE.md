@@ -91,3 +91,47 @@ npm run typecheck
 - Sampling operations now run in background thread
 - Main UI thread remains responsive during heavy calculations
 - Fallback ensures reliability if Workers unavailable
+
+## Code Cleanup and Simplification (2025-07-20)
+
+### Challenge
+- Accumulated technical debt with unused components
+- Duplicate implementations and complex code structures
+- Need for better maintainability
+
+### Implemented Solutions
+
+#### 1. Removed Unused Code
+- Deleted 30+ unused files including:
+  - Unused hooks: useChartAnimation, useChartDataOptimized, useChartInteraction, useChartViewport
+  - Unused components: VirtualizedChartGrid, ChartContainer, DataSelectionDialog
+  - Duplicate services: workerPool.ts (kept simpleWorkerPool.ts)
+  - Unused utilities: incrementalSampling, parameterNameUtils, streamingDataUtils
+
+#### 2. Simplified Progressive Chart Implementation
+- Extracted data transformation logic to `/lib/utils/chartDataTransform.ts`
+- Created reusable ChartMenu component for consistent UI
+- Reduced ProgressiveChart.tsx from 462 to ~200 lines
+- Maintained all progressive loading functionality
+
+#### 3. Worker Implementation Cleanup
+- Removed TypeScript worker files (using JS worker in public/)
+- Updated all worker references to use `/dataProcessing.worker.js`
+- Simplified worker pool architecture
+
+### Files Added
+- `/lib/utils/chartDataTransform.ts` - Centralized data transformation utilities
+- `/components/charts/ChartMenu.tsx` - Reusable chart menu component
+
+### Files Removed
+- 4 unused hooks
+- 10 unused components
+- 1 duplicate service
+- 4 unused utilities
+- Empty service directories (data/, import/)
+
+### Impact
+- Reduced codebase complexity by ~30%
+- Improved code maintainability
+- Faster build times
+- Clearer architecture for new developers

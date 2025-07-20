@@ -7,6 +7,7 @@
 
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   buildInsertStatement,
   escapeColumnName,
   formatTimestampForSql
@@ -47,6 +48,7 @@ export class DataInserter {
     onProgress?: (progress: InsertProgress) => void
   ): Promise<number> {
     let totalRowsInserted = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const fileReader = new CsvFileReader();
 
     for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
@@ -141,6 +143,7 @@ export class DataInserter {
     metadataId: number,
     allHeaders: string[],
     headerMapping: Map<string, number>,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     rawHeaders: string[]
   ): string[][] {
     const values: string[][] = [];
@@ -204,6 +207,7 @@ export class DataInserter {
 
     // Format values for SQL
     const formattedValues = values.map(row => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       return row.map((val, index) => {
         // Values are already formatted (NULL, TIMESTAMP, or numeric)
         return val;

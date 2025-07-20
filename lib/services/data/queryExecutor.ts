@@ -30,6 +30,7 @@ export class QueryExecutor {
    */
   async queryWithParams(
     sql: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     params: Record<string, any>
   ): Promise<Record<string, unknown>[]> {
     try {
@@ -70,6 +71,7 @@ export class QueryExecutor {
   /**
    * Execute a query and return a single scalar value
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async scalar<T = any>(sql: string): Promise<T | null> {
     try {
       const result = await this.query(sql);

@@ -142,6 +142,7 @@ export class DataLoader {
    */
   private async checkTableState(
     tableName: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     metadataId: number
   ): Promise<{
     exists: boolean;

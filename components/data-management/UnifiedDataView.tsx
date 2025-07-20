@@ -247,10 +247,7 @@ export function UnifiedDataView({
       }))
 
       // Create and use Web Worker
-      const worker = new Worker(
-        new URL('../../workers/dataProcessing.worker.ts', import.meta.url),
-        { type: 'module' }
-      )
+      const worker = new Worker('/dataProcessing.worker.js')
       workersRef.current.set(item.id, worker)
 
       const workerPromise = new Promise<Record<string, unknown>>((resolve, reject) => {

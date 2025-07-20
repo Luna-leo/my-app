@@ -84,7 +84,6 @@ export function DialogsContainer({
   editDialogOpen,
   setEditDialogOpen,
   editingChart,
-  setEditingChart,
   onUpdateChart,
   showWelcomeDialog,
   onWelcomeSelectWorkspace,
