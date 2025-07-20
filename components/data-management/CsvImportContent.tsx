@@ -182,20 +182,36 @@ export function CsvImportContent({ onImportComplete }: CsvImportContentProps) {
           
           if (persistResult.success) {
             console.log(`[CsvImportContent] Data persisted successfully: ${persistResult.chunksCreated} chunks`)
+            // Only set import as complete if persistence succeeded
+            setStep('complete')
+            setImportResult(result)
+            onImportComplete?.()
           } else {
+            // Persistence failed, rollback the import
             console.error('[CsvImportContent] Data persistence failed:', persistResult.error)
+            
+            // Clean up: delete metadata and drop table
+            await db.metadata.delete(result.metadataId)
+            await connection.query(`DROP TABLE IF EXISTS timeseries_${result.metadataId}`)
+            
+            setImportError(`データの永続化に失敗しました: ${persistResult.error}\nもう一度インポートしてください。`)
+            setStep('metadata')
           }
         } catch (error) {
           console.error('[CsvImportContent] Failed to persist data:', error)
+          
+          // Clean up on error
+          await db.metadata.delete(result.metadataId)
+          await connection.query(`DROP TABLE IF EXISTS timeseries_${result.metadataId}`)
+          
+          setImportError(`データの永続化中にエラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}\nもう一度インポートしてください。`)
+          setStep('metadata')
         } finally {
           setPersistenceProgress(null)
         }
-        
-        setStep('complete')
-        setImportResult(result)
-        onImportComplete?.()
       } else {
         setImportError(result.errors.join(', '))
+        setStep('metadata')
       }
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'DuckDB import failed')

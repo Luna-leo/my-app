@@ -20,9 +20,7 @@ import {
   Edit,
   X,
   Database,
-  FileArchive,
-  Undo2,
-  AlertCircle
+  FileArchive
 } from 'lucide-react'
 import { UnifiedDataItem } from '@/lib/hooks/useUnifiedData'
 import { UploadState, formatTimeRemaining } from '@/lib/utils/uploadUtils'
@@ -38,12 +36,8 @@ interface DataCardProps {
   onEdit?: () => void
   onDelete?: () => void
   onCancelUpload?: () => void
-  onPersist?: () => void
-  onRestore?: () => void
-  onClearPersistence?: () => void
   isLoading?: boolean
   uploadState?: UploadState
-  persistenceLoading?: boolean
 }
 
 export function DataCard({
@@ -56,12 +50,8 @@ export function DataCard({
   onEdit,
   onDelete,
   onCancelUpload,
-  onPersist,
-  onRestore,
-  onClearPersistence,
   isLoading = false,
-  uploadState,
-  persistenceLoading = false
+  uploadState
 }: DataCardProps) {
   const getBorderColor = () => {
     switch (item.location) {
@@ -252,12 +242,6 @@ export function DataCard({
               
               <div className="flex items-center gap-2">
                 {getLocationBadge()}
-                {item.location === 'local' && item.metadata && !item.inMemory && (
-                  <Badge variant="secondary" className="bg-orange-100 text-orange-700">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    メモリ未ロード
-                  </Badge>
-                )}
                 {item.metadata && (
                   <span className="text-xs text-muted-foreground">
                     Imported: {formatDate(item.metadata.importedAt)}
@@ -354,72 +338,6 @@ export function DataCard({
                 </Button>
               )}
               
-              {/* Persistence actions for local data */}
-              {item.location === 'local' && item.metadata && (
-                <>
-                  {!item.persistenceStatus?.isPersisted && onPersist && (
-                    item.inMemory ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={onPersist}
-                        disabled={isLoading || persistenceLoading}
-                        className="gap-2"
-                      >
-                        {persistenceLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Database className="h-4 w-4" />
-                        )}
-                        永続化
-                      </Button>
-                    ) : (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <AlertCircle className="h-4 w-4 text-warning" />
-                        <span>メモリ未ロード</span>
-                      </div>
-                    )
-                  )}
-                  
-                  {item.persistenceStatus?.isPersisted && (
-                    <>
-                      {onRestore && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={onRestore}
-                          disabled={isLoading || persistenceLoading}
-                          className="gap-2"
-                        >
-                          {persistenceLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Undo2 className="h-4 w-4" />
-                          )}
-                          復元
-                        </Button>
-                      )}
-                      
-                      {onClearPersistence && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={onClearPersistence}
-                          disabled={isLoading || persistenceLoading}
-                          className="gap-2 text-destructive hover:text-destructive"
-                        >
-                          {persistenceLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                          永続化削除
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
               
               {item.location === 'server' && onDownload && (
                 <Button
