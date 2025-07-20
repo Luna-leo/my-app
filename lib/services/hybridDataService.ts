@@ -4,6 +4,7 @@ import { duckDBSchemaTracker } from './duckdbSchemaTracker';
 import { duckDBParquetService, ParquetReadOptions } from './duckdbParquetService';
 import { duckDBQueryCache } from './duckdbQueryCache';
 import { parseDuckDBTimestamp } from '@/lib/utils/duckdbTimestamp';
+import { createLogger } from './logger';
 
 interface DuckDBInstance {
   connection: duckdb.AsyncDuckDBConnection;
@@ -28,6 +29,7 @@ export class HybridDataService {
   private duckDBInstance: DuckDBInstance | null = null;
   private loadedMetadataIds = new Set<number>();
   private initializationPromise: Promise<void> | null = null;
+  private logger = createLogger('HybridDataService');
 
   private constructor() {}
 
@@ -62,12 +64,12 @@ export class HybridDataService {
 
   private async _initialize(): Promise<void> {
     if (this.duckDBInstance) {
-      console.log('[HybridDataService] Already initialized');
+      this.logger.debug('Already initialized');
       return;
     }
 
-    console.log('[HybridDataService] Initializing DuckDB-Wasm...');
-    const startTime = performance.now();
+    this.logger.info('Initializing DuckDB-Wasm...');
+    const endTimer = this.logger.startTimer('DuckDB initialization');
 
     try {
       // Bundle configuration for DuckDB WASM files
@@ -104,10 +106,10 @@ export class HybridDataService {
       // Initialize parquet service with connection
       duckDBParquetService.setConnection(connection);
 
-      const duration = performance.now() - startTime;
-      console.log(`[HybridDataService] DuckDB initialized in ${duration.toFixed(2)}ms`);
+      endTimer();
+      this.logger.info('DuckDB initialized successfully');
     } catch (error) {
-      console.error('[HybridDataService] Failed to initialize DuckDB:', error);
+      this.logger.error('Failed to initialize DuckDB', error);
       throw error;
     }
   }
@@ -134,13 +136,16 @@ export class HybridDataService {
     });
     const availableParameterIds = Array.from(allParameterIds);
     
-    console.log(`[HybridDataService] Available parameter IDs in data:`, availableParameterIds.slice(0, 10), `... (${availableParameterIds.length} total)`);
-    console.log(`[HybridDataService] Requested parameter IDs:`, parameterIds);
+    this.logger.debug('Available parameter IDs in data', {
+      sample: availableParameterIds.slice(0, 10),
+      total: availableParameterIds.length
+    });
+    this.logger.debug('Requested parameter IDs', parameterIds);
     
     // IMPORTANT: Always ensure the table has ALL requested parameters, not just available ones
     // This ensures consistent column structure regardless of what data is currently available
     const requiredParameterIds = [...new Set([...availableParameterIds, ...parameterIds])];
-    console.log(`[HybridDataService] Combined required parameter IDs:`, requiredParameterIds.length);
+    this.logger.debug(`Combined required parameter IDs: ${requiredParameterIds.length}`);
     
     // Check if table exists in DuckDB
     let tableExistsInDB = false;
@@ -149,7 +154,7 @@ export class HybridDataService {
       const result = await this.duckDBInstance.connection.query(checkTableSQL);
       tableExistsInDB = result.toArray()[0]['count_star()'] > 0;
     } catch {
-      console.log(`[HybridDataService] Table existence check failed, assuming not exists`);
+      this.logger.debug('Table existence check failed, assuming not exists');
     }
 
     // Sync schema tracker with actual DB state
