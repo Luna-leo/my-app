@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, Suspense, useRef } from 'react'
+import { useEffect, useState, Suspense, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { LoadingState } from '@/components/common/LoadingState'
 import { useDataPointsInfo } from '@/hooks/useDataPointsInfo'
@@ -177,6 +177,12 @@ function HomeContent() {
     doInitialize()
   }, [searchParams, loadWorkspaceAndCharts, mounted, dialogProps]) // Only re-run if searchParams change
   
+  // Wrap handleEditChart to also open the dialog
+  const handleEditChartWithDialog = useCallback((chartId: string) => {
+    handleEditChart(chartId)
+    dialogProps.setEditDialogOpen(true)
+  }, [handleEditChart, dialogProps])
+
   // Reset waterfall loading when page changes
   useEffect(() => {
     if (paginationEnabled && charts.length > 0) {
@@ -335,7 +341,7 @@ function HomeContent() {
           currentPage={currentPage}
           samplingConfig={samplingConfig}
           resolutionConfig={resolutionConfig}
-          onEdit={handleEditChart}
+          onEdit={handleEditChartWithDialog}
           onDuplicate={duplicateChart}
           onDelete={handleDeleteChart}
           onAllChartsLoaded={() => setShowLoadingProgress(false)}

@@ -218,6 +218,25 @@ export class SchemaManager {
   }
 
   /**
+   * Check if a table exists
+   */
+  async tableExists(tableName: string): Promise<boolean> {
+    try {
+      const result = await this.connection.query(`
+        SELECT COUNT(*) as count 
+        FROM information_schema.tables 
+        WHERE table_schema = 'main' AND table_name = '${tableName}'
+      `);
+      
+      const rows = result.toArray();
+      return rows[0]?.count > 0;
+    } catch (error) {
+      console.error(`[SchemaManager] Error checking table existence:`, error);
+      return false;
+    }
+  }
+
+  /**
    * Sync schema tracker with actual database tables
    */
   async syncSchemaTracker(): Promise<void> {
