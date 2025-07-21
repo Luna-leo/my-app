@@ -4,6 +4,7 @@ import { useRef, RefObject, useState, useEffect, useCallback, useMemo } from 're
 import { getDataChartComponent } from '@/components/charts/ChartProvider'
 import { LazyChart } from '@/components/charts/LazyChart'
 import { WaterfallChartLoader } from '@/components/charts/WaterfallChartLoader'
+import { VirtualizedChartGrid } from '@/components/charts/VirtualizedChartGrid'
 import { ChartConfiguration } from '@/components/chart-creation/CreateChartDialog'
 import { LayoutOption } from '@/components/layout/LayoutSelector'
 import { cn } from '@/lib/utils'
@@ -30,6 +31,9 @@ interface ChartGridProps {
   globalResolution?: DataResolution
   globalAutoUpgrade?: boolean
   enableBatchLoading?: boolean
+  enableVirtualization?: boolean
+  virtualScrollHeight?: number
+  virtualScrollWidth?: number
 }
 
 export function ChartGrid({ 
@@ -49,7 +53,10 @@ export function ChartGrid({
   onChartLoaded,
   globalResolution,
   globalAutoUpgrade,
-  enableBatchLoading = false
+  enableBatchLoading = false,
+  enableVirtualization = false,
+  virtualScrollHeight,
+  virtualScrollWidth
 }: ChartGridProps) {
   const ChartComponent = getDataChartComponent()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -309,6 +316,31 @@ export function ChartGrid({
       }
     }
   }, [enableWaterfall, waterfallLoadedCharts, visibleCharts, onAllChartsLoaded])
+
+  // Use virtualized grid for large datasets
+  if (enableVirtualization) {
+    return (
+      <VirtualizedChartGrid
+        charts={charts}
+        selectedDataIds={selectedDataIds}
+        onEdit={onEdit}
+        onDuplicate={onDuplicate}
+        onDelete={onDelete}
+        layoutOption={layoutOption}
+        samplingConfig={samplingConfig}
+        enableProgressive={enableProgressive}
+        enableWaterfall={enableWaterfall}
+        waterfallDelay={waterfallDelay}
+        onAllChartsLoaded={onAllChartsLoaded}
+        onChartLoaded={onChartLoaded}
+        globalResolution={globalResolution}
+        globalAutoUpgrade={globalAutoUpgrade}
+        enableBatchLoading={enableBatchLoading}
+        height={virtualScrollHeight}
+        width={virtualScrollWidth}
+      />
+    )
+  }
 
   return (
     <div 

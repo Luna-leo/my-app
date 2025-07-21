@@ -277,7 +277,8 @@ function transformDataForChart(data, yAxisParameters, parameterInfoMap, metadata
 
 // Message handler
 self.addEventListener('message', async (event) => {
-  const { type, data } = event.data;
+  const { type, data, id, workerId, timestamp } = event.data;
+  const startTime = performance.now();
   
   try {
     switch (type) {
@@ -307,9 +308,11 @@ self.addEventListener('message', async (event) => {
           }
           
           self.postMessage({
-            type: 'DATA_PROCESSED',
-            data: sampled,
-            id
+            type: 'SUCCESS',
+            result: sampled,
+            id: id || data.id,
+            workerId,
+            executionTime: performance.now() - startTime
           });
         } else {
           // Simple nth-point sampling for backward compatibility
@@ -321,9 +324,11 @@ self.addEventListener('message', async (event) => {
           }
           
           self.postMessage({
-            type: 'DATA_PROCESSED',
-            data: sampled,
-            id
+            type: 'SUCCESS',
+            result: sampled,
+            id: id || data.id,
+            workerId,
+            executionTime: performance.now() - startTime
           });
         }
         break;
@@ -341,9 +346,11 @@ self.addEventListener('message', async (event) => {
         );
         
         self.postMessage({
-          type: 'DATA_PROCESSED',
-          data: transformed,
-          id
+          type: 'SUCCESS',
+          result: transformed,
+          id: id || data.id,
+          workerId,
+          executionTime: performance.now() - startTime
         });
         break;
       }
@@ -369,9 +376,115 @@ self.addEventListener('message', async (event) => {
         };
         
         self.postMessage({
-          type: 'DATA_PROCESSED',
-          data: result,
-          id
+          type: 'SUCCESS',
+          result: result,
+          id: id || data.id,
+          workerId,
+          executionTime: performance.now() - startTime
+        });
+        break;
+      }
+      
+      case 'CALCULATE_VIEWPORT': {
+        // Calculate optimal viewport for chart data
+        const { chartData, width, height, padding = 0.1 } = data;
+        
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        
+        for (const series of chartData) {
+          for (let i = 0; i < series.timestamps.length; i++) {
+            const x = series.timestamps[i];
+            const y = series.values[i];
+            
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y !== null && y !== undefined) {
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        
+        const viewport = {
+          xMin: minX - (maxX - minX) * padding,
+          xMax: maxX + (maxX - minX) * padding,
+          yMin: minY - (maxY - minY) * padding,
+          yMax: maxY + (maxY - minY) * padding,
+          width,
+          height
+        };
+        
+        self.postMessage({
+          type: 'SUCCESS',
+          result: viewport,
+          id: id || data.id,
+          workerId,
+          executionTime: performance.now() - startTime
+        });
+        break;
+      }
+      
+      case 'BATCH_PROCESS': {
+        // Process multiple tasks in batch
+        const { tasks } = data;
+        const results = [];
+        
+        for (const task of tasks) {
+          try {
+            let result;
+            
+            switch (task.type) {
+              case 'sample':
+                if (task.config) {
+                  result = sampleTimeSeriesDataByMetadata(
+                    task.dataByMetadata || { [task.metadataId]: task.data },
+                    task.config,
+                    task.samplingParameter
+                  );
+                } else {
+                  // Simple sampling
+                  const step = Math.max(1, Math.floor(task.data.length / task.targetPoints));
+                  result = [];
+                  for (let i = 0; i < task.data.length; i += step) {
+                    result.push(task.data[i]);
+                  }
+                }
+                break;
+                
+              case 'transform':
+                result = transformDataForChart(
+                  task.data,
+                  task.yAxisParameters,
+                  task.parameterInfoMap,
+                  task.metadataMap
+                );
+                break;
+                
+              default:
+                throw new Error(`Unknown batch task type: ${task.type}`);
+            }
+            
+            results.push({ 
+              id: task.id, 
+              success: true, 
+              result 
+            });
+          } catch (error) {
+            results.push({ 
+              id: task.id, 
+              success: false, 
+              error: error.message 
+            });
+          }
+        }
+        
+        self.postMessage({
+          type: 'SUCCESS',
+          result: results,
+          id: id || data.id,
+          workerId,
+          executionTime: performance.now() - startTime
         });
         break;
       }
@@ -383,7 +496,9 @@ self.addEventListener('message', async (event) => {
     self.postMessage({
       type: 'ERROR',
       error: error.message,
-      id: data.id
+      id: id || data?.id,
+      workerId,
+      executionTime: performance.now() - startTime
     });
   }
 });

@@ -223,6 +223,13 @@ class MemoryMonitor {
 export const memoryMonitor = MemoryMonitor.getInstance();
 
 /**
+ * Get current memory statistics
+ */
+export async function getMemoryStats(): Promise<MemoryStats> {
+  return memoryMonitor.checkMemory();
+}
+
+/**
  * React hook for monitoring memory usage
  */
 export function useMemoryMonitor(onPressureChange?: (stats: MemoryStats) => void) {

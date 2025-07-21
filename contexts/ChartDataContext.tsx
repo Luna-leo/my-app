@@ -11,8 +11,14 @@ import {
   calculateDataRange,
   mergeTimeSeriesData,
 } from '@/lib/utils/chartDataUtils';
-import { dataCache, timeSeriesCache, metadataCache, parameterCache, transformCache } from '@/lib/services/dataCache';
-import { hierarchicalSamplingCache } from '@/lib/services/hierarchicalSamplingCache';
+import { unifiedCache, cacheInterfaces } from '@/lib/services/unifiedCacheManager';
+
+// Ensure cacheInterfaces is initialized
+if (!cacheInterfaces) {
+  console.error('[ChartDataContext] cacheInterfaces is not initialized');
+}
+
+const { timeSeriesCache, metadataCache, parameterCache, transformCache, samplingCache } = cacheInterfaces || {};
 import { hybridDataService } from '@/lib/services/hybridDataService';
 import { parameterTracker } from '@/lib/services/parameterTracker';
 import { ChartParameterAggregator } from '@/lib/services/chartParameterAggregator';
@@ -30,11 +36,6 @@ import { chartTransformService } from '@/lib/services/chartTransformService';
 import { createLogger } from '@/lib/services/logger';
 
 interface ChartDataProviderState {
-  // Cache for transformed chart data keyed by configuration hash
-  chartDataCache: Map<string, {
-    plotData: ChartPlotData;
-    viewport: ChartViewport;
-  }>;
   isLoading: boolean;
 }
 
@@ -189,7 +190,6 @@ const requestQueue = new RequestQueue(2); // Allow max 2 concurrent requests
 
 export function ChartDataProvider({ children, useDuckDB = true }: { children: ReactNode; useDuckDB?: boolean }) {
   const [state, setState] = useState<ChartDataProviderState>({
-    chartDataCache: new Map(),
     isLoading: false
   });
   const [isDuckDBReady, setIsDuckDBReady] = useState(false);
@@ -247,26 +247,16 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
       // Clear caches on high memory pressure
       if (stats.pressure === 'critical') {
         console.warn('[Memory Monitor] Critical memory pressure detected, clearing all caches');
-        dataCache.clear();
+        if (unifiedCache?.clear) {
+          unifiedCache.clear();
+        }
         parameterTracker.clear(); // Clear parameter tracking when clearing caches
-        setState(prev => ({
-          ...prev,
-          chartDataCache: new Map()
-        }));
       } else if (stats.pressure === 'high') {
         console.warn('[Memory Monitor] High memory pressure detected, clearing sampling cache');
-        hierarchicalSamplingCache.clear();
-        // Clear half of in-memory cache
-        setState(prev => {
-          const newCache = new Map(prev.chartDataCache);
-          const keys = Array.from(newCache.keys());
-          const halfSize = Math.floor(keys.length / 2);
-          keys.slice(0, halfSize).forEach(key => newCache.delete(key));
-          return {
-            ...prev,
-            chartDataCache: newCache
-          };
-        });
+        if (unifiedCache?.clear) {
+          unifiedCache.clear('sampling');
+          unifiedCache.clear('chart');
+        }
       }
     });
 
@@ -304,27 +294,38 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
     const configHash = getConfigHash(config, enableSampling);
     
     // キャッシュチェック
-    const cached = state.chartDataCache.get(configHash);
-    if (cached) {
-      logger.debug(`Cache hit for chart "${config.title}"`);
-      timer();
-      return {
-        plotData: cached.plotData,
-        dataViewport: cached.viewport
-      };
+    try {
+      if (cacheInterfaces?.chart?.get) {
+        const cached = cacheInterfaces.chart.get(configHash);
+        if (cached) {
+          logger.debug(`Cache hit for chart "${config.title}"`);
+          timer();
+          return {
+            plotData: cached.plotData,
+            dataViewport: cached.viewport
+          };
+        }
+      }
+    } catch (cacheError) {
+      console.warn('[ChartDataContext] Cache access failed, continuing without cache:', cacheError);
     }
     
-    const transformCached = transformCache.get<{ plotData: ChartPlotData; viewport: ChartViewport }>(configHash);
-    if (transformCached) {
-      setState(prev => ({
-        ...prev,
-        chartDataCache: new Map(prev.chartDataCache).set(configHash, transformCached)
-      }));
-      timer();
-      return {
-        plotData: transformCached.plotData,
-        dataViewport: transformCached.viewport
-      };
+    try {
+      if (transformCache?.get) {
+        const transformCached = transformCache.get<{ plotData: ChartPlotData; viewport: ChartViewport }>(configHash);
+        if (transformCached) {
+          if (cacheInterfaces?.chart?.set) {
+            cacheInterfaces.chart.set(configHash, transformCached);
+          }
+          timer();
+          return {
+            plotData: transformCached.plotData,
+            dataViewport: transformCached.viewport
+          };
+        }
+      }
+    } catch (cacheError) {
+      console.warn('[ChartDataContext] Transform cache access failed:', cacheError);
     }
 
     // リクエストキューを使用
@@ -665,13 +666,17 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
         viewport: dataViewport!
       };
       
-      setState(prev => ({
-        ...prev,
-        chartDataCache: new Map(prev.chartDataCache).set(configHash, cacheData)
-      }));
-      
-      // Also persist to transform cache
-      transformCache.set(configHash, cacheData);
+      // Store in unified cache
+      try {
+        if (cacheInterfaces?.chart?.set) {
+          cacheInterfaces.chart.set(configHash, cacheData);
+        }
+        if (transformCache?.set) {
+          transformCache.set(configHash, cacheData);
+        }
+      } catch (cacheError) {
+        console.warn('[ChartDataContext] Failed to store in cache:', cacheError);
+      }
       
       // Report final progress
       onProgress?.(90);
@@ -790,16 +795,22 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
         const configHash = getConfigHash(config, options?.enableSampling);
         
         // Check if already cached
-        const cached = state.chartDataCache.get(configHash);
-        if (cached) {
-          // Convert cached format to expected format
-          results.set(config.id || configHash, { 
-            plotData: cached.plotData, 
-            dataViewport: cached.viewport 
-          });
-          processedCount++;
-          options?.onProgress?.(processedCount, configs.length);
-          continue;
+        try {
+          if (cacheInterfaces?.chart?.get) {
+            const cached = cacheInterfaces.chart.get(configHash);
+            if (cached) {
+              // Convert cached format to expected format
+              results.set(config.id || configHash, { 
+                plotData: cached.plotData, 
+                dataViewport: cached.viewport 
+              });
+              processedCount++;
+              options?.onProgress?.(processedCount, configs.length);
+              continue;
+            }
+          }
+        } catch (cacheError) {
+          console.warn('[ChartDataContext] Batch cache access failed:', cacheError);
         }
         
         // Get the data for this chart's metadata IDs
@@ -880,11 +891,12 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
 
   const clearCache = () => {
     setState({
-      chartDataCache: new Map(),
       isLoading: false
     });
-    // Clear the shared data cache instance once
-    dataCache.clear();
+    // Clear the unified cache
+    if (unifiedCache?.clear) {
+      unifiedCache.clear();
+    }
   };
 
   // Clear cache for a specific chart
@@ -892,39 +904,18 @@ export function ChartDataProvider({ children, useDuckDB = true }: { children: Re
     console.log(`[ChartDataContext] Clearing cache for chart: ${configId}`);
     
     // Cancel any pending requests for this chart
-    // We need to iterate through possible cache keys for this chart
-    setState(prev => {
-      const newCache = new Map(prev.chartDataCache);
-      const keysToDelete: string[] = [];
-      
-      // Find all cache keys that contain this chart ID
-      newCache.forEach((_, key) => {
-        if (key.includes(configId)) {
-          keysToDelete.push(key);
-          // Cancel any pending requests
-          requestQueue.cancelRequest(key);
-        }
-      });
-      
-      // Delete the cache entries
-      keysToDelete.forEach(key => {
-        newCache.delete(key);
-        // Also clear from transform cache
-        // TODO: Add delete method to transformCache
-        // transformCache.delete(key);
-      });
-      
-      console.log(`[ChartDataContext] Cleared ${keysToDelete.length} cache entries for chart: ${configId}`);
-      
-      return {
-        ...prev,
-        chartDataCache: newCache
-      };
-    });
+    // Clear chart cache entries that contain this chart ID
+    const stats = unifiedCache.getStats();
     
-    // Also clear sampling cache entries related to this chart
-    // Clear sampling cache for safety
-    hierarchicalSamplingCache.clear();
+    // Note: We'd need to add a method to iterate cache keys in unifiedCache
+    // For now, we'll clear all chart and transform caches for safety
+    if (unifiedCache?.clear) {
+      unifiedCache.clear('chart');
+      unifiedCache.clear('transform');
+      unifiedCache.clear('sampling');
+    }
+    
+    console.log(`[ChartDataContext] Cleared cache entries for chart: ${configId}`);
   };
 
 

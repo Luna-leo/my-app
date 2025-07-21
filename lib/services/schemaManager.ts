@@ -43,27 +43,49 @@ export class SchemaManager {
   ): Promise<string> {
     const tableName = buildTableName(metadataId, tablePrefix);
     
-    // Drop existing table if it exists
-    await this.dropTable(tableName);
-    
-    // Create the table
-    const createTableSql = buildCreateTableStatement(tableName, columns);
-    await this.connection.query(createTableSql);
-    
-    // Register with schema tracker
-    const columnNames = columns.map(col => col.name);
-    duckDBSchemaTracker.registerTable(metadataId, columnNames);
-    
-    console.log(`[SchemaManager] Created table ${tableName} with ${columns.length} columns`);
-    
-    return tableName;
+    try {
+      // Drop existing table if it exists
+      await this.dropTable(tableName);
+      
+      // Create the table
+      const createTableSql = buildCreateTableStatement(tableName, columns);
+      await this.connection.query(createTableSql);
+      
+      // Register with schema tracker
+      const columnNames = columns.map(col => col.name);
+      duckDBSchemaTracker.registerTable(metadataId, columnNames);
+      
+      console.log(`[SchemaManager] Created table ${tableName} with ${columns.length} columns`);
+      
+      return tableName;
+    } catch (error) {
+      console.error(`[SchemaManager] Error creating table ${tableName}:`, error);
+      
+      // Try alternative approach: check if table exists and handle accordingly
+      try {
+        const tableExists = await this.tableExists(tableName);
+        if (tableExists) {
+          console.log(`[SchemaManager] Table ${tableName} already exists, returning existing table`);
+          
+          // Update schema tracker with existing table
+          const columnNames = columns.map(col => col.name);
+          duckDBSchemaTracker.registerTable(metadataId, columnNames);
+          
+          return tableName;
+        }
+      } catch (checkError) {
+        console.error(`[SchemaManager] Error checking table existence:`, checkError);
+      }
+      
+      throw error;
+    }
   }
 
   /**
    * Drop a table
    */
   async dropTable(tableName: string): Promise<void> {
-    const dropSql = buildDropTableStatement(tableName);
+    const dropSql = buildDropTableStatement(tableName, true); // Always use IF EXISTS
     await this.connection.query(dropSql);
     
     // Remove from schema tracker

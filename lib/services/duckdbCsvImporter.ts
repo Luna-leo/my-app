@@ -16,8 +16,13 @@ import { createParquetDataManager } from './parquetDataManager';
 import { CsvFileReader } from './import/csvFileReader';
 import { TableManager } from './import/tableManager';
 import { DataInserter } from './import/dataInserter';
+import { StreamingDataInserter } from './import/streamingDataInserter';
 import { ParameterSaver } from './import/parameterSaver';
 import { ProgressTracker } from './import/progressTracker';
+import { 
+  extractUniqueHeadersStreaming, 
+  getDataRangeStreaming 
+} from '@/lib/utils/streamingCsvParser';
 
 export interface DuckDBImportProgress {
   current: number;
@@ -42,6 +47,7 @@ export class DuckDBCsvImporter {
   private csvReader: CsvFileReader;
   private tableManager: TableManager;
   private dataInserter: DataInserter;
+  private streamingInserter: StreamingDataInserter;
   private parameterSaver: ParameterSaver;
 
   constructor(connection: duckdb.AsyncDuckDBConnection) {
@@ -49,6 +55,12 @@ export class DuckDBCsvImporter {
     this.csvReader = new CsvFileReader();
     this.tableManager = new TableManager({ connection });
     this.dataInserter = new DataInserter({ connection });
+    this.streamingInserter = new StreamingDataInserter({ 
+      connection,
+      batchSize: 5000, // Larger batches for streaming
+      chunkSize: 2 * 1024 * 1024, // 2MB chunks
+      maxMemoryUsage: 200 * 1024 * 1024 // 200MB max memory
+    });
     this.parameterSaver = new ParameterSaver();
   }
 
@@ -62,6 +74,7 @@ export class DuckDBCsvImporter {
     onProgress?: (progress: DuckDBImportProgress) => void,
     options?: {
       convertToParquet?: boolean;
+      useStreaming?: boolean; // Enable streaming for large files
     }
   ): Promise<DuckDBImportResult> {
     const startTime = performance.now();
@@ -88,20 +101,46 @@ export class DuckDBCsvImporter {
         throw new Error(`CSV validation failed: ${validation.errors.join(', ')}`);
       }
 
-      // Read all files and extract headers
-      const readResult = await this.csvReader.readMultipleFiles(
-        files,
-        (current, total) => {
-          progressTracker.updateProgress({
-            current: (current / total) * 20,
-            total: 100,
-            phase: 'preparing',
-            message: `Reading file ${current + 1} of ${total}...`
-          });
-        }
-      );
+      // Determine if we should use streaming based on file sizes
+      const totalFileSize = files.reduce((sum, file) => sum + file.size, 0);
+      const shouldUseStreaming = options?.useStreaming || totalFileSize > 50 * 1024 * 1024; // Auto-enable for > 50MB
+      
+      if (shouldUseStreaming) {
+        console.log('[DuckDBCsvImporter] Using streaming mode for large files (total size: ' + 
+          (totalFileSize / 1024 / 1024).toFixed(2) + ' MB)');
+      }
 
-      const uniqueHeaders = Array.from(readResult.allHeaders);
+      let uniqueHeaders: string[];
+      let dataRange: { startTime?: Date; endTime?: Date };
+
+      if (shouldUseStreaming) {
+        // Use streaming to extract headers and data range
+        const allHeaders = await extractUniqueHeadersStreaming(files);
+        uniqueHeaders = Array.from(allHeaders);
+        dataRange = await getDataRangeStreaming(files);
+        
+        progressTracker.updateProgress({
+          current: 20,
+          total: 100,
+          phase: 'preparing',
+          message: 'Headers extracted using streaming...'
+        });
+      } else {
+        // Read all files and extract headers (legacy method)
+        const readResult = await this.csvReader.readMultipleFiles(
+          files,
+          (current, total) => {
+            progressTracker.updateProgress({
+              current: (current / total) * 20,
+              total: 100,
+              phase: 'preparing',
+              message: `Reading file ${current + 1} of ${total}...`
+            });
+          }
+        );
+        uniqueHeaders = Array.from(readResult.allHeaders);
+        dataRange = readResult.dataRange;
+      }
       
       // Phase 2: Save metadata to IndexedDB
       progressTracker.updateProgress({
@@ -116,8 +155,8 @@ export class DuckDBCsvImporter {
         plant: metadata.plant,
         machineNo: metadata.machineNo,
         dataSource: metadata.dataSource,
-        dataStartTime: metadata.dataStartTime || readResult.dataRange.startTime || new Date(),
-        dataEndTime: metadata.dataEndTime || readResult.dataRange.endTime || new Date(),
+        dataStartTime: metadata.dataStartTime || dataRange.startTime || new Date(),
+        dataEndTime: metadata.dataEndTime || dataRange.endTime || new Date(),
         importedAt: importedAt
       });
 
@@ -125,8 +164,8 @@ export class DuckDBCsvImporter {
         ...metadata,
         dataKey,
         importedAt,
-        dataStartTime: metadata.dataStartTime || readResult.dataRange.startTime || new Date(),
-        dataEndTime: metadata.dataEndTime || readResult.dataRange.endTime || new Date()
+        dataStartTime: metadata.dataStartTime || dataRange.startTime || new Date(),
+        dataEndTime: metadata.dataEndTime || dataRange.endTime || new Date()
       });
       
       // Phase 3: Create table
@@ -146,22 +185,47 @@ export class DuckDBCsvImporter {
       // Phase 4: Import data
       progressTracker.setPhase('importing');
       
-      const totalRowsImported = await this.dataInserter.insertMultipleFiles(
-        files,
-        tableResult.tableName,
-        metadataId as number,
-        uniqueHeaders,
-        tableResult.actualColumnNames,
-        (progress) => {
-          const overallProgress = 25 + (progress.currentFile - 1 + progress.currentRow / progress.totalRows) / progress.totalFiles * 60;
-          progressTracker.updateProgress({
-            current: overallProgress,
-            total: 100,
-            phase: 'importing',
-            message: `Importing ${progress.fileName} (${progress.currentFile}/${progress.totalFiles}) - ${Math.round((progress.currentRow / progress.totalRows) * 100)}%`
-          });
-        }
-      );
+      let totalRowsImported: number;
+      
+      if (shouldUseStreaming) {
+        // Use streaming insertion for large files
+        totalRowsImported = await this.streamingInserter.insertMultipleFilesStreaming(
+          files,
+          tableResult.tableName,
+          metadataId as number,
+          uniqueHeaders,
+          tableResult.actualColumnNames,
+          (progress) => {
+            const overallProgress = 25 + (progress.currentFile - 1 + progress.currentRow / progress.estimatedTotalRows) / progress.totalFiles * 60;
+            progressTracker.updateProgress({
+              current: overallProgress,
+              total: 100,
+              phase: 'importing',
+              message: `Streaming ${progress.fileName} (${progress.currentFile}/${progress.totalFiles}) - ` +
+                       `${progress.currentRow} rows @ ${progress.throughput} rows/sec - ` +
+                       `Memory: ${(progress.memoryUsage / 1024 / 1024).toFixed(1)}MB`
+            });
+          }
+        );
+      } else {
+        // Use traditional insertion for smaller files
+        totalRowsImported = await this.dataInserter.insertMultipleFiles(
+          files,
+          tableResult.tableName,
+          metadataId as number,
+          uniqueHeaders,
+          tableResult.actualColumnNames,
+          (progress) => {
+            const overallProgress = 25 + (progress.currentFile - 1 + progress.currentRow / progress.totalRows) / progress.totalFiles * 60;
+            progressTracker.updateProgress({
+              current: overallProgress,
+              total: 100,
+              phase: 'importing',
+              message: `Importing ${progress.fileName} (${progress.currentFile}/${progress.totalFiles}) - ${Math.round((progress.currentRow / progress.totalRows) * 100)}%`
+            });
+          }
+        );
+      }
 
       // Phase 5: Create indexes
       progressTracker.updateProgress({
@@ -303,6 +367,7 @@ export class DuckDBCsvImporter {
     onProgress?: (progress: DuckDBImportProgress) => void,
     options?: {
       convertToParquet?: boolean;
+      useStreaming?: boolean; // Enable streaming for large files
     }
   ): Promise<DuckDBImportResult> {
     // Single file import - delegate to multiple file import with array of one
